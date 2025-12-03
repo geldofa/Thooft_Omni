@@ -51,11 +51,26 @@ interface User {
 
 export interface Operator {
   id: string;
+  employeeId: string;
   name: string;
   presses: PressType[];
   active: boolean;
   canEditTasks: boolean;
   canAccessOperatorManagement: boolean;
+}
+
+export interface ExternalEntity {
+  id: string;
+  name: string;
+  presses: PressType[];
+  active: boolean;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  presses: PressType[];
+  active: boolean;
 }
 
 export interface ActivityLog {
@@ -95,6 +110,10 @@ interface AuthContextType {
   addOperator: (operator: Omit<Operator, 'id'>) => void;
   updateOperator: (operator: Operator) => void;
   deleteOperator: (id: string) => void;
+  categories: Category[];
+  addCategory: (category: Omit<Category, 'id'>) => void;
+  updateCategory: (category: Category) => void;
+  deleteCategory: (id: string) => void;
   categoryOrder: string[];
   updateCategoryOrder: (order: string[]) => void;
   activityLogs: ActivityLog[];
@@ -113,6 +132,10 @@ interface AuthContextType {
   addTask: (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => void;
   updateTask: (task: MaintenanceTask) => Promise<void>;
   deleteTask: (id: string) => void;
+  externalEntities: ExternalEntity[];
+  addExternalEntity: (entity: Omit<ExternalEntity, 'id'>) => void;
+  updateExternalEntity: (entity: ExternalEntity) => void;
+  deleteExternalEntity: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -145,6 +168,7 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
   const [operators, setOperators] = useState<Operator[]>([
     {
       id: '1',
+      employeeId: 'EMP001',
       name: 'John Smith',
       presses: ['Lithoman', 'C80'],
       active: true,
@@ -153,6 +177,7 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     },
     {
       id: '2',
+      employeeId: 'EMP002',
       name: 'Sarah Johnson',
       presses: ['C80', 'C818'],
       active: true,
@@ -161,6 +186,7 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     },
     {
       id: '3',
+      employeeId: 'EMP003',
       name: 'Mike Chen',
       presses: ['Lithoman'],
       active: true,
@@ -169,6 +195,7 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     },
     {
       id: '4',
+      employeeId: 'EMP004',
       name: 'David Martinez',
       presses: ['C818'],
       active: true,
@@ -183,7 +210,43 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     { id: '3', name: 'C818', active: true, archived: false }
   ]);
 
+  const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([
+    {
+      id: '1',
+      name: 'TechSupport Inc.',
+      presses: ['Lithoman', 'C80'],
+      active: true
+    },
+    {
+      id: '2',
+      name: 'CleanCo',
+      presses: ['C818'],
+      active: true
+    }
+  ]);
+
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
+  const [categories, setCategories] = useState<Category[]>([
+    {
+      id: '1',
+      name: 'Smering',
+      presses: ['Lithoman', 'C80', 'C818'],
+      active: true
+    },
+    {
+      id: '2',
+      name: 'Reiniging',
+      presses: ['Lithoman', 'C80'],
+      active: true
+    },
+    {
+      id: '3',
+      name: 'Controle',
+      presses: ['C818'],
+      active: true
+    }
+  ]);
 
   const [categoryOrder, setCategoryOrder] = useState<string[]>([
     'HVAC', 'Safety', 'Mechanical', 'Electrical', 'Plumbing', 'Building', 'IT', 'Other'
@@ -257,6 +320,38 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
 
   const deletePress = (id: string) => {
     setPresses(presses.filter(p => p.id !== id));
+  };
+
+  const addExternalEntity = (entity: Omit<ExternalEntity, 'id'>) => {
+    const newEntity = {
+      ...entity,
+      id: Date.now().toString()
+    };
+    setExternalEntities([...externalEntities, newEntity]);
+  };
+
+  const updateExternalEntity = (entity: ExternalEntity) => {
+    setExternalEntities(externalEntities.map(e => e.id === entity.id ? entity : e));
+  };
+
+  const deleteExternalEntity = (id: string) => {
+    setExternalEntities(externalEntities.filter(e => e.id !== id));
+  };
+
+  const addCategory = (category: Omit<Category, 'id'>) => {
+    const newCategory = {
+      ...category,
+      id: Date.now().toString()
+    };
+    setCategories([...categories, newCategory]);
+  };
+
+  const updateCategory = (category: Category) => {
+    setCategories(categories.map(c => c.id === category.id ? category : c));
+  };
+
+  const deleteCategory = (id: string) => {
+    setCategories(categories.filter(c => c.id !== id));
   };
 
   const changePassword = (username: string, newPassword: string) => {
@@ -351,8 +446,6 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
       addOperator,
       updateOperator,
       deleteOperator,
-      categoryOrder,
-      updateCategoryOrder,
       activityLogs,
       addActivityLog,
       presses,
@@ -368,7 +461,17 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
       fetchUserAccounts,
       addTask,
       updateTask,
-      deleteTask
+      deleteTask,
+      externalEntities,
+      addExternalEntity,
+      updateExternalEntity,
+      deleteExternalEntity,
+      categories,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      categoryOrder,
+      updateCategoryOrder
     }}>
       {children}
     </AuthContext.Provider>
