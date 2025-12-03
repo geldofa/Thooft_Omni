@@ -181,6 +181,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            <TableHead colSpan={8} className="text-center bg-blue-100">Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
+                                            <TableHead colSpan={1} className="text-center bg-purple-100">Prestatie</TableHead>
+                                        </TableRow>
+                                        <TableRow>
                                             <TableHead>Date</TableHead>
                                             <TableHead>Datum</TableHead>
                                             <TableHead>Order nr</TableHead>
