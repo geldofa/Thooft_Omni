@@ -50,6 +50,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedGroupedTasks, setCollapsedGroupedTasks] = useState<Set<string>>(new Set());
   const [quickEditTask, setQuickEditTask] = useState<MaintenanceTask | null>(null);
+  const [quickEditSiblings, setQuickEditSiblings] = useState<MaintenanceTask[]>([]);
   const [quickEditField, setQuickEditField] = useState<'lastMaintenance' | 'opmerkingen'>('lastMaintenance');
   const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -145,6 +146,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   const handleQuickEdit = (subtask: Subtask, group: GroupedTask, field: 'lastMaintenance' | 'opmerkingen') => {
     setQuickEditTask(toMaintenanceTask(subtask, group));
+    // Store all sibling tasks from the same group
+    setQuickEditSiblings(group.subtasks.map(s => toMaintenanceTask(s, group)));
     setQuickEditField(field);
   };
 
@@ -1024,8 +1027,14 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
       <QuickEditDialog
         open={!!quickEditTask}
-        onOpenChange={(open) => !open && setQuickEditTask(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuickEditTask(null);
+            setQuickEditSiblings([]);
+          }
+        }}
         task={quickEditTask}
+        siblingTasks={quickEditSiblings}
         field={quickEditField}
         onSave={onUpdate}
       />
