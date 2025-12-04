@@ -621,7 +621,7 @@ export function AddMaintenanceDialog({
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Ploegen</h4>
                   {assignees.ploegen.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       {assignees.ploegen.map(ploeg => (
                         <div key={ploeg.id} className="border rounded-md p-3 bg-gray-50/50 h-full">
                           <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200 truncate" title={ploeg.name}>
