@@ -262,7 +262,10 @@ export function QuickEditDialog({
                     </div>
                   </div>
                   <div className="border rounded-md p-3 bg-gray-50/50">
-                    <div className="flex flex-wrap gap-3">
+                    <div className={`grid gap-3 ${siblingTasks.length >= 4 ? 'grid-cols-4' :
+                        siblingTasks.length === 3 ? 'grid-cols-3' :
+                          'grid-cols-2'
+                      }`}>
                       {siblingTasks.map(sibling => (
                         <div
                           key={sibling.id}
