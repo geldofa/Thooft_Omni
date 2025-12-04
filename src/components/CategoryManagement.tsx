@@ -218,9 +218,9 @@ export function CategoryManagement() {
                     <TableHeader>
                         <TableRow className="bg-gray-50 hover:bg-gray-50">
                             <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
-                            <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Lithoman</TableHead>
-                            <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">C80</TableHead>
-                            <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">C818</TableHead>
+                            {activePresses.map(press => (
+                                <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
+                            ))}
                             <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
                             {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
                         </TableRow>

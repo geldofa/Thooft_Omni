@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Edit, Trash2, Calculator } from 'lucide-react';
+import { Plus, Edit, Trash2, Calculator, Check } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -16,6 +16,7 @@ import {
     DialogTitle,
 } from './ui/dialog';
 import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
 
 interface Press {
     id: string;
@@ -44,7 +45,7 @@ interface FinishedPrintJob {
     pages: number;
     exOmw: string;
     netRun: number;
-    startup: number;
+    startup: boolean;
     c4_4: number;
     c4_0: number;
     c1_0: number;
@@ -75,13 +76,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         activePresses.forEach(press => {
             initial[press] = {
                 marge: 0,
-                margePercentage: '',
-                opstart: false,
-                param_4_4: 0,
-                param_4_0: 0,
-                param_1_0: 0,
-                param_1_1: 0,
-                param_4_1: 0
+                margePercentage: '4,2',
+                opstart: 6000,
+                param_4_4: 4000,
+                param_4_0: 3000,
+                param_1_0: 1500,
+                param_1_1: 2000,
+                param_4_1: 3500
             };
         });
         return initial;
@@ -145,7 +146,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             pages: 32,
             exOmw: '1000',
             netRun: 5000,
-            startup: 100,
+            startup: true,
             c4_4: 32,
             c4_0: 0,
             c1_0: 0,
@@ -166,7 +167,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             pages: 2,
             exOmw: '5000',
             netRun: 10000,
-            startup: 50,
+            startup: false,
             c4_4: 2,
             c4_0: 0,
             c1_0: 0,
@@ -346,7 +347,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell>{job.pages}</TableCell>
                                                 <TableCell>{job.exOmw}</TableCell>
                                                 <TableCell>{job.netRun}</TableCell>
-                                                <TableCell>{job.startup}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex justify-center">
+                                                        {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell>{job.c4_4}</TableCell>
                                                 <TableCell>{job.c4_0}</TableCell>
                                                 <TableCell>{job.c1_0}</TableCell>
@@ -372,79 +377,92 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <CardTitle>Parameters</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="space-y-4 max-w-lg">
-                                    <div className="grid gap-4 py-4">
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="marge-value">Marge</Label>
-                                            <Input
-                                                id="marge-value"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-1"
-                                            />
-                                            <Input
-                                                id="marge-percentage"
-                                                type="text"
-                                                placeholder="percentage"
-                                                className="col-span-1"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="opstart">Opstart</Label>
-                                            <div className="col-span-2 flex items-center">
-                                                <input
-                                                    id="opstart"
-                                                    type="checkbox"
-                                                    className="w-4 h-4"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="4-4">4/4</Label>
-                                            <Input
-                                                id="4-4"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-2"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="4-0">4/0</Label>
-                                            <Input
-                                                id="4-0"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-2"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="1-0">1/0</Label>
-                                            <Input
-                                                id="1-0"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-2"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="1-1">1/1</Label>
-                                            <Input
-                                                id="1-1"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-2"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 items-center gap-4">
-                                            <Label htmlFor="4-1">4/1</Label>
-                                            <Input
-                                                id="4-1"
-                                                type="number"
-                                                placeholder="no decimals"
-                                                className="col-span-2"
-                                            />
-                                        </div>
-                                    </div>
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-[200px]">Parameter</TableHead>
+                                                <TableHead className="w-[50px] text-center">Link</TableHead>
+                                                {activePresses.map(press => (
+                                                    <TableHead key={press} className="text-center min-w-[120px]">{press}</TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            <TableRow>
+                                                <TableCell className="font-medium">Marge</TableCell>
+                                                <TableCell className="text-center">
+                                                    <Checkbox
+                                                        checked={linkedParams.margePercentage}
+                                                        onCheckedChange={() => toggleLink('margePercentage')}
+                                                    />
+                                                </TableCell>
+                                                {activePresses.map(press => (
+                                                    <TableCell key={press}>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                type="text"
+                                                                placeholder="%"
+                                                                className="h-8"
+                                                                value={parameters[press]?.margePercentage || ''}
+                                                                onChange={(e) => handleParameterChange(press, 'margePercentage', e.target.value)}
+                                                            />
+                                                        </div>
+                                                    </TableCell>
+                                                ))}
+                                            </TableRow>
+
+                                            <TableRow>
+                                                <TableCell className="font-medium">Opstart</TableCell>
+                                                <TableCell className="text-center">
+                                                    <Checkbox
+                                                        checked={linkedParams.opstart}
+                                                        onCheckedChange={() => toggleLink('opstart')}
+                                                    />
+                                                </TableCell>
+                                                {activePresses.map(press => (
+                                                    <TableCell key={press} className="text-center">
+                                                        <Input
+                                                            type="number"
+                                                            className="h-8"
+                                                            value={parameters[press]?.opstart || 0}
+                                                            onChange={(e) => handleParameterChange(press, 'opstart', Number(e.target.value))}
+                                                        />
+                                                    </TableCell>
+                                                ))}
+                                            </TableRow>
+
+                                            {[
+                                                { id: 'param_4_4', label: '4/4' },
+                                                { id: 'param_4_0', label: '4/0' },
+                                                { id: 'param_1_0', label: '1/0' },
+                                                { id: 'param_1_1', label: '1/1' },
+                                                { id: 'param_4_1', label: '4/1' },
+                                            ].map(param => (
+                                                <TableRow key={param.id}>
+                                                    <TableCell className="font-medium">{param.label}</TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Checkbox
+                                                            checked={linkedParams[param.id]}
+                                                            onCheckedChange={() => toggleLink(param.id)}
+                                                        />
+                                                    </TableCell>
+                                                    {activePresses.map(press => (
+                                                        <TableCell key={press}>
+                                                            <Input
+                                                                type="number"
+                                                                className="h-8"
+                                                                value={parameters[press]?.[param.id] || 0}
+                                                                onChange={(e) => handleParameterChange(press, param.id, Number(e.target.value))}
+                                                            />
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <div className="mt-4 flex justify-end">
                                     <Button>Save Changes</Button>
                                 </div>
                             </CardContent>
