@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth, Operator, ExternalEntity, PressType } from './AuthContext';
+import { useAuth, Operator, ExternalEntity, Ploeg, PressType } from './AuthContext';
 import {
   Table,
   TableBody,
@@ -47,6 +47,10 @@ export function OperatorManagement() {
     addExternalEntity,
     updateExternalEntity,
     deleteExternalEntity,
+    ploegen,
+    addPloeg,
+    updatePloeg,
+    deletePloeg,
     addActivityLog,
     user,
     presses
@@ -82,6 +86,19 @@ export function OperatorManagement() {
   });
   const [externalEditMode, setExternalEditMode] = useState(false);
   const [editedExternalEntities, setEditedExternalEntities] = useState<ExternalEntity[]>([]);
+
+  // Ploeg State
+  const [isPloegDialogOpen, setIsPloegDialogOpen] = useState(false);
+  const [editingPloeg, setEditingPloeg] = useState<Ploeg | null>(null);
+  const [ploegFormData, setPloegFormData] = useState({
+    name: '',
+    operatorIds: [] as string[],
+    presses: [] as PressType[],
+    active: true
+  });
+  const [showInactivePloegen, setShowInactivePloegen] = useState(false);
+  const [ploegEditMode, setPloegEditMode] = useState(false);
+  const [editedPloegen, setEditedPloegen] = useState<Ploeg[]>([]);
 
   // --- Operator Logic ---
   useEffect(() => {
@@ -361,6 +378,7 @@ export function OperatorManagement() {
         <TabsList>
           <TabsTrigger value="operators">Operators</TabsTrigger>
           <TabsTrigger value="external">External Entities</TabsTrigger>
+          <TabsTrigger value="ploegen">Ploegen</TabsTrigger>
         </TabsList>
 
         {/* OPERATORS TAB */}
@@ -662,6 +680,151 @@ export function OperatorManagement() {
             </Table>
           </div>
         </TabsContent>
+
+        {/* PLOEGEN TAB */}
+        <TabsContent value="ploegen" className="space-y-4">
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="ploeg-edit-mode"
+                  checked={ploegEditMode}
+                  onCheckedChange={setPloegEditMode}
+                />
+                <Label htmlFor="ploeg-edit-mode">Edit Mode</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="show-inactive-ploegen"
+                  checked={showInactivePloegen}
+                  onCheckedChange={setShowInactivePloegen}
+                />
+                <Label htmlFor="show-inactive-ploegen">Show Inactive</Label>
+              </div>
+            </div>
+            <Button onClick={() => { setEditingPloeg(null); setIsPloegDialogOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Ploeg
+            </Button>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50 hover:bg-gray-50">
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">ID</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Members</TableHead>
+                  {activePresses.map(press => (
+                    <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">
+                      {press}
+                    </TableHead>
+                  ))}
+                  <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
+                  {!ploegEditMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ploegen
+                  .filter(p => showInactivePloegen ? true : p.active)
+                  .map((ploeg) => (
+                    <TableRow key={ploeg.id}>
+                      <TableCell className="border-r border-gray-200">{ploeg.id}</TableCell>
+                      <TableCell className="border-r border-gray-200">{ploeg.name}</TableCell>
+                      <TableCell className="border-r border-gray-200">
+                        {ploeg.operatorIds.map(opId => {
+                          const op = operators.find(o => o.id === opId);
+                          return op?.name;
+                        }).filter(Boolean).join(', ')}
+                      </TableCell>
+                      {activePresses.map(press => (
+                        <TableCell key={press} className="border-r border-gray-200 p-0">
+                          <div className="flex justify-center items-center h-full py-2">
+                            {ploegEditMode ? (
+                              <Checkbox
+                                checked={ploeg.presses.includes(press)}
+                                onCheckedChange={(checked) => {
+                                  const newPresses = checked
+                                    ? [...ploeg.presses, press]
+                                    : ploeg.presses.filter(p => p !== press);
+                                  updatePloeg({ ...ploeg, presses: newPresses });
+                                }}
+                              />
+                            ) : (
+                              ploeg.presses.includes(press) ? (
+                                <Check className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )
+                            )}
+                          </div>
+                        </TableCell>
+                      ))}
+                      <TableCell className="border-r border-gray-200 p-0">
+                        <div className="flex justify-center items-center h-full py-2">
+                          {ploegEditMode ? (
+                            <Checkbox
+                              checked={ploeg.active}
+                              onCheckedChange={(checked) => {
+                                updatePloeg({ ...ploeg, active: !!checked });
+                              }}
+                            />
+                          ) : (
+                            <Badge variant={ploeg.active ? 'default' : 'secondary'}>
+                              {ploeg.active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      {!ploegEditMode && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingPloeg(ploeg);
+                                setPloegFormData({
+                                  name: ploeg.name,
+                                  operatorIds: ploeg.operatorIds,
+                                  presses: ploeg.presses,
+                                  active: ploeg.active
+                                });
+                                setIsPloegDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Ploeg</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete "{ploeg.name}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deletePloeg(ploeg.id)}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* Operator Dialog */}
@@ -817,6 +980,124 @@ export function OperatorManagement() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Ploeg Dialog */}
+      <Dialog open={isPloegDialogOpen} onOpenChange={(open) => {
+        setIsPloegDialogOpen(open);
+        if (!open) {
+          setEditingPloeg(null);
+          setPloegFormData({ name: '', operatorIds: [], presses: [], active: true });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingPloeg ? 'Edit Ploeg' : 'Add New Ploeg'}</DialogTitle>
+            <DialogDescription>
+              Create a team of 2-3 operators who work together.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (editingPloeg) {
+              updatePloeg({ ...editingPloeg, ...ploegFormData });
+              toast.success('Ploeg updated successfully');
+            } else {
+              addPloeg(ploegFormData);
+              toast.success('Ploeg added successfully');
+            }
+            setIsPloegDialogOpen(false);
+            setEditingPloeg(null);
+            setPloegFormData({ name: '', operatorIds: [], presses: [], active: true });
+          }}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="ploeg-name">Ploeg Name *</Label>
+                <Input
+                  id="ploeg-name"
+                  value={ploegFormData.name}
+                  onChange={(e) => setPloegFormData({ ...ploegFormData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Team Members (2-3) *</Label>
+                <div className="space-y-2">
+                  {[0, 1, 2].map((index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Label className="w-16">{index + 1}.</Label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={ploegFormData.operatorIds[index] || ''}
+                        onChange={(e) => {
+                          const newIds = [...ploegFormData.operatorIds];
+                          if (e.target.value) {
+                            newIds[index] = e.target.value;
+                          } else {
+                            newIds.splice(index, 1);
+                          }
+                          setPloegFormData({ ...ploegFormData, operatorIds: newIds.filter(Boolean) });
+                        }}
+                        required={index < 2}
+                      >
+                        <option value="">Select operator...</option>
+                        {operators
+                          .filter(op => op.active && !ploegFormData.operatorIds.includes(op.id) || ploegFormData.operatorIds[index] === op.id)
+                          .map(op => (
+                            <option key={op.id} value={op.id}>{op.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <Label>Available Presses *</Label>
+                <div className="space-y-2 border rounded-md p-3">
+                  {activePresses.map((press) => (
+                    <div key={press} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`ploeg-${press}`}
+                        checked={ploegFormData.presses.includes(press)}
+                        onCheckedChange={(checked) => {
+                          const newPresses = checked
+                            ? [...ploegFormData.presses, press]
+                            : ploegFormData.presses.filter(p => p !== press);
+                          setPloegFormData({ ...ploegFormData, presses: newPresses });
+                        }}
+                      />
+                      <label
+                        htmlFor={`ploeg-${press}`}
+                        className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {press}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="ploeg-active"
+                  checked={ploegFormData.active}
+                  onCheckedChange={(checked) => setPloegFormData({ ...ploegFormData, active: checked })}
+                />
+                <Label htmlFor="ploeg-active">Active</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsPloegDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingPloeg ? 'Update Ploeg' : 'Add Ploeg'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div >
   );
 }

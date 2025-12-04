@@ -32,7 +32,9 @@ export interface MaintenanceTask {
   nextMaintenance: Date;
   maintenanceInterval: number;
   maintenanceIntervalUnit: 'days' | 'weeks' | 'months';
-  assignedTo: string;
+  assignedTo: string; // Deprecated: kept for backward compatibility
+  assignedToIds?: string[]; // New: Array of IDs (ploeg, operator, or external entity)
+  assignedToTypes?: ('ploeg' | 'operator' | 'external')[]; // Corresponding types
   opmerkingen: string;
   commentDate: Date | null;
   created: string;
@@ -62,6 +64,14 @@ export interface Operator {
 export interface ExternalEntity {
   id: string;
   name: string;
+  presses: PressType[];
+  active: boolean;
+}
+
+export interface Ploeg {
+  id: string;
+  name: string;
+  operatorIds: string[]; // Ordered list of 2-3 operator IDs
   presses: PressType[];
   active: boolean;
 }
@@ -136,6 +146,10 @@ interface AuthContextType {
   addExternalEntity: (entity: Omit<ExternalEntity, 'id'>) => void;
   updateExternalEntity: (entity: ExternalEntity) => void;
   deleteExternalEntity: (id: string) => void;
+  ploegen: Ploeg[];
+  addPloeg: (ploeg: Omit<Ploeg, 'id'>) => void;
+  updatePloeg: (ploeg: Ploeg) => void;
+  deletePloeg: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -220,6 +234,30 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     {
       id: '2',
       name: 'CleanCo',
+      presses: ['C818'],
+      active: true
+    }
+  ]);
+
+  const [ploegen, setPloegen] = useState<Ploeg[]>([
+    {
+      id: '1',
+      name: 'Team Alpha',
+      operatorIds: ['1', '2'],
+      presses: ['Lithoman', 'C80'],
+      active: true
+    },
+    {
+      id: '2',
+      name: 'Team Beta',
+      operatorIds: ['3', '4'],
+      presses: ['Lithoman', 'C80'],
+      active: true
+    },
+    {
+      id: '3',
+      name: 'Team Gamma',
+      operatorIds: ['1', '3'],
       presses: ['C818'],
       active: true
     }
@@ -336,6 +374,22 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
 
   const deleteExternalEntity = (id: string) => {
     setExternalEntities(externalEntities.filter(e => e.id !== id));
+  };
+
+  const addPloeg = (ploeg: Omit<Ploeg, 'id'>) => {
+    const newPloeg = {
+      ...ploeg,
+      id: Date.now().toString()
+    };
+    setPloegen([...ploegen, newPloeg]);
+  };
+
+  const updatePloeg = (ploeg: Ploeg) => {
+    setPloegen(ploegen.map(p => p.id === ploeg.id ? ploeg : p));
+  };
+
+  const deletePloeg = (id: string) => {
+    setPloegen(ploegen.filter(p => p.id !== id));
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
@@ -466,6 +520,10 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
       addExternalEntity,
       updateExternalEntity,
       deleteExternalEntity,
+      ploegen,
+      addPloeg,
+      updatePloeg,
+      deletePloeg,
       categories,
       addCategory,
       updateCategory,
