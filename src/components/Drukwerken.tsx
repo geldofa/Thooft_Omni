@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Plus, Edit, Trash2, Calculator, Check } from 'lucide-react';
+import { formatNumber } from '../utils/formatNumber';
 import {
     Dialog,
     DialogContent,
@@ -180,7 +181,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     ]);
 
-    const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([]);
+    const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
+        {
+            id: 'main-cost-formula',
+            name: 'Max Bruto',
+            formula: 'IF(startup, Opstart * exOmw, 0) + netRun + (netRun * Marge) + (c4_4 * exOmw * param_4_4) + (c4_0 * exOmw * param_4_0) + (c1_0 * exOmw * param_1_0) + (c1_1 * exOmw * param_1_1) + (c4_1 * exOmw * param_4_1)'
+        }
+    ]);
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
     const [editingFormula, setEditingFormula] = useState<CalculatedField | null>(null);
     const [formulaName, setFormulaName] = useState('');
@@ -188,17 +195,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     // Available fields for formula builder
     const finishedFields = [
-        { key: 'pages', label: 'Pages' },
-        { key: 'netRun', label: 'Net Run' },
-        { key: 'startup', label: 'Startup' },
+        { key: 'pages', label: "Pagina's" },
+        { key: 'exOmw', label: 'ex/omw.' },
+        { key: 'netRun', label: 'Oplage netto' },
+        { key: 'startup', label: 'Opstart' },
         { key: 'c4_4', label: '4/4' },
         { key: 'c4_0', label: '4/0' },
         { key: 'c1_0', label: '1/0' },
         { key: 'c1_1', label: '1/1' },
         { key: 'c4_1', label: '4/1' },
-        { key: 'maxGross', label: 'Max Gross' },
-        { key: 'green', label: 'Green' },
-        { key: 'red', label: 'Red' }
+        { key: 'maxGross', label: 'Max Bruto' },
+        { key: 'green', label: 'Groen' },
+        { key: 'red', label: 'Rood' }
     ];
 
     const parameterFields = [
@@ -219,28 +227,73 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const evaluateFormula = (formula: string, job: FinishedPrintJob): number | string => {
         try {
+            // Return early if formula is empty
+            if (!formula || !formula.trim()) {
+                return 'N/A';
+            }
+
+            // Helper function for IF logic
+            const IF = (condition: boolean, trueVal: any, falseVal: any) => condition ? trueVal : falseVal;
+
+            // Get parameters from the first active press (or default if none)
+            const activePressName = activePresses.length > 0 ? activePresses[0] : '';
+            const pressParams = activePressName ? parameters[activePressName] : {};
+
             // Replace field names with actual values
             let evalFormula = formula;
 
+            // Helper function to escape regex special characters
+            const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
             // Replace finished job fields
             finishedFields.forEach(field => {
-                const regex = new RegExp(field.key, 'g');
-                evalFormula = evalFormula.replace(regex, String(job[field.key as keyof FinishedPrintJob]));
+                const regex = new RegExp(escapeRegex(field.key), 'g');
+                let value: any = job[field.key as keyof FinishedPrintJob];
+
+                // Special handling for startup (Opstart)
+                if (field.key === 'startup') {
+                    // If startup is checked (true), use the Opstart parameter value
+                    // If unchecked (false), use 0
+                    value = value ? (pressParams['opstart'] || 0) : 0;
+                }
+
+                evalFormula = evalFormula.replace(regex, String(value));
             });
 
-            // Replace parameter fields with placeholder values (for preview)
-            evalFormula = evalFormula.replace(/Marge/g, '10');
-            evalFormula = evalFormula.replace(/Opstart/g, '100');
-            evalFormula = evalFormula.replace(/param_4_4/g, '50');
-            evalFormula = evalFormula.replace(/param_4_0/g, '40');
-            evalFormula = evalFormula.replace(/param_1_0/g, '30');
-            evalFormula = evalFormula.replace(/param_1_1/g, '35');
-            evalFormula = evalFormula.replace(/param_4_1/g, '45');
+            // Replace parameter fields with actual values from the first active press
+            parameterFields.forEach(field => {
+                const regex = new RegExp(escapeRegex(field.key), 'g');
+                // Map friendly parameter keys to internal state keys
+                let paramKey = field.key;
+                if (field.key === 'Marge') paramKey = 'marge';
+                if (field.key === 'Opstart') paramKey = 'opstart';
 
-            // Evaluate the formula safely
-            const result = Function('"use strict"; return (' + evalFormula + ')')();
-            return typeof result === 'number' ? Math.round(result * 100) / 100 : result;
+                let value = pressParams[paramKey] || 0;
+
+                // Special handling for Marge percentage parsing (e.g., "4,2" -> 4.2)
+                if (paramKey === 'marge') {
+                    value = parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0;
+                }
+
+                evalFormula = evalFormula.replace(regex, String(value));
+            });
+
+            // Evaluate the formula safely with the IF function in scope
+            const result = Function('IF', '"use strict"; return (' + evalFormula + ')')(IF);
+
+            // Format the result with thousand separators
+            if (typeof result === 'number') {
+                const rounded = Math.round(result * 100) / 100;
+                // Format with dots as thousand separators (European style)
+                return rounded.toLocaleString('nl-NL', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            return result;
         } catch (error) {
+            console.error('Formula evaluation error:', error);
             return 'Error';
         }
     };
@@ -344,22 +397,22 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell>{job.orderNr}</TableCell>
                                                 <TableCell>{job.orderName}</TableCell>
                                                 <TableCell>{job.version}</TableCell>
-                                                <TableCell>{job.pages}</TableCell>
+                                                <TableCell>{formatNumber(job.pages)}</TableCell>
                                                 <TableCell>{job.exOmw}</TableCell>
-                                                <TableCell>{job.netRun}</TableCell>
+                                                <TableCell>{formatNumber(job.netRun)}</TableCell>
                                                 <TableCell>
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell>{job.c4_4}</TableCell>
-                                                <TableCell>{job.c4_0}</TableCell>
-                                                <TableCell>{job.c1_0}</TableCell>
-                                                <TableCell>{job.c1_1}</TableCell>
-                                                <TableCell>{job.c4_1}</TableCell>
-                                                <TableCell>{job.maxGross}</TableCell>
-                                                <TableCell>{job.green}</TableCell>
-                                                <TableCell>{job.red}</TableCell>
+                                                <TableCell>{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell>{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell>{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell>{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell>{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell>{formatNumber(job.maxGross)}</TableCell>
+                                                <TableCell>{formatNumber(job.green)}</TableCell>
+                                                <TableCell>{formatNumber(job.red)}</TableCell>
                                                 <TableCell>{job.performance}</TableCell>
                                             </TableRow>
                                         ))}
