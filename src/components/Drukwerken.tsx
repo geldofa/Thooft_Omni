@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Edit, Trash2, Calculator, Check } from 'lucide-react';
+import { Plus, Edit, Trash2, Calculator, Check, Save, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatNumber } from '../utils/formatNumber';
 import {
     Dialog,
@@ -18,6 +18,7 @@ import {
 } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface Press {
     id: string;
@@ -26,15 +27,7 @@ interface Press {
     archived: boolean;
 }
 
-interface Drukwerk {
-    id: string;
-    press: PressType;
-    name: string;
-    description: string;
-    date: string;
-    time: string;
-    status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
-}
+
 
 interface FinishedPrintJob {
     id: string;
@@ -63,6 +56,7 @@ interface CalculatedField {
     name: string;
     formula: string;
     description?: string;
+    targetColumn?: 'maxGross' | 'green' | 'red';
 }
 
 export function Drukwerken({ presses }: { presses: Press[] }) {
@@ -88,6 +82,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         });
         return initial;
     });
+
+    // Helper to get formula for a specific column
+    const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red') => calculatedFields.find(f => f.targetColumn === col);
 
     // Track which parameters are linked across presses
     const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>({
@@ -136,7 +133,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
-    const [finishedJobs] = useState<FinishedPrintJob[]>([
+    const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([
         {
             id: '1',
             date: '2025/12/01',
@@ -181,17 +178,129 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     ]);
 
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+        key: 'date',
+        direction: 'desc'
+    });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchField, setSearchField] = useState('all');
+
+    const handleSort = (key: string) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const getSortIcon = (key: string) => {
+        if (sortConfig.key !== key) return null;
+        return sortConfig.direction === 'asc'
+            ? <ArrowUp className="w-4 h-4 ml-1 text-blue-600" />
+            : <ArrowDown className="w-4 h-4 ml-1 text-blue-600" />;
+    };
+
+    const filteredJobs = finishedJobs.filter(job => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        if (searchField === 'all') {
+            return Object.values(job).some(val => String(val).toLowerCase().includes(query));
+        }
+        return String(job[searchField as keyof FinishedPrintJob]).toLowerCase().includes(query);
+    });
+
+    const sortedJobs = [...filteredJobs].sort((a, b) => {
+        const aValue = (a as any)[sortConfig.key];
+        const bValue = (b as any)[sortConfig.key];
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const [newJob, setNewJob] = useState<Omit<FinishedPrintJob, 'id'>>({
+        date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
+        datum: '',
+        orderNr: '',
+        orderName: '',
+        version: '',
+        pages: 0,
+        exOmw: '',
+        netRun: 0,
+        startup: false,
+        c4_4: 0,
+        c4_0: 0,
+        c1_0: 0,
+        c1_1: 0,
+        c4_1: 0,
+        maxGross: 0,
+        green: 0,
+        red: 0,
+        performance: ''
+    });
+
+    const handleAddJob = () => {
+        // Calculate values for fields that have formulas
+        const calculatedMaxGross = getFormulaForColumn('maxGross')
+            ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob) === 'number'
+                ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob)
+                : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
+            : newJob.maxGross;
+
+        const calculatedGreen = getFormulaForColumn('green')
+            ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, newJob) === 'number'
+                ? evaluateFormula(getFormulaForColumn('green')!.formula, newJob)
+                : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
+            : newJob.green;
+
+        const calculatedRed = getFormulaForColumn('red')
+            ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, newJob) === 'number'
+                ? evaluateFormula(getFormulaForColumn('red')!.formula, newJob)
+                : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
+            : newJob.red;
+
+        const job: FinishedPrintJob = {
+            ...newJob,
+            id: Date.now().toString(),
+            maxGross: Number(calculatedMaxGross) || 0,
+            green: Number(calculatedGreen) || 0,
+            red: Number(calculatedRed) || 0
+        };
+        setFinishedJobs([job, ...finishedJobs]);
+        // Reset fields but keep date
+        setNewJob({
+            ...newJob,
+            orderNr: '',
+            orderName: '',
+            version: '',
+            pages: 0,
+            exOmw: '',
+            netRun: 0,
+            startup: false,
+            c4_4: 0,
+            c4_0: 0,
+            c1_0: 0,
+            c1_1: 0,
+            c4_1: 0,
+            maxGross: 0,
+            green: 0,
+            red: 0,
+            performance: ''
+        });
+    };
+
     const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
         {
             id: 'main-cost-formula',
             name: 'Max Bruto',
-            formula: 'IF(startup, Opstart * exOmw, 0) + netRun + (netRun * Marge) + (c4_4 * exOmw * param_4_4) + (c4_0 * exOmw * param_4_0) + (c1_0 * exOmw * param_1_0) + (c1_1 * exOmw * param_1_1) + (c4_1 * exOmw * param_4_1)'
+            formula: 'IF(startup, Opstart * exOmw, 0) + netRun + (netRun * Marge) + (c4_4 * exOmw * param_4_4) + (c4_0 * exOmw * param_4_0) + (c1_0 * exOmw * param_1_0) + (c1_1 * exOmw * param_1_1) + (c4_1 * exOmw * param_4_1)',
+            targetColumn: 'maxGross'
         }
     ]);
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
     const [editingFormula, setEditingFormula] = useState<CalculatedField | null>(null);
     const [formulaName, setFormulaName] = useState('');
     const [currentFormula, setCurrentFormula] = useState('');
+    const [targetColumn, setTargetColumn] = useState<'maxGross' | 'green' | 'red' | undefined>(undefined);
 
     // Available fields for formula builder
     const finishedFields = [
@@ -225,7 +334,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setCurrentFormula(prev => prev + ' ' + value);
     };
 
-    const evaluateFormula = (formula: string, job: FinishedPrintJob): number | string => {
+    const evaluateFormula = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>): number | string => {
         try {
             // Return early if formula is empty
             if (!formula || !formula.trim()) {
@@ -248,7 +357,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             // Replace finished job fields
             finishedFields.forEach(field => {
                 const regex = new RegExp(escapeRegex(field.key), 'g');
-                let value: any = job[field.key as keyof FinishedPrintJob];
+                let value: any = (job as any)[field.key];
 
                 // Special handling for startup (Opstart)
                 if (field.key === 'startup') {
@@ -298,15 +407,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
-    const handleOpenFormulaDialog = (field?: CalculatedField) => {
+    const handleOpenFormulaDialog = (field?: CalculatedField, defaultTarget?: 'maxGross' | 'green' | 'red') => {
         if (field) {
             setEditingFormula(field);
             setFormulaName(field.name);
             setCurrentFormula(field.formula);
+            setTargetColumn(field.targetColumn);
         } else {
             setEditingFormula(null);
             setFormulaName('');
             setCurrentFormula('');
+            setTargetColumn(defaultTarget);
         }
         setIsFormulaDialogOpen(true);
     };
@@ -319,14 +430,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         if (editingFormula) {
             setCalculatedFields(calculatedFields.map(f =>
                 f.id === editingFormula.id
-                    ? { ...f, name: formulaName, formula: currentFormula }
+                    ? { ...f, name: formulaName, formula: currentFormula, targetColumn }
                     : f
             ));
         } else {
             const newField: CalculatedField = {
                 id: Date.now().toString(),
                 name: formulaName,
-                formula: currentFormula
+                formula: currentFormula,
+                targetColumn
             };
             setCalculatedFields([...calculatedFields, newField]);
         }
@@ -334,6 +446,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setIsFormulaDialogOpen(false);
         setFormulaName('');
         setCurrentFormula('');
+        setTargetColumn(undefined);
         setEditingFormula(null);
     };
 
@@ -355,49 +468,175 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
                 <TabsContent value="finished">
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Finished Print Jobs</CardTitle>
+                            <div className="flex gap-2 items-center">
+                                <Select value={searchField} onValueChange={setSearchField}>
+                                    <SelectTrigger className="w-[130px]">
+                                        <SelectValue placeholder="Filter by" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Fields</SelectItem>
+                                        <SelectItem value="orderNr">Order Nr</SelectItem>
+                                        <SelectItem value="orderName">Order Name</SelectItem>
+                                        <SelectItem value="date">Date</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div className="relative">
+                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Input
+                                        placeholder="Search..."
+                                        className="pl-8 w-[200px]"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
-                                <Table>
+                                <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead colSpan={8} className="text-center bg-blue-100">Data</TableHead>
+                                            <TableHead colSpan={7} className="text-center bg-blue-100">Data</TableHead>
                                             <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
                                             <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
-                                            <TableHead colSpan={1} className="text-center bg-purple-100">Prestatie</TableHead>
+                                            <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
                                         </TableRow>
                                         <TableRow>
-                                            <TableHead>Date</TableHead>
-                                            <TableHead>Datum</TableHead>
-                                            <TableHead>Order nr</TableHead>
-                                            <TableHead>Order</TableHead>
-                                            <TableHead>Versie</TableHead>
-                                            <TableHead>Pagina's</TableHead>
-                                            <TableHead>ex/omw.</TableHead>
-                                            <TableHead>Oplage netto</TableHead>
-                                            <TableHead>Opstart</TableHead>
-                                            <TableHead>4/4</TableHead>
-                                            <TableHead>4/0</TableHead>
-                                            <TableHead>1/0</TableHead>
-                                            <TableHead>1/1</TableHead>
-                                            <TableHead>4/1</TableHead>
-                                            <TableHead>Max Bruto</TableHead>
-                                            <TableHead>Groen</TableHead>
-                                            <TableHead>Rood</TableHead>
-                                            <TableHead>Prestatie</TableHead>
+                                            <TableHead onClick={() => handleSort('date')} className="cursor-pointer hover:bg-gray-100 w-[110px]"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
+                                            {/* Datum removed */}
+                                            <TableHead onClick={() => handleSort('orderNr')} className="cursor-pointer hover:bg-gray-100 w-[90px]"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('version')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Versie/Katern {getSortIcon('version')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('pages')} className="cursor-pointer hover:bg-gray-100 w-[70px]"><div className="flex items-center">Blz {getSortIcon('pages')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('exOmw')} className="cursor-pointer hover:bg-gray-100 w-[60px]"><div className="flex items-center">ex/omw. {getSortIcon('exOmw')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('netRun')} className="cursor-pointer hover:bg-gray-100 w-[100px]"><div className="flex items-center">Oplage netto {getSortIcon('netRun')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-100 w-[70px]"><div className="flex items-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
+                                            <TableHead className="w-[100px]">
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('maxGross'), 'maxGross')}
+                                                        title={getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
+                                                    >
+                                                        {getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
+                                                    </Button>
+                                                    <div onClick={() => handleSort('maxGross')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('maxGross')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="w-[100px]">
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('green'), 'green')}
+                                                        title={getFormulaForColumn('green')?.name || 'Groen'}
+                                                    >
+                                                        {getFormulaForColumn('green')?.name || 'Groen'}
+                                                    </Button>
+                                                    <div onClick={() => handleSort('green')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('green')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="w-[100px]">
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('red'), 'red')}
+                                                        title={getFormulaForColumn('red')?.name || 'Rood'}
+                                                    >
+                                                        {getFormulaForColumn('red')?.name || 'Rood'}
+                                                    </Button>
+                                                    <div onClick={() => handleSort('red')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('red')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Prestatie {getSortIcon('performance')}</div></TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {finishedJobs.map((job) => (
+                                        {/* Input Row */}
+                                        <TableRow className="bg-gray-50 border-b-2 border-blue-100">
+                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full [&::-webkit-calendar-picker-indicator]:hidden" /></TableCell>
+                                            {/* Datum removed */}
+                                            <TableCell className="p-1">
+                                                <div className="flex items-center">
+                                                    <span className="text-gray-500 mr-1 text-sm">DT</span>
+                                                    <Input value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full" />
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1">
+                                                <div className="flex items-center">
+                                                    <Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full" />
+                                                    <span className="text-gray-500 ml-1 text-sm">blz</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.netRun || ''} onChange={e => setNewJob({ ...newJob, netRun: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1 text-center">
+                                                <div className="flex justify-center">
+                                                    <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className={`p-1 ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('maxGross');
+                                                    return formula
+                                                        ? evaluateFormula(formula.formula, newJob)
+                                                        : <Input type="number" value={newJob.maxGross || ''} onChange={e => setNewJob({ ...newJob, maxGross: Number(e.target.value) })} className="h-8 w-full" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className={`p-1 ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('green');
+                                                    return formula
+                                                        ? evaluateFormula(formula.formula, newJob)
+                                                        : <Input type="number" value={newJob.green || ''} onChange={e => setNewJob({ ...newJob, green: Number(e.target.value) })} className="h-8 w-full" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className={`p-1 ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('red');
+                                                    return formula
+                                                        ? evaluateFormula(formula.formula, newJob)
+                                                        : <Input type="number" value={newJob.red || ''} onChange={e => setNewJob({ ...newJob, red: Number(e.target.value) })} className="h-8 w-full" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1 text-center">
+                                                <Button size="sm" variant="ghost" onClick={handleAddJob} className="hover:bg-blue-100 text-blue-600">
+                                                    <Save className="w-4 h-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                        {sortedJobs.map((job) => (
                                             <TableRow key={job.id}>
                                                 <TableCell>{job.date}</TableCell>
-                                                <TableCell>{job.datum}</TableCell>
-                                                <TableCell>{job.orderNr}</TableCell>
+                                                {/* Datum removed */}
+                                                <TableCell>DT {job.orderNr}</TableCell>
                                                 <TableCell>{job.orderName}</TableCell>
                                                 <TableCell>{job.version}</TableCell>
-                                                <TableCell>{formatNumber(job.pages)}</TableCell>
+                                                <TableCell>{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell>{job.exOmw}</TableCell>
                                                 <TableCell>{formatNumber(job.netRun)}</TableCell>
                                                 <TableCell>
@@ -410,10 +649,30 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell>{formatNumber(job.c1_0)}</TableCell>
                                                 <TableCell>{formatNumber(job.c1_1)}</TableCell>
                                                 <TableCell>{formatNumber(job.c4_1)}</TableCell>
-                                                <TableCell>{formatNumber(job.maxGross)}</TableCell>
-                                                <TableCell>{formatNumber(job.green)}</TableCell>
-                                                <TableCell>{formatNumber(job.red)}</TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('maxGross');
+                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.maxGross);
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('green');
+                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.green);
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('red');
+                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.red);
+                                                    })()}
+                                                </TableCell>
                                                 <TableCell>{job.performance}</TableCell>
+                                                <TableCell>
+                                                    <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -593,6 +852,24 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 value={formulaName}
                                 onChange={(e) => setFormulaName(e.target.value)}
                             />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label>Target Column (Optional)</Label>
+                            <Select
+                                value={targetColumn || "none"}
+                                onValueChange={(value) => setTargetColumn(value === "none" ? undefined : value as 'maxGross' | 'green' | 'red')}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a column to display this formula" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">None (Reference only)</SelectItem>
+                                    <SelectItem value="maxGross">Max Bruto</SelectItem>
+                                    <SelectItem value="green">Groen</SelectItem>
+                                    <SelectItem value="red">Rood</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="grid gap-2">
