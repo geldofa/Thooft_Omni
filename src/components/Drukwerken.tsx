@@ -62,7 +62,7 @@ interface CalculatedField {
     name: string;
     formula: string;
     description?: string;
-    targetColumn?: 'maxGross' | 'green' | 'red';
+    targetColumn?: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage';
 }
 
 // Formatted number input that shows thousand separators
@@ -143,7 +143,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     });
 
     // Helper to get formula for a specific column
-    const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red') => calculatedFields.find(f => f.targetColumn === col);
+    const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage') => calculatedFields.find(f => f.targetColumn === col);
 
     // Track which parameters are linked across presses
     const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>({
@@ -420,11 +420,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, job)).replace(/\./g, '').replace(',', '.')))
                 : job.red;
 
+            const calculatedDeltaNumber = getFormulaForColumn('delta_number')
+                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, job) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, job)
+                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                : job.delta_number || 0;
+
             return {
                 ...job,
                 maxGross: Number(calculatedMaxGross) || 0,
                 green: Number(calculatedGreen) || 0,
                 red: Number(calculatedRed) || 0,
+                delta_number: Number(calculatedDeltaNumber) || 0,
                 delta: 0
             };
         });
@@ -460,13 +467,19 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             name: 'Max Bruto',
             formula: 'IF(startup, Opstart * exOmw, 0) + netRun + (netRun * Marge) + (c4_4 * exOmw * param_4_4) + (c4_0 * exOmw * param_4_0) + (c1_0 * exOmw * param_1_0) + (c1_1 * exOmw * param_1_1) + (c4_1 * exOmw * param_4_1)',
             targetColumn: 'maxGross'
+        },
+        {
+            id: 'delta-number-formula',
+            name: 'Delta Number',
+            formula: 'green + red - maxGross',
+            targetColumn: 'delta_number'
         }
     ]);
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
     const [editingFormula, setEditingFormula] = useState<CalculatedField | null>(null);
     const [formulaName, setFormulaName] = useState('');
     const [currentFormula, setCurrentFormula] = useState('');
-    const [targetColumn, setTargetColumn] = useState<'maxGross' | 'green' | 'red' | undefined>(undefined);
+    const [targetColumn, setTargetColumn] = useState<'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage' | undefined>(undefined);
 
     // Available fields for formula builder
     const finishedFields = [
@@ -1123,10 +1136,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     })()}
                                                 </TableCell>
                                                 <TableCell className="p-0 text-center">
-                                                    <FormattedNumberInput value={job.delta || ''} onChange={val => {
-                                                        const updated = finishedJobs.map(j => j.id === job.id ? { ...j, delta: val } : j);
-                                                        setFinishedJobs(updated);
-                                                    }} className="h-8 w-full text-center px-0 border-0 bg-transparent" />
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('delta_number');
+                                                        return formula
+                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
+                                                            : formatNumber(job.delta_number);
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell className="text-right">{job.performance}</TableCell>
                                                 <TableCell>
