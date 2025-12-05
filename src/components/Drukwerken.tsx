@@ -19,6 +19,7 @@ import {
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 interface Press {
     id: string;
@@ -49,6 +50,10 @@ interface FinishedPrintJob {
     green: number;
     red: number;
     performance: string;
+}
+
+interface AdditionalJob extends Omit<FinishedPrintJob, 'id' | 'orderNr' | 'orderName' | 'pages' | 'exOmw'> {
+    // Inherits most props, but some are fixed from the main job
 }
 
 interface CalculatedField {
@@ -238,35 +243,85 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         performance: ''
     });
 
+    const [additionalJobs, setAdditionalJobs] = useState<AdditionalJob[]>([]);
+
+    const handleAddVersion = () => {
+        const newVersion: AdditionalJob = {
+            date: newJob.date,
+            datum: '', // Or copy from newJob if needed
+            version: '', // Version should be unique
+            netRun: 0,
+            startup: false,
+            c4_4: 0,
+            c4_0: 0,
+            c1_0: 0,
+            c1_1: 0,
+            c4_1: 0,
+            maxGross: 0,
+            green: 0,
+            red: 0,
+            performance: ''
+        };
+        setAdditionalJobs([...additionalJobs, newVersion]);
+    };
+
     const handleAddJob = () => {
-        // Calculate values for fields that have formulas
-        const calculatedMaxGross = getFormulaForColumn('maxGross')
-            ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob) === 'number'
-                ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob)
-                : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
-            : newJob.maxGross;
+        const allJobsToAdd: FinishedPrintJob[] = [];
 
-        const calculatedGreen = getFormulaForColumn('green')
-            ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, newJob) === 'number'
-                ? evaluateFormula(getFormulaForColumn('green')!.formula, newJob)
-                : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
-            : newJob.green;
-
-        const calculatedRed = getFormulaForColumn('red')
-            ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, newJob) === 'number'
-                ? evaluateFormula(getFormulaForColumn('red')!.formula, newJob)
-                : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, newJob)).replace(/\./g, '').replace(',', '.')))
-            : newJob.red;
-
-        const job: FinishedPrintJob = {
+        // Main job
+        const mainJob: FinishedPrintJob = {
             ...newJob,
             id: Date.now().toString(),
-            maxGross: Number(calculatedMaxGross) || 0,
-            green: Number(calculatedGreen) || 0,
-            red: Number(calculatedRed) || 0
+            maxGross: 0, // Will be recalculated
+            green: 0,
+            red: 0
         };
-        setFinishedJobs([job, ...finishedJobs]);
-        // Reset fields but keep date
+        allJobsToAdd.push(mainJob);
+
+        // Additional jobs
+        additionalJobs.forEach((addJob, index) => {
+            const versionJob: FinishedPrintJob = {
+                ...addJob,
+                id: `${Date.now().toString()}-${index}`,
+                orderNr: newJob.orderNr,
+                orderName: newJob.orderName,
+                pages: newJob.pages,
+                exOmw: newJob.exOmw,
+            };
+            allJobsToAdd.push(versionJob);
+        });
+
+        // Calculate formulas for all jobs and add them
+        const processedJobs = allJobsToAdd.map(job => {
+            const calculatedMaxGross = getFormulaForColumn('maxGross')
+                ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, job) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)
+                    : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                : job.maxGross;
+
+            const calculatedGreen = getFormulaForColumn('green')
+                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, job) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('green')!.formula, job)
+                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                : job.green;
+
+            const calculatedRed = getFormulaForColumn('red')
+                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, job) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('red')!.formula, job)
+                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                : job.red;
+
+            return {
+                ...job,
+                maxGross: Number(calculatedMaxGross) || 0,
+                green: Number(calculatedGreen) || 0,
+                red: Number(calculatedRed) || 0
+            };
+        });
+
+        setFinishedJobs([...processedJobs, ...finishedJobs]);
+
+        // Reset fields
         setNewJob({
             ...newJob,
             orderNr: '',
@@ -286,6 +341,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             red: 0,
             performance: ''
         });
+        setAdditionalJobs([]);
     };
 
     const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
@@ -379,9 +435,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
                 let value = pressParams[paramKey] || 0;
 
-                // Special handling for Marge percentage parsing (e.g., "4,2" -> 4.2)
+                // Special handling for Marge percentage parsing (e.g., "4,2" -> 0.042)
                 if (paramKey === 'marge') {
-                    value = parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0;
+                    value = (parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
                 }
 
                 evalFormula = evalFormula.replace(regex, String(value));
@@ -405,6 +461,159 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             console.error('Formula evaluation error:', error);
             return 'Error';
         }
+    };
+
+    // Color palette for formula explanation elements - each field has a unique color (inline styles)
+    const fieldColors: Record<string, { bg: string; text: string }> = {
+        // Job fields - each with distinct color
+        pages: { bg: '#dbeafe', text: '#1e40af' },      // blue
+        exOmw: { bg: '#cffafe', text: '#0e7490' },      // cyan
+        netRun: { bg: '#ccfbf1', text: '#0f766e' },     // teal
+        startup: { bg: '#d1fae5', text: '#047857' },    // emerald
+        c4_4: { bg: '#e0e7ff', text: '#4338ca' },       // indigo
+        c4_0: { bg: '#ede9fe', text: '#6d28d9' },       // violet
+        c1_0: { bg: '#f3e8ff', text: '#7c3aed' },       // purple
+        c1_1: { bg: '#fae8ff', text: '#a21caf' },       // fuchsia
+        c4_1: { bg: '#fce7f3', text: '#be185d' },       // pink
+        // Parameter fields - each with distinct color
+        Marge: { bg: '#dcfce7', text: '#15803d' },      // green
+        Opstart: { bg: '#ecfccb', text: '#4d7c0f' },    // lime
+        param_4_4: { bg: '#fef9c3', text: '#a16207' },  // yellow
+        param_4_0: { bg: '#fef3c7', text: '#b45309' },  // amber
+        param_1_0: { bg: '#ffedd5', text: '#c2410c' },  // orange
+        param_1_1: { bg: '#fee2e2', text: '#b91c1c' },  // red
+        param_4_1: { bg: '#ffe4e6', text: '#be123c' },  // rose
+    };
+
+    // Generate formula explanation with colored substitutions
+    const getFormulaExplanation = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>) => {
+        if (!formula || !formula.trim()) return null;
+
+        const activePressName = activePresses.length > 0 ? activePresses[0] : '';
+        const pressParams = activePressName ? parameters[activePressName] : {};
+
+        const substitutions: { key: string; label: string; value: string | number; color: { bg: string; text: string } }[] = [];
+
+        // Collect job field substitutions
+        finishedFields.forEach(field => {
+            if (formula.includes(field.key)) {
+                let value: any = (job as any)[field.key];
+                if (field.key === 'startup') {
+                    value = value ? (pressParams['opstart'] || 0) : 0;
+                }
+                substitutions.push({
+                    key: field.key,
+                    label: field.label,
+                    value: value,
+                    color: fieldColors[field.key] || { bg: '#f3f4f6', text: '#374151' }
+                });
+            }
+        });
+
+        // Collect parameter field substitutions
+        parameterFields.forEach(field => {
+            if (formula.includes(field.key)) {
+                let paramKey = field.key;
+                if (field.key === 'Marge') paramKey = 'marge';
+                if (field.key === 'Opstart') paramKey = 'opstart';
+
+                let value = pressParams[paramKey] || 0;
+                if (paramKey === 'marge') {
+                    value = (parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
+                }
+
+                substitutions.push({
+                    key: field.key,
+                    label: field.label + ' (param)',
+                    value: value,
+                    color: fieldColors[field.key] || { bg: '#f3f4f6', text: '#374151' }
+                });
+            }
+        });
+
+        return substitutions;
+    };
+
+    // Component to render formula result with tooltip
+    const FormulaResultWithTooltip = ({
+        formula,
+        job,
+        result
+    }: {
+        formula: string;
+        job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>;
+        result: string | number
+    }) => {
+        const explanation = getFormulaExplanation(formula, job);
+
+        if (!explanation || explanation.length === 0) {
+            return <span>{result}</span>;
+        }
+
+        // Build a map of field keys to their substitution info for quick lookup
+        const subMap = new Map(explanation.map(sub => [sub.key, sub]));
+
+        // Render formula with colored badges - parse and replace variables with styled spans
+        const renderFormulaWithBadges = () => {
+            const allKeys = explanation.map(sub => sub.key).sort((a, b) => b.length - a.length);
+            const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(`(${allKeys.map(escapeRegex).join('|')})`, 'g');
+            const parts = formula.split(pattern);
+
+            return parts.map((part, idx) => {
+                const sub = subMap.get(part);
+                if (sub) {
+                    const displayValue = typeof sub.value === 'number' ? formatNumber(sub.value) : sub.value;
+                    return (
+                        <span
+                            key={idx}
+                            className="inline-block px-1 py-0.5 rounded text-xs font-medium mx-0.5"
+                            style={{ backgroundColor: sub.color.bg, color: sub.color.text }}
+                        >
+                            {displayValue}
+                        </span>
+                    );
+                }
+                return <span key={idx} style={{ color: '#374151' }}>{part}</span>;
+            });
+        };
+
+        return (
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <span className="cursor-help border-b border-dashed border-gray-400">{result}</span>
+                </TooltipTrigger>
+                <TooltipContent
+                    side="top"
+                    style={{ backgroundColor: 'white', color: '#1f2937' }}
+                    className="border border-gray-200 shadow-lg max-w-md p-3"
+                >
+                    <div className="space-y-2">
+                        <div className="text-xs font-semibold" style={{ color: '#4b5563' }}>Formule berekening:</div>
+                        <div className="font-mono text-xs p-2 rounded border flex flex-wrap items-center" style={{ backgroundColor: '#f3f4f6', borderColor: '#e5e7eb' }}>
+                            {renderFormulaWithBadges()}
+                        </div>
+                        <div className="text-xs font-semibold mt-3 mb-1" style={{ color: '#4b5563' }}>Gebruikte waarden:</div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {explanation.map((sub, idx) => (
+                                <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                                    style={{ backgroundColor: sub.color.bg, color: sub.color.text }}
+                                >
+                                    <span style={{ opacity: 0.7 }}>{sub.label}:</span>
+                                    <span className="font-bold">{typeof sub.value === 'number' ? formatNumber(sub.value) : sub.value}</span>
+                                </span>
+                            ))}
+                        </div>
+                        <div className="border-t pt-2 mt-2 flex items-center justify-between" style={{ borderColor: '#e5e7eb' }}>
+                            <span className="text-xs" style={{ color: '#6b7280' }}>Resultaat:</span>
+                            <span className="font-bold text-sm" style={{ color: '#1f2937' }}>{result}</span>
+                        </div>
+                    </div>
+                </TooltipContent>
+            </Tooltip>
+        );
     };
 
     const handleOpenFormulaDialog = (field?: CalculatedField, defaultTarget?: 'maxGross' | 'green' | 'red') => {
@@ -495,6 +704,175 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
+                                {/* NEW JOB TABLE */}
+                                <Table className="table-fixed w-full mb-4">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead colSpan={7} className="text-center bg-blue-100">Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
+                                            <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
+                                        </TableRow>
+                                        <TableRow>
+                                            <TableHead className="w-[110px]">Date</TableHead>
+                                            <TableHead className="w-[90px]">Order nr</TableHead>
+                                            <TableHead className="min-w-[150px]">Order</TableHead>
+                                            <TableHead className="w-[80px]">Versie/Katern</TableHead>
+                                            <TableHead className="w-[70px] text-right">Blz</TableHead>
+                                            <TableHead className="w-[60px] text-right">ex/omw.</TableHead>
+                                            <TableHead className="w-[100px] text-right">Oplage netto</TableHead>
+                                            <TableHead className="w-[70px] text-center">Opstart</TableHead>
+                                            <TableHead className="w-[50px] text-right">4/4</TableHead>
+                                            <TableHead className="w-[50px] text-right">4/0</TableHead>
+                                            <TableHead className="w-[50px] text-right">1/0</TableHead>
+                                            <TableHead className="w-[50px] text-right">1/1</TableHead>
+                                            <TableHead className="w-[50px] text-right">4/1</TableHead>
+                                            <TableHead className="w-[100px] text-right">Max Bruto</TableHead>
+                                            <TableHead className="w-[100px] text-right">Groen</TableHead>
+                                            <TableHead className="w-[100px] text-right">Rood</TableHead>
+                                            <TableHead className="w-[80px] text-right">Prestatie</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {/* Input Row */}
+                                        <TableRow className="bg-gray-50 border-b-2 border-blue-100">
+                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full [&::-webkit-calendar-picker-indicator]:hidden" /></TableCell>
+                                            <TableCell className="p-1">
+                                                <div className="flex items-center">
+                                                    <span className="text-gray-500 mr-1 text-sm">DT</span>
+                                                    <Input value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full" />
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1"><Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-8 w-full" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.netRun || ''} onChange={e => setNewJob({ ...newJob, netRun: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-center">
+                                                <div className="flex justify-center">
+                                                    <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('maxGross');
+                                                    return formula
+                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
+                                                        : <Input type="number" value={newJob.maxGross || ''} onChange={e => setNewJob({ ...newJob, maxGross: Number(e.target.value) })} className="h-8 w-full text-right" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('green');
+                                                    return formula
+                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
+                                                        : <Input type="number" value={newJob.green || ''} onChange={e => setNewJob({ ...newJob, green: Number(e.target.value) })} className="h-8 w-full text-right" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                                {(() => {
+                                                    const formula = getFormulaForColumn('red');
+                                                    return formula
+                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
+                                                        : <Input type="number" value={newJob.red || ''} onChange={e => setNewJob({ ...newJob, red: Number(e.target.value) })} className="h-8 w-full text-right" />;
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className="p-1 text-right"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-center">
+                                                <Button size="sm" variant="ghost" onClick={handleAddJob} className="hover:bg-blue-100 text-blue-600">
+                                                    <Save className="w-4 h-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                        {additionalJobs.map((addJob, index) => (
+                                            <TableRow key={index} className="bg-gray-50">
+                                                <TableCell className="p-1 font-mono text-xs text-gray-500">{newJob.date}</TableCell>
+                                                <TableCell className="p-1 font-mono text-xs text-gray-500">
+                                                    <div className="flex items-center">
+                                                        <span className="text-gray-500 mr-1 text-sm">DT</span>
+                                                        {newJob.orderNr}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="p-1 font-mono text-xs text-gray-500">{newJob.orderName}</TableCell>
+                                                <TableCell className="p-1"><Input value={addJob.version} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].version = e.target.value;
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full" /></TableCell>
+                                                <TableCell className="p-1 font-mono text-xs text-gray-500 text-right">{newJob.pages} blz</TableCell>
+                                                <TableCell className="p-1 font-mono text-xs text-gray-500 text-right">{newJob.exOmw}</TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.netRun || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].netRun = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-center">
+                                                    <div className="flex justify-center">
+                                                        <Checkbox checked={addJob.startup} onCheckedChange={c => {
+                                                            const updated = [...additionalJobs];
+                                                            updated[index].startup = !!c;
+                                                            setAdditionalJobs(updated);
+                                                        }} />
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].c4_4 = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].c4_0 = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].c1_0 = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].c1_1 = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].c4_1 = Number(e.target.value);
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 bg-gray-100"></TableCell>
+                                                <TableCell className="p-1 bg-gray-100"></TableCell>
+                                                <TableCell className="p-1 bg-gray-100"></TableCell>
+                                                <TableCell className="p-1 text-right"><Input value={addJob.performance} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].performance = e.target.value;
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                <TableCell className="p-1 text-center">
+                                                    <Button size="sm" variant="ghost" onClick={() => {
+                                                        const updated = additionalJobs.filter((_, i) => i !== index);
+                                                        setAdditionalJobs(updated);
+                                                    }} className="hover:bg-red-100 text-red-500">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+
+                                <div className="mb-4">
+                                    <Button onClick={handleAddVersion} variant="outline" className="gap-2">
+                                        <Plus className="w-4 h-4" />
+                                        Add Versie/Katern
+                                    </Button>
+                                </div>
                                 <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
@@ -509,17 +887,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead onClick={() => handleSort('orderNr')} className="cursor-pointer hover:bg-gray-100 w-[90px]"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('version')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Versie/Katern {getSortIcon('version')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('pages')} className="cursor-pointer hover:bg-gray-100 w-[70px]"><div className="flex items-center">Blz {getSortIcon('pages')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('exOmw')} className="cursor-pointer hover:bg-gray-100 w-[60px]"><div className="flex items-center">ex/omw. {getSortIcon('exOmw')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('netRun')} className="cursor-pointer hover:bg-gray-100 w-[100px]"><div className="flex items-center">Oplage netto {getSortIcon('netRun')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-100 w-[70px]"><div className="flex items-center">Opstart {getSortIcon('startup')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-100 w-[50px]"><div className="flex items-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
-                                            <TableHead className="w-[100px]">
-                                                <div className="flex items-center gap-1">
+                                            <TableHead onClick={() => handleSort('pages')} className="cursor-pointer hover:bg-gray-100 w-[70px] text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('exOmw')} className="cursor-pointer hover:bg-gray-100 w-[60px] text-right"><div className="flex items-center justify-end">ex/omw. {getSortIcon('exOmw')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('netRun')} className="cursor-pointer hover:bg-gray-100 w-[100px] text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-100 w-[70px] text-center"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/4 {getSortIcon('c4_4')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/0 {getSortIcon('c4_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">1/0 {getSortIcon('c1_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">1/1 {getSortIcon('c1_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/1 {getSortIcon('c4_1')}</div></TableHead>
+                                            <TableHead className="w-[100px] text-right">
+                                                <div className="flex items-center gap-1 justify-end">
                                                     <Button
                                                         variant="ghost"
                                                         className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
@@ -533,8 +911,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead className="w-[100px]">
-                                                <div className="flex items-center gap-1">
+                                            <TableHead className="w-[100px] text-right">
+                                                <div className="flex items-center gap-1 justify-end">
                                                     <Button
                                                         variant="ghost"
                                                         className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
@@ -548,8 +926,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead className="w-[100px]">
-                                                <div className="flex items-center gap-1">
+                                            <TableHead className="w-[100px] text-right">
+                                                <div className="flex items-center gap-1 justify-end">
                                                     <Button
                                                         variant="ghost"
                                                         className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
@@ -563,72 +941,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Prestatie {getSortIcon('performance')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px] text-right"><div className="flex items-center justify-end">Prestatie {getSortIcon('performance')}</div></TableHead>
                                             <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {/* Input Row */}
-                                        <TableRow className="bg-gray-50 border-b-2 border-blue-100">
-                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full [&::-webkit-calendar-picker-indicator]:hidden" /></TableCell>
-                                            {/* Datum removed */}
-                                            <TableCell className="p-1">
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 mr-1 text-sm">DT</span>
-                                                    <Input value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full" />
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1">
-                                                <div className="flex items-center">
-                                                    <Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full" />
-                                                    <span className="text-gray-500 ml-1 text-sm">blz</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.netRun || ''} onChange={e => setNewJob({ ...newJob, netRun: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1 text-center">
-                                                <div className="flex justify-center">
-                                                    <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className={`p-1 ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('maxGross');
-                                                    return formula
-                                                        ? evaluateFormula(formula.formula, newJob)
-                                                        : <Input type="number" value={newJob.maxGross || ''} onChange={e => setNewJob({ ...newJob, maxGross: Number(e.target.value) })} className="h-8 w-full" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className={`p-1 ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('green');
-                                                    return formula
-                                                        ? evaluateFormula(formula.formula, newJob)
-                                                        : <Input type="number" value={newJob.green || ''} onChange={e => setNewJob({ ...newJob, green: Number(e.target.value) })} className="h-8 w-full" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className={`p-1 ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('red');
-                                                    return formula
-                                                        ? evaluateFormula(formula.formula, newJob)
-                                                        : <Input type="number" value={newJob.red || ''} onChange={e => setNewJob({ ...newJob, red: Number(e.target.value) })} className="h-8 w-full" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1 text-center">
-                                                <Button size="sm" variant="ghost" onClick={handleAddJob} className="hover:bg-blue-100 text-blue-600">
-                                                    <Save className="w-4 h-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
                                         {sortedJobs.map((job) => (
                                             <TableRow key={job.id}>
                                                 <TableCell>{job.date}</TableCell>
@@ -636,38 +953,44 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell>DT {job.orderNr}</TableCell>
                                                 <TableCell>{job.orderName}</TableCell>
                                                 <TableCell>{job.version}</TableCell>
-                                                <TableCell>{formatNumber(job.pages)} blz</TableCell>
-                                                <TableCell>{job.exOmw}</TableCell>
-                                                <TableCell>{formatNumber(job.netRun)}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.pages)} blz</TableCell>
+                                                <TableCell className="text-right">{job.exOmw}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.netRun)}</TableCell>
                                                 <TableCell>
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell>{formatNumber(job.c4_4)}</TableCell>
-                                                <TableCell>{formatNumber(job.c4_0)}</TableCell>
-                                                <TableCell>{formatNumber(job.c1_0)}</TableCell>
-                                                <TableCell>{formatNumber(job.c1_1)}</TableCell>
-                                                <TableCell>{formatNumber(job.c4_1)}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell className="text-right">{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell className="text-right">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('maxGross');
-                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.maxGross);
+                                                        return formula
+                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
+                                                            : formatNumber(job.maxGross);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell className="text-right">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('green');
-                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.green);
+                                                        return formula
+                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
+                                                            : formatNumber(job.green);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell className="text-right">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('red');
-                                                        return formula ? evaluateFormula(formula.formula, job) : formatNumber(job.red);
+                                                        return formula
+                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
+                                                            : formatNumber(job.red);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell>{job.performance}</TableCell>
+                                                <TableCell className="text-right">{job.performance}</TableCell>
                                                 <TableCell>
                                                     <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
                                                         <Trash2 className="w-4 h-4" />
