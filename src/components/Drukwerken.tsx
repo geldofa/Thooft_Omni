@@ -64,6 +64,59 @@ interface CalculatedField {
     targetColumn?: 'maxGross' | 'green' | 'red';
 }
 
+// Formatted number input that shows thousand separators
+const FormattedNumberInput = ({
+    value,
+    onChange,
+    className
+}: {
+    value: number | '';
+    onChange: (value: number) => void;
+    className?: string;
+}) => {
+    const [displayValue, setDisplayValue] = useState(() =>
+        value !== '' && value !== 0 ? formatNumber(value) : ''
+    );
+    const [isFocused, setIsFocused] = useState(false);
+
+    // Update display when value changes externally
+    const formattedValue = value !== '' && value !== 0 ? formatNumber(value) : '';
+    if (!isFocused && displayValue !== formattedValue) {
+        setDisplayValue(formattedValue);
+    }
+
+    const handleFocus = () => {
+        setIsFocused(true);
+        // Show raw number without formatting when focused
+        setDisplayValue(value !== '' && value !== 0 ? String(value) : '');
+    };
+
+    const handleBlur = () => {
+        setIsFocused(false);
+        // Format on blur
+        setDisplayValue(value !== '' && value !== 0 ? formatNumber(value) : '');
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '');
+        setDisplayValue(e.target.value);
+        const num = parseInt(raw, 10);
+        onChange(isNaN(num) ? 0 : num);
+    };
+
+    return (
+        <Input
+            value={displayValue}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            className={className}
+            inputMode="numeric"
+        />
+    );
+};
+
+
 export function Drukwerken({ presses }: { presses: Press[] }) {
     // Get active presses for columns
     const activePresses = presses
@@ -183,22 +236,26 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     ]);
 
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
-        key: 'date',
-        direction: 'desc'
-    });
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchField, setSearchField] = useState('all');
 
     const handleSort = (key: string) => {
-        setSortConfig(current => ({
-            key,
-            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-        }));
+        setSortConfig(current => {
+            if (current?.key === key) {
+                // Toggle: asc -> desc -> null (reset)
+                if (current.direction === 'asc') {
+                    return { key, direction: 'desc' };
+                } else {
+                    return null; // Reset to original order
+                }
+            }
+            return { key, direction: 'asc' };
+        });
     };
 
     const getSortIcon = (key: string) => {
-        if (sortConfig.key !== key) return null;
+        if (!sortConfig || sortConfig.key !== key) return null;
         return sortConfig.direction === 'asc'
             ? <ArrowUp className="w-4 h-4 ml-1 text-blue-600" />
             : <ArrowDown className="w-4 h-4 ml-1 text-blue-600" />;
@@ -213,14 +270,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return String(job[searchField as keyof FinishedPrintJob]).toLowerCase().includes(query);
     });
 
-    const sortedJobs = [...filteredJobs].sort((a, b) => {
-        const aValue = (a as any)[sortConfig.key];
-        const bValue = (b as any)[sortConfig.key];
+    const sortedJobs = sortConfig
+        ? [...filteredJobs].sort((a, b) => {
+            const aValue = (a as any)[sortConfig.key];
+            const bValue = (b as any)[sortConfig.key];
 
-        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
+            if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        })
+        : filteredJobs;
 
     const [newJob, setNewJob] = useState<Omit<FinishedPrintJob, 'id'>>({
         date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
@@ -394,7 +453,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         try {
             // Return early if formula is empty
             if (!formula || !formula.trim()) {
-                return 'N/A';
+                return '';
             }
 
             // Helper function for IF logic
@@ -459,7 +518,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             return result;
         } catch (error) {
             console.error('Formula evaluation error:', error);
-            return 'Error';
+            return '';
         }
     };
 
@@ -714,22 +773,22 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
                                         </TableRow>
                                         <TableRow>
-                                            <TableHead className="w-[110px]">Date</TableHead>
-                                            <TableHead className="w-[90px]">Order nr</TableHead>
+                                            <TableHead style={{ width: '83px' }}>Date</TableHead>
+                                            <TableHead style={{ width: '65px' }}>Order nr</TableHead>
                                             <TableHead className="min-w-[150px]">Order</TableHead>
                                             <TableHead className="w-[80px]">Versie/Katern</TableHead>
-                                            <TableHead className="w-[70px] text-right">Blz</TableHead>
-                                            <TableHead className="w-[60px] text-right">ex/omw.</TableHead>
-                                            <TableHead className="w-[100px] text-right">Oplage netto</TableHead>
-                                            <TableHead className="w-[70px] text-center">Opstart</TableHead>
-                                            <TableHead className="w-[50px] text-right">4/4</TableHead>
-                                            <TableHead className="w-[50px] text-right">4/0</TableHead>
-                                            <TableHead className="w-[50px] text-right">1/0</TableHead>
-                                            <TableHead className="w-[50px] text-right">1/1</TableHead>
-                                            <TableHead className="w-[50px] text-right">4/1</TableHead>
-                                            <TableHead className="w-[100px] text-right">Max Bruto</TableHead>
-                                            <TableHead className="w-[100px] text-right">Groen</TableHead>
-                                            <TableHead className="w-[100px] text-right">Rood</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-right">Blz</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-right leading-3">Ex/<br />Omw.</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-right">Oplage netto</TableHead>
+                                            <TableHead style={{ width: '55px' }} className="text-center bg-gray-50">Opstart</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/4</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/0</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/0</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/1</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/1</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">Max Bruto</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">Groen</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">Rood</TableHead>
                                             <TableHead className="w-[80px] text-right">Prestatie</TableHead>
                                             <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
@@ -738,27 +797,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         {/* Input Row */}
                                         <TableRow className="bg-gray-50 border-b-2 border-blue-100">
                                             <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full [&::-webkit-calendar-picker-indicator]:hidden" /></TableCell>
-                                            <TableCell className="p-1">
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 mr-1 text-sm">DT</span>
-                                                    <Input value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full" />
+                                            <TableCell className="p-0">
+                                                <div className="flex items-center h-8">
+                                                    <span className="text-gray-500 text-xs px-1">DT</span>
+                                                    <Input type="number" value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full text-center px-0 border-0" />
                                                 </div>
                                             </TableCell>
                                             <TableCell className="p-1"><Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full" /></TableCell>
                                             <TableCell className="p-1"><Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.netRun || ''} onChange={e => setNewJob({ ...newJob, netRun: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-center">
+                                            <TableCell className="p-0 text-right"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-right"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-right"><FormattedNumberInput value={newJob.netRun || ''} onChange={val => setNewJob({ ...newJob, netRun: val })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
+                                            <TableCell className="p-1 text-center bg-gray-50">
                                                 <div className="flex justify-center">
                                                     <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-right"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className={`p-1 text-right ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('maxGross');
@@ -767,20 +826,20 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         : <Input type="number" value={newJob.maxGross || ''} onChange={e => setNewJob({ ...newJob, maxGross: Number(e.target.value) })} className="h-8 w-full text-right" />;
                                                 })()}
                                             </TableCell>
-                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('green');
                                                     return formula
                                                         ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
-                                                        : <Input type="number" value={newJob.green || ''} onChange={e => setNewJob({ ...newJob, green: Number(e.target.value) })} className="h-8 w-full text-right" />;
+                                                        : <FormattedNumberInput value={newJob.green || ''} onChange={val => setNewJob({ ...newJob, green: val })} className="h-8 w-full text-center px-0 border-0" />;
                                                 })()}
                                             </TableCell>
-                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('red');
                                                     return formula
                                                         ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
-                                                        : <Input type="number" value={newJob.red || ''} onChange={e => setNewJob({ ...newJob, red: Number(e.target.value) })} className="h-8 w-full text-right" />;
+                                                        : <FormattedNumberInput value={newJob.red || ''} onChange={val => setNewJob({ ...newJob, red: val })} className="h-8 w-full text-center px-0 border-0" />;
                                                 })()}
                                             </TableCell>
                                             <TableCell className="p-1 text-right"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
@@ -812,7 +871,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     updated[index].netRun = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-center">
+                                                <TableCell className="p-1 text-center bg-gray-50">
                                                     <div className="flex justify-center">
                                                         <Checkbox checked={addJob.startup} onCheckedChange={c => {
                                                             const updated = [...additionalJobs];
@@ -821,31 +880,31 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         }} />
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_4 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_0 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c1_0 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c1_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
@@ -882,25 +941,25 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
                                         </TableRow>
                                         <TableRow>
-                                            <TableHead onClick={() => handleSort('date')} className="cursor-pointer hover:bg-gray-100 w-[110px]"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
                                             {/* Datum removed */}
-                                            <TableHead onClick={() => handleSort('orderNr')} className="cursor-pointer hover:bg-gray-100 w-[90px]"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('orderNr')} style={{ width: '65px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('version')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Versie/Katern {getSortIcon('version')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('pages')} className="cursor-pointer hover:bg-gray-100 w-[70px] text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('exOmw')} className="cursor-pointer hover:bg-gray-100 w-[60px] text-right"><div className="flex items-center justify-end">ex/omw. {getSortIcon('exOmw')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('netRun')} className="cursor-pointer hover:bg-gray-100 w-[100px] text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-100 w-[70px] text-center"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/4 {getSortIcon('c4_4')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/0 {getSortIcon('c4_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">1/0 {getSortIcon('c1_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">1/1 {getSortIcon('c1_1')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-100 w-[50px] text-right"><div className="flex items-center justify-end">4/1 {getSortIcon('c4_1')}</div></TableHead>
-                                            <TableHead className="w-[100px] text-right">
-                                                <div className="flex items-center gap-1 justify-end">
+                                            <TableHead onClick={() => handleSort('pages')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('exOmw')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right leading-3"><div className="flex items-center justify-end h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('netRun')} style={{ width: '80px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('startup')} style={{ width: '55px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_4')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
                                                         onClick={() => handleOpenFormulaDialog(getFormulaForColumn('maxGross'), 'maxGross')}
                                                         title={getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
                                                     >
@@ -911,11 +970,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead className="w-[100px] text-right">
-                                                <div className="flex items-center gap-1 justify-end">
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
                                                         onClick={() => handleOpenFormulaDialog(getFormulaForColumn('green'), 'green')}
                                                         title={getFormulaForColumn('green')?.name || 'Groen'}
                                                     >
@@ -926,11 +985,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead className="w-[100px] text-right">
-                                                <div className="flex items-center gap-1 justify-end">
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[80px]"
+                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
                                                         onClick={() => handleOpenFormulaDialog(getFormulaForColumn('red'), 'red')}
                                                         title={getFormulaForColumn('red')?.name || 'Rood'}
                                                     >
@@ -956,17 +1015,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell className="text-right">{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell className="text-right">{job.exOmw}</TableCell>
                                                 <TableCell className="text-right">{formatNumber(job.netRun)}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="bg-gray-50">
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.c4_4)}</TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.c4_0)}</TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.c1_0)}</TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.c1_1)}</TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.c4_1)}</TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell className="p-0 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('maxGross');
                                                         return formula
@@ -974,7 +1033,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.maxGross);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="p-0 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('green');
                                                         return formula
@@ -982,7 +1041,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.green);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="p-0 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('red');
                                                         return formula

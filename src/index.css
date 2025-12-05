@@ -344,11 +344,20 @@
   }
 
   ::-webkit-inner-spin-button {
-    height: auto;
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
   }
 
   ::-webkit-outer-spin-button {
-    height: auto;
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 
   [hidden]:where(:not([hidden="until-found"])) {
