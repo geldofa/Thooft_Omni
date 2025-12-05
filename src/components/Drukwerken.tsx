@@ -49,7 +49,8 @@ interface FinishedPrintJob {
     maxGross: number;
     green: number;
     red: number;
-    performance: string;
+    delta_number: number;
+    delta_percentage: string;
 }
 
 interface AdditionalJob extends Omit<FinishedPrintJob, 'id' | 'orderNr' | 'orderName' | 'pages' | 'exOmw'> {
@@ -194,45 +195,91 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([
         {
             id: '1',
-            date: '2025/12/01',
-            datum: '01 Dec',
-            orderNr: 'ORD-001',
-            orderName: 'Magazine Q4',
-            version: 'v1',
-            pages: 32,
-            exOmw: '1000',
-            netRun: 5000,
+            date: '2025-01-01',
+            datum: '01-01',
+            orderNr: '0001',
+            orderName: 'Spar 2025-01',
+            version: 'Nederlands - Katern 1',
+            pages: 40,
+            exOmw: '2',
+            netRun: 100000,
             startup: true,
-            c4_4: 32,
+            c4_4: 0,
             c4_0: 0,
             c1_0: 0,
             c1_1: 0,
             c4_1: 0,
-            maxGross: 5500,
-            green: 100,
-            red: 50,
-            performance: '95%'
+            maxGross: 0,
+            green: 101000, // 101% of 100000
+            red: 3000,     // 3% of 100000
+            delta: 0,
+            performance: '100%'
         },
         {
             id: '2',
-            date: '2025/12/02',
-            datum: '02 Dec',
-            orderNr: 'ORD-002',
-            orderName: 'Flyers A5',
-            version: 'v1',
-            pages: 2,
-            exOmw: '5000',
-            netRun: 10000,
+            date: '2025-01-01',
+            datum: '01-01',
+            orderNr: '0001',
+            orderName: 'Spar 2025-01',
+            version: 'Frans - Katern 1',
+            pages: 40,
+            exOmw: '2',
+            netRun: 50000,
             startup: false,
-            c4_4: 2,
+            c4_4: 1,
             c4_0: 0,
             c1_0: 0,
             c1_1: 0,
             c4_1: 0,
-            maxGross: 10500,
-            green: 20,
-            red: 10,
-            performance: '98%'
+            maxGross: 0,
+            green: 50500, // 101% of 50000
+            red: 1500,    // 3% of 50000
+            delta: 0,
+            performance: '100%'
+        },
+        {
+            id: '3',
+            date: '2025-01-01',
+            datum: '01-01',
+            orderNr: '0001',
+            orderName: 'Spar 2025-01',
+            version: 'Nederlands - Katern 2',
+            pages: 32,
+            exOmw: '2',
+            netRun: 100000,
+            startup: false,
+            c4_4: 1,
+            c4_0: 0,
+            c1_0: 0,
+            c1_1: 0,
+            c4_1: 0,
+            maxGross: 0,
+            green: 101000, // 101% of 100000
+            red: 3000,     // 3% of 100000
+            delta: 0,
+            performance: '100%'
+        },
+        {
+            id: '4',
+            date: '2025-01-01',
+            datum: '01-01',
+            orderNr: '0001',
+            orderName: 'Spar 2025-01',
+            version: 'Frans - Katern 2',
+            pages: 32,
+            exOmw: '2',
+            netRun: 50000,
+            startup: false,
+            c4_4: 1,
+            c4_0: 0,
+            c1_0: 0,
+            c1_1: 0,
+            c4_1: 0,
+            maxGross: 0,
+            green: 50500, // 101% of 50000
+            red: 1500,    // 3% of 50000
+            delta: 0,
+            performance: '100%'
         }
     ]);
 
@@ -299,6 +346,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         maxGross: 0,
         green: 0,
         red: 0,
+        delta: 0,
         performance: ''
     });
 
@@ -319,6 +367,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 0,
             red: 0,
+            delta: 0,
             performance: ''
         };
         setAdditionalJobs([...additionalJobs, newVersion]);
@@ -333,7 +382,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             id: Date.now().toString(),
             maxGross: 0, // Will be recalculated
             green: 0,
-            red: 0
+            red: 0,
+            delta: 0
         };
         allJobsToAdd.push(mainJob);
 
@@ -374,7 +424,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 ...job,
                 maxGross: Number(calculatedMaxGross) || 0,
                 green: Number(calculatedGreen) || 0,
-                red: Number(calculatedRed) || 0
+                red: Number(calculatedRed) || 0,
+                delta: 0
             };
         });
 
@@ -430,7 +481,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         { key: 'c4_1', label: '4/1' },
         { key: 'maxGross', label: 'Max Bruto' },
         { key: 'green', label: 'Groen' },
-        { key: 'red', label: 'Rood' }
+        { key: 'red', label: 'Rood' },
+        { key: 'delta', label: 'Delta' }
     ];
 
     const parameterFields = [
@@ -770,15 +822,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead colSpan={7} className="text-center bg-blue-100">Data</TableHead>
                                             <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
                                             <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
-                                            <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-purple-100">Prestatie</TableHead>
                                         </TableRow>
                                         <TableRow>
                                             <TableHead style={{ width: '83px' }}>Date</TableHead>
                                             <TableHead style={{ width: '65px' }}>Order nr</TableHead>
                                             <TableHead className="min-w-[150px]">Order</TableHead>
                                             <TableHead className="w-[80px]">Versie/Katern</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-right">Blz</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-right leading-3">Ex/<br />Omw.</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-center">Blz</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-center leading-3">Ex/<br />Omw.</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-right">Oplage netto</TableHead>
                                             <TableHead style={{ width: '55px' }} className="text-center bg-gray-50">Opstart</TableHead>
                                             <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/4</TableHead>
@@ -789,6 +841,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead style={{ width: '80px' }} className="text-center">Max Bruto</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">Groen</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">Rood</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">Delta</TableHead>
                                             <TableHead className="w-[80px] text-right">Prestatie</TableHead>
                                             <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
@@ -841,6 +894,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
                                                         : <FormattedNumberInput value={newJob.red || ''} onChange={val => setNewJob({ ...newJob, red: val })} className="h-8 w-full text-center px-0 border-0" />;
                                                 })()}
+                                            </TableCell>
+                                            <TableCell className="p-0 text-center">
+                                                <FormattedNumberInput value={newJob.delta || ''} onChange={val => setNewJob({ ...newJob, delta: val })} className="h-8 w-full text-center px-0 border-0" />
                                             </TableCell>
                                             <TableCell className="p-1 text-right"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
                                             <TableCell className="p-1 text-center">
@@ -935,17 +991,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead colSpan={7} className="text-center bg-blue-100">Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-blue-100">Data</TableHead>
                                             <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
                                             <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
                                             <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
                                         <TableRow>
                                             <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
                                             {/* Datum removed */}
                                             <TableHead onClick={() => handleSort('orderNr')} style={{ width: '65px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('version')} className="cursor-pointer hover:bg-gray-100 w-[80px]"><div className="flex items-center">Versie/Katern {getSortIcon('version')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('pages')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('exOmw')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right leading-3"><div className="flex items-center justify-end h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('netRun')} style={{ width: '80px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
@@ -1000,7 +1056,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px] text-right"><div className="flex items-center justify-end">Prestatie {getSortIcon('performance')}</div></TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span className="font-bold">Delta</span>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span className="font-bold">Delta %</span>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px] text-right"><div className="flex items-center justify-end">Acties {getSortIcon('performance')}</div></TableHead>
                                             <TableHead className="w-[50px]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1010,8 +1076,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell>{job.date}</TableCell>
                                                 {/* Datum removed */}
                                                 <TableCell>DT {job.orderNr}</TableCell>
-                                                <TableCell>{job.orderName}</TableCell>
-                                                <TableCell>{job.version}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{job.orderName}</span>
+                                                        <div className="flex items-center text-xs text-gray-500 mt-0.5">
+                                                            <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block"></span>
+                                                            {job.version}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell className="text-right">{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell className="text-right">{job.exOmw}</TableCell>
                                                 <TableCell className="text-right">{formatNumber(job.netRun)}</TableCell>
@@ -1048,6 +1121,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
                                                             : formatNumber(job.red);
                                                     })()}
+                                                </TableCell>
+                                                <TableCell className="p-0 text-center">
+                                                    <FormattedNumberInput value={job.delta || ''} onChange={val => {
+                                                        const updated = finishedJobs.map(j => j.id === job.id ? { ...j, delta: val } : j);
+                                                        setFinishedJobs(updated);
+                                                    }} className="h-8 w-full text-center px-0 border-0 bg-transparent" />
                                                 </TableCell>
                                                 <TableCell className="text-right">{job.performance}</TableCell>
                                                 <TableCell>
@@ -1248,8 +1327,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <SelectContent>
                                     <SelectItem value="none">None (Reference only)</SelectItem>
                                     <SelectItem value="maxGross">Max Bruto</SelectItem>
-                                    <SelectItem value="green">Groen</SelectItem>
-                                    <SelectItem value="red">Rood</SelectItem>
+                                    <SelectItem value="delta_number">Delta Number</SelectItem>
+                                    <SelectItem value="delta_percentage">Delta Percentage</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
