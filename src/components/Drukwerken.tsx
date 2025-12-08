@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PressType } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -50,11 +50,15 @@ interface FinishedPrintJob {
     green: number;
     red: number;
     delta_number: number;
-    delta_percentage: string;
+    delta_percentage: number;
+    delta: number;
+    performance: string;
 }
 
-interface AdditionalJob extends Omit<FinishedPrintJob, 'id' | 'orderNr' | 'orderName' | 'pages' | 'exOmw'> {
+interface AdditionalJob extends Omit<FinishedPrintJob, 'id' | 'orderNr' | 'orderName'> {
     // Inherits most props, but some are fixed from the main job
+    delta_number: number;
+    delta_percentage: number;
 }
 
 interface CalculatedField {
@@ -212,6 +216,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 101000, // 101% of 100000
             red: 3000,     // 3% of 100000
+            delta_number: 0,
+            delta_percentage: 0,
             delta: 0,
             performance: '100%'
         },
@@ -234,6 +240,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 50500, // 101% of 50000
             red: 1500,    // 3% of 50000
+            delta_number: 0,
+            delta_percentage: 0,
             delta: 0,
             performance: '100%'
         },
@@ -256,6 +264,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 101000, // 101% of 100000
             red: 3000,     // 3% of 100000
+            delta_number: 0,
+            delta_percentage: 0,
             delta: 0,
             performance: '100%'
         },
@@ -278,6 +288,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 50500, // 101% of 50000
             red: 1500,    // 3% of 50000
+            delta_number: 0,
+            delta_percentage: 0,
             delta: 0,
             performance: '100%'
         }
@@ -329,7 +341,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         : filteredJobs;
 
     const [newJob, setNewJob] = useState<Omit<FinishedPrintJob, 'id'>>({
-        date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
+        date: new Date().toISOString().split('T')[0],
         datum: '',
         orderNr: '',
         orderName: '',
@@ -347,8 +359,61 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         green: 0,
         red: 0,
         delta: 0,
+        delta_number: 0,
+        delta_percentage: 0,
         performance: ''
     });
+
+    // Live calculation of delta values
+    useEffect(() => {
+        // Calculate maxGross
+        const maxGrossCalc = getFormulaForColumn('maxGross');
+        const calculatedMaxGross = maxGrossCalc
+            ? (typeof evaluateFormula(maxGrossCalc.formula, newJob) === 'number'
+                ? evaluateFormula(maxGrossCalc.formula, newJob)
+                : Number(String(evaluateFormula(maxGrossCalc.formula, newJob)).replace(/\./g, '').replace(',', '.')))
+            : newJob.maxGross;
+        const maxGrossValue = Number(calculatedMaxGross) || 0;
+
+        // Create a temp job with the calculated maxGross to be used in subsequent formulas
+        const jobWithMaxGross = { ...newJob, maxGross: maxGrossValue };
+
+        // Calculate delta_number
+        const deltaNumberCalc = getFormulaForColumn('delta_number');
+        const calculatedDeltaNumber = deltaNumberCalc
+            ? (typeof evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross) === 'number'
+                ? evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross)
+                : Number(String(evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+            : newJob.delta_number || 0;
+        const deltaNumberValue = Number(calculatedDeltaNumber) || 0;
+
+        // Calculate delta_percentage
+        const deltaPercentageCalc = getFormulaForColumn('delta_percentage');
+        const calculatedDeltaPercentage = deltaPercentageCalc
+            ? (() => {
+                // Try to evaluate formula first if valid
+                if (deltaPercentageCalc.formula && deltaPercentageCalc.formula.trim() !== '(green + red) / maxGross') {
+                    // If user has a custom formula, use it
+                    const res = typeof evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross) === 'number'
+                        ? evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross)
+                        : Number(String(evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+                    return res;
+                }
+                // Default fallback logic matching previous implementation but cleaner
+                const percentage = maxGrossValue !== 0 ? ((newJob.green + newJob.red) / maxGrossValue) * 100 : 0;
+                return percentage;
+            })()
+            : newJob.delta_percentage || 0;
+        const deltaPercentageValue = Number(calculatedDeltaPercentage) || 0;
+
+        // Update the state with calculated values
+        setNewJob(prev => ({
+            ...prev,
+            maxGross: maxGrossValue,
+            delta_number: deltaNumberValue,
+            delta_percentage: deltaPercentageValue
+        }));
+    }, [newJob.netRun, newJob.green, newJob.red, newJob.startup, newJob.c4_4, newJob.c4_0, newJob.c1_0, newJob.c1_1, newJob.c4_1, newJob.exOmw, parameters]);
 
     const [additionalJobs, setAdditionalJobs] = useState<AdditionalJob[]>([]);
 
@@ -357,6 +422,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             date: newJob.date,
             datum: '', // Or copy from newJob if needed
             version: '', // Version should be unique
+            pages: newJob.pages,
+            exOmw: newJob.exOmw,
             netRun: 0,
             startup: false,
             c4_4: 0,
@@ -367,6 +434,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             maxGross: 0,
             green: 0,
             red: 0,
+            delta_number: 0,
+            delta_percentage: 0,
             delta: 0,
             performance: ''
         };
@@ -381,8 +450,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             ...newJob,
             id: Date.now().toString(),
             maxGross: 0, // Will be recalculated
-            green: 0,
-            red: 0,
             delta: 0
         };
         allJobsToAdd.push(mainJob);
@@ -407,31 +474,50 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)
                     : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)).replace(/\./g, '').replace(',', '.')))
                 : job.maxGross;
+            const maxGrossVal = Number(calculatedMaxGross) || 0;
+
+            // Create job context with updated maxGross for dependent formulas
+            const jobWithMaxGross = { ...job, maxGross: maxGrossVal };
 
             const calculatedGreen = getFormulaForColumn('green')
-                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, job) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('green')!.formula, job)
-                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
                 : job.green;
 
             const calculatedRed = getFormulaForColumn('red')
-                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, job) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('red')!.formula, job)
-                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
                 : job.red;
 
             const calculatedDeltaNumber = getFormulaForColumn('delta_number')
-                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, job) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, job)
-                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
                 : job.delta_number || 0;
+
+            // Calculate delta_percentage
+            const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
+                ? (() => {
+                    const f = getFormulaForColumn('delta_percentage')!;
+                    if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
+                        return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
+                            ? evaluateFormula(f.formula, jobWithMaxGross)
+                            : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+                    }
+                    const percentage = maxGrossVal !== 0 ? ((job.green + job.red) / maxGrossVal) * 100 : 0;
+                    return percentage;
+                })()
+                : job.delta_percentage || 0;
 
             return {
                 ...job,
-                maxGross: Number(calculatedMaxGross) || 0,
+                maxGross: maxGrossVal,
                 green: Number(calculatedGreen) || 0,
                 red: Number(calculatedRed) || 0,
                 delta_number: Number(calculatedDeltaNumber) || 0,
+                delta_percentage: Number(calculatedDeltaPercentage) || 0,
                 delta: 0
             };
         });
@@ -461,6 +547,19 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setAdditionalJobs([]);
     };
 
+    const handleEditJob = (job: FinishedPrintJob) => {
+        // Set the job data to the newJob state for editing
+        setNewJob({
+            ...job,
+            // Remove id since newJob doesn't have it
+            id: undefined as any
+        });
+    };
+
+    const handleDeleteJob = (jobId: string) => {
+        setFinishedJobs(finishedJobs.filter(job => job.id !== jobId));
+    };
+
     const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
         {
             id: 'main-cost-formula',
@@ -473,6 +572,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             name: 'Delta Number',
             formula: 'green + red - maxGross',
             targetColumn: 'delta_number'
+        },
+        {
+            id: 'delta-percentage-formula',
+            name: 'Delta Percentage',
+            formula: '(green + red) / maxGross',
+            targetColumn: 'delta_percentage'
         }
     ]);
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
@@ -832,48 +937,54 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <Table className="table-fixed w-full mb-4">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead colSpan={7} className="text-center bg-blue-100">Data</TableHead>
-                                            <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
-                                            <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
-                                            <TableHead colSpan={3} className="text-center bg-purple-100">Prestatie</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-blue-100" style={{ borderRight: '1px solid black' }}>Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Wissels</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Berekening</TableHead>
+                                            <TableHead colSpan={2} className="text-center bg-purple-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Prestatie</TableHead>
                                         </TableRow>
                                         <TableRow>
                                             <TableHead style={{ width: '83px' }}>Date</TableHead>
                                             <TableHead style={{ width: '65px' }}>Order nr</TableHead>
                                             <TableHead className="min-w-[150px]">Order</TableHead>
-                                            <TableHead className="w-[80px]">Versie/Katern</TableHead>
                                             <TableHead style={{ width: '40px' }} className="text-center">Blz</TableHead>
                                             <TableHead style={{ width: '40px' }} className="text-center leading-3">Ex/<br />Omw.</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-right">Oplage netto</TableHead>
+                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Oplage netto</TableHead>
                                             <TableHead style={{ width: '55px' }} className="text-center bg-gray-50">Opstart</TableHead>
                                             <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/4</TableHead>
                                             <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/0</TableHead>
                                             <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/0</TableHead>
                                             <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/1</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/1</TableHead>
+                                            <TableHead style={{ width: '30px', borderRight: '1px solid black' }} className="text-center bg-gray-50">4/1</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">Max Bruto</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">Groen</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">Rood</TableHead>
+                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Rood</TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">Delta</TableHead>
-                                            <TableHead className="w-[80px] text-right">Prestatie</TableHead>
-                                            <TableHead className="w-[50px]"></TableHead>
+                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Delta %</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">Acties</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {/* Input Row */}
                                         <TableRow className="bg-gray-50 border-b-2 border-blue-100">
-                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full [&::-webkit-calendar-picker-indicator]:hidden" /></TableCell>
+                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full appearance-none bg-transparent [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:opacity-0 p-2" /></TableCell>
                                             <TableCell className="p-0">
                                                 <div className="flex items-center h-8">
                                                     <span className="text-gray-500 text-xs px-1">DT</span>
                                                     <Input type="number" value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full text-center px-0 border-0" />
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-1"><Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-8 w-full" /></TableCell>
-                                            <TableCell className="p-0 text-right"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-right"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-right"><FormattedNumberInput value={newJob.netRun || ''} onChange={val => setNewJob({ ...newJob, netRun: val })} className="h-8 w-full text-right px-0 border-0" /></TableCell>
+                                            <TableCell className="p-1">
+                                                <div className="flex flex-col gap-1">
+                                                    <Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full font-medium" placeholder="Order naam" />
+                                                    <div className="flex items-center">
+                                                        <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block shrink-0"></span>
+                                                        <Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-7 w-full text-xs" placeholder="Versie/Katern" />
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="p-0 text-center"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center" style={{ borderRight: '1px solid black' }}><FormattedNumberInput value={newJob.netRun || ''} onChange={val => setNewJob({ ...newJob, netRun: val })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className="p-1 text-center bg-gray-50">
                                                 <div className="flex justify-center">
                                                     <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
@@ -883,7 +994,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50" style={{ borderRight: '1px solid black' }}><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className={`p-1 text-right ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('maxGross');
@@ -900,7 +1011,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         : <FormattedNumberInput value={newJob.green || ''} onChange={val => setNewJob({ ...newJob, green: val })} className="h-8 w-full text-center px-0 border-0" />;
                                                 })()}
                                             </TableCell>
-                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
+                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`} style={{ borderRight: '1px solid black' }}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('red');
                                                     return formula
@@ -911,7 +1022,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableCell className="p-0 text-center">
                                                 <FormattedNumberInput value={newJob.delta || ''} onChange={val => setNewJob({ ...newJob, delta: val })} className="h-8 w-full text-center px-0 border-0" />
                                             </TableCell>
-                                            <TableCell className="p-1 text-right"><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
+                                            <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
                                             <TableCell className="p-1 text-center">
                                                 <Button size="sm" variant="ghost" onClick={handleAddJob} className="hover:bg-blue-100 text-blue-600">
                                                     <Save className="w-4 h-4" />
@@ -927,15 +1038,30 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         {newJob.orderNr}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="p-1 font-mono text-xs text-gray-500">{newJob.orderName}</TableCell>
-                                                <TableCell className="p-1"><Input value={addJob.version} onChange={e => {
+                                                <TableCell className="p-1">
+                                                    <div className="flex flex-col gap-1">
+                                                        <Input value={newJob.orderName} disabled className="h-8 w-full bg-gray-50 font-medium text-gray-500" />
+                                                        <div className="flex items-center">
+                                                            <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block shrink-0"></span>
+                                                            <Input value={addJob.version} onChange={e => {
+                                                                const updated = [...additionalJobs];
+                                                                updated[index].version = e.target.value;
+                                                                setAdditionalJobs(updated);
+                                                            }} className="h-7 w-full text-xs" placeholder="Versie/Katern" />
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="p-0 text-center"><Input type="number" value={addJob.pages || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
-                                                    updated[index].version = e.target.value;
+                                                    updated[index].pages = Number(e.target.value);
                                                     setAdditionalJobs(updated);
-                                                }} className="h-8 w-full" /></TableCell>
-                                                <TableCell className="p-1 font-mono text-xs text-gray-500 text-right">{newJob.pages} blz</TableCell>
-                                                <TableCell className="p-1 font-mono text-xs text-gray-500 text-right">{newJob.exOmw}</TableCell>
-                                                <TableCell className="p-1 text-right"><Input type="number" value={addJob.netRun || ''} onChange={e => {
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-0 text-center"><Input value={addJob.exOmw || ''} onChange={e => {
+                                                    const updated = [...additionalJobs];
+                                                    updated[index].exOmw = e.target.value;
+                                                    setAdditionalJobs(updated);
+                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                                <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.netRun || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].netRun = Number(e.target.value);
                                                     setAdditionalJobs(updated);
@@ -969,20 +1095,20 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     updated[index].c1_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
-                                                <TableCell className="p-1 bg-gray-100"></TableCell>
+                                                <TableCell className="p-1 bg-gray-100" style={{ borderRight: '1px solid black' }}></TableCell>
                                                 <TableCell className="p-1 text-right"><Input value={addJob.performance} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].performance = e.target.value;
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-center">
+                                                <TableCell className="p-1 text-center" style={{ borderRight: '1px solid black' }}>
                                                     <Button size="sm" variant="ghost" onClick={() => {
                                                         const updated = additionalJobs.filter((_, i) => i !== index);
                                                         setAdditionalJobs(updated);
@@ -1004,11 +1130,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                 <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead colSpan={6} className="text-center bg-blue-100">Data</TableHead>
-                                            <TableHead colSpan={6} className="text-center bg-green-100">Wissels</TableHead>
-                                            <TableHead colSpan={3} className="text-center bg-yellow-100">Berekening</TableHead>
-                                            <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
-                                            <TableHead className="w-[50px]"></TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-blue-100" style={{ borderRight: '1px solid black' }}>Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Wissels</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Berekening</TableHead>
+                                            <TableHead colSpan={2} className="text-center bg-purple-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Prestatie</TableHead>
+                                            <TableHead className="w-[100px]"></TableHead>
                                         </TableRow>
                                         <TableRow>
                                             <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
@@ -1017,13 +1143,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('pages')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('exOmw')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right leading-3"><div className="flex items-center justify-end h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('netRun')} style={{ width: '80px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('netRun')} style={{ width: '80px', borderRight: '1px solid black' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('startup')} style={{ width: '55px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_4')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_4')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_1')} style={{ width: '30px', borderRight: '1px solid black' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
                                             <TableHead style={{ width: '80px' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
@@ -1054,7 +1180,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
@@ -1074,13 +1200,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <span className="font-bold">Delta</span>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <span className="font-bold">Delta %</span>
                                                 </div>
                                             </TableHead>
-                                            <TableHead onClick={() => handleSort('performance')} className="cursor-pointer hover:bg-gray-100 w-[80px] text-right"><div className="flex items-center justify-end">Acties {getSortIcon('performance')}</div></TableHead>
-                                            <TableHead className="w-[50px]"></TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span className="font-bold">Acties</span>
+                                                </div>
+                                            </TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1100,7 +1229,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 </TableCell>
                                                 <TableCell className="text-right">{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell className="text-right">{job.exOmw}</TableCell>
-                                                <TableCell className="text-right">{formatNumber(job.netRun)}</TableCell>
+                                                <TableCell className="text-right" style={{ borderRight: '1px solid black' }}>{formatNumber(job.netRun)}</TableCell>
                                                 <TableCell className="bg-gray-50">
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
@@ -1110,7 +1239,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell className="text-right bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
                                                 <TableCell className="text-right bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
                                                 <TableCell className="text-right bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
-                                                <TableCell className="text-right bg-gray-50">{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell className="text-right bg-gray-50" style={{ borderRight: '1px solid black' }}>{formatNumber(job.c4_1)}</TableCell>
                                                 <TableCell className="p-0 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('maxGross');
@@ -1127,7 +1256,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.green);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="p-0 text-center">
+                                                <TableCell className="p-0 text-center" style={{ borderRight: '1px solid black' }}>
                                                     {(() => {
                                                         const formula = getFormulaForColumn('red');
                                                         return formula
@@ -1139,15 +1268,38 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     {(() => {
                                                         const formula = getFormulaForColumn('delta_number');
                                                         return formula
-                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} result={evaluateFormula(formula.formula, job)} />
+                                                            ? formatNumber(evaluateFormula(formula.formula, job))
                                                             : formatNumber(job.delta_number);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="text-right">{job.performance}</TableCell>
+                                                <TableCell className="p-0 text-center" style={{ borderRight: '1px solid black' }}>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('delta_percentage');
+                                                        const result = formula
+                                                            ? evaluateFormula(formula.formula, job)
+                                                            : formatNumber(job.delta_percentage);
+
+                                                        // Format the percentage correctly
+                                                        const percentageValue = typeof result === 'string'
+                                                            ? parseFloat(result.replace(/\./g, '').replace(',', '.')) * 100
+                                                            : result * 100;
+
+                                                        const formattedPercentage = Math.round(percentageValue * 100) / 100; // Round to 2 decimal places
+
+                                                        return formula
+                                                            ? formattedPercentage + '%'
+                                                            : formattedPercentage + '%';
+                                                    })()}
+                                                </TableCell>
                                                 <TableCell>
-                                                    <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
+                                                    <div className="flex gap-2">
+                                                        <Button size="sm" variant="ghost" className="hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
+                                                            <Edit className="w-4 h-4" />
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -1304,10 +1456,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </Card>
                     </div>
                 </TabsContent>
-            </Tabs>
+            </Tabs >
 
             {/* Formula Builder Dialog */}
-            <Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen}>
+            < Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen} >
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -1497,7 +1649,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
-        </div>
+            </Dialog >
+        </div >
     );
 }
