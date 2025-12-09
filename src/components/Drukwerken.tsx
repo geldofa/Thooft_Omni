@@ -8,6 +8,7 @@ import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Plus, Edit, Trash2, Calculator, Check, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatNumber } from '../utils/formatNumber';
+import { format } from 'date-fns';
 import {
     Dialog,
     DialogContent,
@@ -196,6 +197,92 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         };
         setWerkorders([newWerkorder, ...werkorders]);
     };
+
+    const handleSaveOrderToFinished = (werkorder: Werkorder) => {
+        const newFinishedJobs: FinishedPrintJob[] = werkorder.katernen.map(katern => {
+            const today = new Date();
+            const formattedDate = format(today, 'yyyy-MM-dd');
+            const formattedDatum = format(today, 'dd-MM');
+
+            const jobWithKaternData = {
+                ...katern,
+                orderNr: werkorder.orderNr,
+                orderName: werkorder.orderName,
+                date: formattedDate,
+                datum: formattedDatum,
+            };
+
+            const calculatedMaxGross = getFormulaForColumn('maxGross')
+                ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)
+                    : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)).replace(/\./g, '').replace(',', '.')))
+                : katern.maxGross;
+            const maxGrossVal = Number(calculatedMaxGross) || 0;
+
+            const jobWithMaxGross = { ...jobWithKaternData, maxGross: maxGrossVal };
+
+            const calculatedGreen = getFormulaForColumn('green')
+                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                : katern.green;
+
+            const calculatedRed = getFormulaForColumn('red')
+                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                : katern.red;
+            
+            const calculatedDeltaNumber = getFormulaForColumn('delta_number')
+                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
+                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
+                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                : katern.delta;
+
+            const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
+                ? (() => {
+                    const f = getFormulaForColumn('delta_percentage')!;
+                    if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
+                        return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
+                            ? evaluateFormula(f.formula, jobWithMaxGross)
+                            : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+                    }
+                    const percentage = maxGrossVal !== 0 ? ((Number(calculatedGreen) + Number(calculatedRed)) / maxGrossVal) * 100 : 0;
+                    return percentage;
+                })()
+                : katern.deltaPercentage;
+
+            return {
+                id: Date.now().toString() + '-' + katern.id, // Unique ID
+                date: formattedDate,
+                datum: formattedDatum,
+                orderNr: werkorder.orderNr,
+                orderName: werkorder.orderName,
+                version: katern.version,
+                pages: katern.pages,
+                exOmw: katern.exOmw,
+                netRun: katern.netRun,
+                startup: katern.startup,
+                c4_4: katern.c4_4,
+                c4_0: katern.c4_0,
+                c1_0: katern.c1_0,
+                c1_1: katern.c1_1,
+                c4_1: katern.c4_1,
+                maxGross: maxGrossVal,
+                green: Number(calculatedGreen) || 0,
+                red: Number(calculatedRed) || 0,
+                delta_number: Number(calculatedDeltaNumber) || 0,
+                delta_percentage: Number(calculatedDeltaPercentage) || 0,
+                delta: Number(calculatedDeltaNumber) || 0, // Assuming delta is delta_number
+                performance: '100%' // Placeholder
+            };
+        });
+
+        setFinishedJobs(prevJobs => [...newFinishedJobs, ...prevJobs]);
+        // Optionally, remove the werkorder from the current list after saving
+        // setWerkorders(prevWerkorders => prevWerkorders.filter(wo => wo.id !== werkorder.id));
+    };
+
 
 
 
@@ -843,21 +930,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                                                  <div className="flex gap-4">
                                                                                     <div>
                                                                                         <Label>Order Nr</Label>
-                                                                                        <Input value={wo.orderNr} readOnly />
+                                                                                        <Input value={`DT ${wo.orderNr}`} readOnly />
                                                                                     </div>
                                                                                     <div>
                                                                                         <Label>Order</Label>
                                                                                         <Input value={wo.orderName} readOnly />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <Label>Order Date</Label>
-                                                                                        <Input value={wo.orderDate} readOnly />
                                                                                     </div>
                                                                                 </div>                                        <Button onClick={() => handleAddKaternClick(wo.id)}><Plus className="w-4 h-4 mr-2" /> Katern/Versie</Button>
                                     </div>
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
+                                                <TableHead>Order Date</TableHead>
                                                 <TableHead>Versie/Katern</TableHead>
                                                 <TableHead>Pages</TableHead>
                                                 <TableHead>ex/omw</TableHead>
@@ -879,6 +963,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <TableBody>
                                             {wo.katernen.map((katern) => (
                                                 <TableRow key={katern.id}>
+                                                    <TableCell>{wo.orderDate}</TableCell>
                                                     <TableCell><Input value={katern.version} /></TableCell>
                                                     <TableCell><Input type="number" value={katern.pages} /></TableCell>
                                                     <TableCell><Input value={katern.exOmw} /></TableCell>
@@ -932,6 +1017,14 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             ))}
                                         </TableBody>
                                     </Table>
+                                    <div className="flex justify-between items-center mt-2">
+                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm">
+                                            Order Opslaan
+                                        </Button>
+                                        <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
+                                            <Plus className="w-4 h-4 mr-1" /> Add Katern/Versie
+                                        </Button>
+                                    </div>
                                 </div>
                             ))}
                         </CardContent>
