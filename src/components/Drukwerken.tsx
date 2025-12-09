@@ -822,7 +822,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     return (
         <div className="space-y-4">
             <Tabs defaultValue="werkorders" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                <TabsList className="flex w-full whitespace-nowrap">
                     <TabsTrigger value="werkorders">Werkorders</TabsTrigger>
                     <TabsTrigger value="finished">Finished</TabsTrigger>
                     <TabsTrigger value="parameters">Parameters</TabsTrigger>
