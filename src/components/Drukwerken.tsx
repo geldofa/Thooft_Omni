@@ -936,7 +936,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                                                         <Label>Order</Label>
                                                                                         <Input value={wo.orderName} readOnly />
                                                                                     </div>
-                                                                                </div>                                        <Button onClick={() => handleAddKaternClick(wo.id)}><Plus className="w-4 h-4 mr-2" /> Katern/Versie</Button>
+                                                                                </div>
                                     </div>
                                     <Table>
                                         <TableHeader>
@@ -1018,11 +1018,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         </TableBody>
                                     </Table>
                                     <div className="flex justify-between items-center mt-2">
-                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm">
-                                            Order Opslaan
-                                        </Button>
                                         <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
                                             <Plus className="w-4 h-4 mr-1" /> Add Katern/Versie
+                                        </Button>
+                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm">
+                                            Order Opslaan
                                         </Button>
                                     </div>
                                 </div>
