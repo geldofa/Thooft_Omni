@@ -941,26 +941,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Wissels</TableHead>
                                             <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Berekening</TableHead>
                                             <TableHead colSpan={2} className="text-center bg-purple-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Prestatie</TableHead>
+                                            <TableHead></TableHead>
                                         </TableRow>
                                         <TableRow>
-                                            <TableHead style={{ width: '83px' }}>Date</TableHead>
-                                            <TableHead style={{ width: '65px' }}>Order nr</TableHead>
-                                            <TableHead className="min-w-[150px]">Order</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-center">Blz</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-center leading-3">Ex/<br />Omw.</TableHead>
+                                            <TableHead style={{ width: '83px' }} className="border-r">Date</TableHead>
+                                            <TableHead style={{ width: '65px' }} className="border-r">Order nr</TableHead>
+                                            <TableHead className="min-w-[150px] border-r">Order</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-center border-r">Blz</TableHead>
+                                            <TableHead style={{ width: '40px' }} className="text-center leading-3 border-r">Ex/<br />Omw.</TableHead>
                                             <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Oplage netto</TableHead>
                                             <TableHead style={{ width: '55px' }} className="text-center bg-gray-50">Opstart</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/4</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">4/0</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/0</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50">1/1</TableHead>
-                                            <TableHead style={{ width: '30px', borderRight: '1px solid black' }} className="text-center bg-gray-50">4/1</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">Max Bruto</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">Groen</TableHead>
-                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Rood</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">Delta</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">4/4</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">4/0</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">1/0</TableHead>
+                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">1/1</TableHead>
+                                            <TableHead style={{ width: '30px', borderRight: '1px solid black' }} className="text-center bg-gray-50 border border-gray-300">4/1</TableHead>
+                                            <TableHead style={{ width: '90px' }} className="text-center border-r">Max Bruto</TableHead>
+                                            <TableHead style={{ width: '90px' }} className="text-center border-r">Groen</TableHead>
+                                            <TableHead style={{ width: '90px', borderRight: '1px solid black' }} className="text-center">Rood</TableHead>
+                                            <TableHead style={{ width: '80px' }} className="text-center border-r">Delta</TableHead>
                                             <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Delta %</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">Acties</TableHead>
+                                            <TableHead style={{ width: '100px' }} className="text-center">Acties</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -990,11 +991,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50" style={{ borderRight: '1px solid black' }}><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
+                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300" style={{ borderRight: '1px solid black' }}><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
                                             <TableCell className={`p-1 text-right ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
                                                 {(() => {
                                                     const formula = getFormulaForColumn('maxGross');
@@ -1075,27 +1076,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         }} />
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_4 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_0 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c1_0 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c1_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
+                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].c4_1 = Number(e.target.value);
                                                     setAdditionalJobs(updated);
@@ -1103,12 +1104,19 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
                                                 <TableCell className="p-1 bg-gray-100"></TableCell>
                                                 <TableCell className="p-1 bg-gray-100" style={{ borderRight: '1px solid black' }}></TableCell>
-                                                <TableCell className="p-1 text-right"><Input value={addJob.performance} onChange={e => {
+                                                <TableCell className="p-0 text-center">
+                                                    <FormattedNumberInput value={addJob.delta || ''} onChange={val => {
+                                                        const updated = [...additionalJobs];
+                                                        updated[index].delta = val;
+                                                        setAdditionalJobs(updated);
+                                                    }} className="h-8 w-full text-center px-0 border-0" />
+                                                </TableCell>
+                                                <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input value={addJob.performance} onChange={e => {
                                                     const updated = [...additionalJobs];
                                                     updated[index].performance = e.target.value;
                                                     setAdditionalJobs(updated);
                                                 }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-center" style={{ borderRight: '1px solid black' }}>
+                                                <TableCell className="p-1 text-center">
                                                     <Button size="sm" variant="ghost" onClick={() => {
                                                         const updated = additionalJobs.filter((_, i) => i !== index);
                                                         setAdditionalJobs(updated);
@@ -1137,12 +1145,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead className="w-[100px]"></TableHead>
                                         </TableRow>
                                         <TableRow>
-                                            <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
                                             {/* Datum removed */}
-                                            <TableHead onClick={() => handleSort('orderNr')} style={{ width: '65px' }} className="cursor-pointer hover:bg-gray-100"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px]"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('pages')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('exOmw')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right leading-3"><div className="flex items-center justify-end h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('orderNr')} style={{ width: '65px' }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px] border-r"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('pages')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right border-r"><div className="flex items-center justify-end">Blz {getSortIcon('pages')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('exOmw')} style={{ width: '40px' }} className="cursor-pointer hover:bg-gray-100 text-right leading-3 border-r"><div className="flex items-center justify-end h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('netRun')} style={{ width: '80px', borderRight: '1px solid black' }} className="cursor-pointer hover:bg-gray-100 text-right"><div className="flex items-center justify-end">Oplage netto {getSortIcon('netRun')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('startup')} style={{ width: '55px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('c4_4')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
@@ -1150,7 +1158,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead onClick={() => handleSort('c1_0')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('c1_1')} style={{ width: '30px' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('c4_1')} style={{ width: '30px', borderRight: '1px solid black' }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '90px' }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
@@ -1165,7 +1173,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '90px' }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
@@ -1180,7 +1188,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">
+                                            <TableHead style={{ width: '90px', borderRight: '1px solid black' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
                                                         variant="ghost"
@@ -1195,7 +1203,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '80px' }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <span className="font-bold">Delta</span>
                                                 </div>
@@ -1205,7 +1213,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <span className="font-bold">Delta %</span>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center">
+                                            <TableHead style={{ width: '100px' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <span className="font-bold">Acties</span>
                                                 </div>
