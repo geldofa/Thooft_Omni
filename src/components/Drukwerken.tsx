@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AddFinishedJobDialog } from './AddFinishedJobDialog';
 import { AddKaternDialog } from './AddKaternDialog';
-import { AddWerkorderDialog } from './AddWerkorderDialog';
+
 
 interface Press {
     id: string;
@@ -157,7 +157,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
     const [isAddingKatern, setIsAddingKatern] = useState(false);
     const [editingWerkorderId, setEditingWerkorderId] = useState<string | null>(null);
-    const [isAddingWerkorder, setIsAddingWerkorder] = useState(false);
+
+    const defaultWerkorderData: Omit<Werkorder, 'id' | 'katernen'> = {
+        orderNr: '',
+        orderName: 'New Werkorder', // Provide a default name
+        orderDate: new Date().toISOString().split('T')[0],
+    };
 
     const [werkorders, setWerkorders] = useState<Werkorder[]>([
         {
@@ -920,7 +925,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         <CardHeader>
                             <div className="flex justify-between items-center">
                                 <CardTitle>Werkorders</CardTitle>
-                                <Button onClick={() => setIsAddingWerkorder(true)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
+                                <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -1405,12 +1410,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 open={isAddingKatern}
                 onOpenChange={setIsAddingKatern}
                 onSubmit={handleKaternSubmit}
-            />
-
-            <AddWerkorderDialog
-                open={isAddingWerkorder}
-                onOpenChange={setIsAddingWerkorder}
-                onSubmit={handleWerkorderSubmit}
             />
 
             {/* Formula Builder Dialog */}
