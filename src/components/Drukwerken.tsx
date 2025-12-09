@@ -22,7 +22,7 @@ import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AddFinishedJobDialog } from './AddFinishedJobDialog';
-import { AddKaternDialog } from './AddKaternDialog';
+
 
 
 interface Press {
@@ -155,13 +155,30 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
-    const [isAddingKatern, setIsAddingKatern] = useState(false);
     const [editingWerkorderId, setEditingWerkorderId] = useState<string | null>(null);
 
     const defaultWerkorderData: Omit<Werkorder, 'id' | 'katernen'> = {
         orderNr: '',
         orderName: 'New Werkorder', // Provide a default name
         orderDate: new Date().toISOString().split('T')[0],
+    };
+
+    const defaultKaternToAdd: Omit<Katern, 'id'> = {
+        version: 'New Version',
+        pages: 0,
+        exOmw: '0',
+        netRun: 0,
+        startup: false,
+        c4_4: 0,
+        c4_0: 0,
+        c1_0: 0,
+        c1_1: 0,
+        c4_1: 0,
+        maxGross: 0,
+        green: 0,
+        red: 0,
+        delta: 0,
+        deltaPercentage: 0,
     };
 
     const [werkorders, setWerkorders] = useState<Werkorder[]>([
@@ -178,20 +195,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     ]);
 
     const handleAddKaternClick = (werkorderId: string) => {
-        setEditingWerkorderId(werkorderId);
-        setIsAddingKatern(true);
+        handleKaternSubmit(defaultKaternToAdd, werkorderId);
     };
 
-    const handleKaternSubmit = (katernData: Omit<Katern, 'id'>) => {
-        if (editingWerkorderId) {
-            setWerkorders(werkorders.map(wo => {
-                if (wo.id === editingWerkorderId) {
-                    const newKatern = { ...katernData, id: `${wo.id}-${wo.katernen.length + 1}` };
-                    return { ...wo, katernen: [...wo.katernen, newKatern] };
-                }
-                return wo;
-            }));
-        }
+    const handleKaternSubmit = (katernData: Omit<Katern, 'id'>, werkorderId: string) => {
+        setWerkorders(werkorders.map(wo => {
+            if (wo.id === werkorderId) {
+                const newKatern = { ...katernData, id: `${wo.id}-${wo.katernen.length + 1}` };
+                return { ...wo, katernen: [...wo.katernen, newKatern] };
+            }
+            return wo;
+        }));
     };
 
     const defaultKatern: Katern = {
@@ -1431,11 +1445,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 editJob={editingJob}
             />
 
-            <AddKaternDialog
-                open={isAddingKatern}
-                onOpenChange={setIsAddingKatern}
-                onSubmit={handleKaternSubmit}
-            />
+
 
             {/* Formula Builder Dialog */}
             < Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen} >
