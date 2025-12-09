@@ -986,20 +986,20 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableRow>
                                                 <TableHead>Order Date</TableHead>
                                                 <TableHead>Versie/Katern</TableHead>
-                                                <TableHead>Pages</TableHead>
-                                                <TableHead>ex/omw</TableHead>
-                                                <TableHead>Oplage</TableHead>
-                                                <TableHead>Opstart</TableHead>
-                                                <TableHead>4/4</TableHead>
-                                                <TableHead>4/0</TableHead>
-                                                <TableHead>1/0</TableHead>
-                                                <TableHead>1/1</TableHead>
-                                                <TableHead>4/1</TableHead>
+                                                <TableHead style={{ width: '100px' }}>Pages</TableHead>
+                                                <TableHead style={{ width: '100px' }}>ex/omw</TableHead>
+                                                <TableHead style={{ width: '100px' }}>Oplage</TableHead>
+                                                <TableHead style={{ width: '100px' }}>Opstart</TableHead>
+                                                <TableHead style={{ width: '100px' }}>4/4</TableHead>
+                                                <TableHead style={{ width: '100px' }}>4/0</TableHead>
+                                                <TableHead style={{ width: '100px' }}>1/0</TableHead>
+                                                <TableHead style={{ width: '100px' }}>1/1</TableHead>
+                                                <TableHead style={{ width: '100px' }}>4/1</TableHead>
                                                 <TableHead>Max Bruto</TableHead>
                                                 <TableHead>Groen</TableHead>
                                                 <TableHead>Rood</TableHead>
                                                 <TableHead>Delta</TableHead>
-                                                <TableHead>Delta %</TableHead>
+                                                <TableHead style={{ width: '100px' }}>Delta %</TableHead>
                                                 <TableHead>Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
