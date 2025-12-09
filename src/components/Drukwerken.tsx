@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PressType } from './AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -35,7 +35,7 @@ interface Press {
 export interface Katern {
     id: string;
     version: string;
-    pages: number;
+    pages: number | null;
     exOmw: string;
     netRun: number;
     startup: boolean;
@@ -45,8 +45,8 @@ export interface Katern {
     c1_1: number;
     c4_1: number;
     maxGross: number;
-    green: number;
-    red: number;
+    green: number | null;
+    red: number | null;
     delta: number;
     deltaPercentage: number;
 }
@@ -68,18 +68,18 @@ export interface FinishedPrintJob {
     orderNr: string;
     orderName: string;
     version: string;
-    pages: number;
+    pages: number | null;
     exOmw: string;
-    netRun: number;
+    netRun: number | null;
     startup: boolean;
-    c4_4: number;
-    c4_0: number;
-    c1_0: number;
-    c1_1: number;
-    c4_1: number;
+    c4_4: number | null;
+    c4_0: number | null;
+    c1_0: number | null;
+    c1_1: number | null;
+    c4_1: number | null;
     maxGross: number;
-    green: number;
-    red: number;
+    green: number | null;
+    red: number | null;
     delta_number: number;
     delta_percentage: number;
     delta: number;
@@ -110,9 +110,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const defaultKaternToAdd: Omit<Katern, 'id'> = {
-        version: 'New Version',
-        pages: 0,
-        exOmw: '0',
+        version: '',
+        pages: null,
+        exOmw: '',
         netRun: 0,
         startup: false,
         c4_4: 0,
@@ -121,8 +121,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         c1_1: 0,
         c4_1: 0,
         maxGross: 0,
-        green: 0,
-        red: 0,
+        green: null,
+        red: null,
         delta: 0,
         deltaPercentage: 0,
     };
@@ -156,9 +156,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const defaultKatern: Katern = {
         id: 'new-katern-1', // Temporary ID, will be replaced with `${newWerkorder.id}-1`
-        version: 'New Version 1',
-        pages: 0,
-        exOmw: '0',
+        version: '',
+        pages: null,
+        exOmw: '',
         netRun: 0,
         startup: false,
         c4_4: 0,
@@ -167,8 +167,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         c1_1: 0,
         c4_1: 0,
         maxGross: 0,
-        green: 0,
-        red: 0,
+        green: null,
+        red: null,
         delta: 0,
         deltaPercentage: 0,
     };
@@ -186,6 +186,34 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             katernen: [newKaternWithId], // Now includes the default katern
         };
         setWerkorders([newWerkorder, ...werkorders]);
+    };
+
+    const handleKaternChange = (werkorderId: string, katernId: string, field: keyof Katern, value: any) => {
+        setWerkorders(prevWerkorders =>
+            prevWerkorders.map(wo => {
+                if (wo.id === werkorderId) {
+                    return {
+                        ...wo,
+                        katernen: wo.katernen.map(k => {
+                            if (k.id === katernId) {
+                                // For number inputs, handle empty string and convert to number
+                                if (['pages', 'netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red'].includes(field)) {
+                                    const numValue = value === '' ? null : Number(value);
+                                    return { ...k, [field]: numValue };
+                                }
+                                // For boolean (checkbox)
+                                if (field === 'startup') {
+                                    return { ...k, [field]: Boolean(value) };
+                                }
+                                return { ...k, [field]: value };
+                            }
+                            return k;
+                        })
+                    };
+                }
+                return wo;
+            })
+        );
     };
 
     const handleSaveOrderToFinished = (werkorder: Werkorder) => {
@@ -644,6 +672,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 const regex = new RegExp(escapeRegex(field.key), 'g');
                 let value: any = (job as any)[field.key];
 
+                if (value === null) {
+                    value = 0;
+                }
+
                 // Special handling for startup (Opstart)
                 if (field.key === 'startup') {
                     // If startup is checked (true), use the Opstart parameter value
@@ -908,23 +940,23 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 <TabsContent value="werkorders">
                     <Card>
                         <CardHeader>
-                            <div className="flex justify-between items-center">
-                                <CardTitle>Werkorders</CardTitle>
+                            <CardTitle className="pl-4">Werkorders</CardTitle>
+                            <CardAction>
                                 <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
-                            </div>
+                            </CardAction>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {werkorders.map((wo) => (
                                 <div key={wo.id} className="border p-4 rounded-lg">
                                     <div className="flex justify-between items-center mb-4">
                                         <div className="flex gap-4 w-full items-end">
-                                            <div className="w-[60px]">
+                                            <div className="flex flex-col items-center">
                                                 <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} readOnly className="w-full text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Input value={`DT ${wo.orderNr}`} readOnly style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
                                             </div>
                                             <div className="flex-1">
-                                                <Label>Order</Label>
-                                                <Input value={wo.orderName} readOnly className="w-full p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Label className="pl-3">Order</Label>
+                                                <Input value={wo.orderName} readOnly className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
                                             </div>
                                         </div>
                                     </div>
@@ -951,60 +983,64 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {wo.katernen.map((katern) => (
-                                                <TableRow key={katern.id}>
-                                                    <TableCell>{wo.orderDate}</TableCell>
-                                                    <TableCell><Input value={katern.version} /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.pages} className="text-right" /></TableCell>
-                                                    <TableCell><Input value={katern.exOmw} className="w-full text-center px-0 py-0" /></TableCell>
-                                                    <TableCell><Input type="number" value={katern.netRun} /></TableCell>
-                                                    <TableCell><Checkbox checked={katern.startup} /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.c4_4} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.c4_0} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.c1_0} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.c1_1} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                    <TableCell className="text-center"><Input type="number" value={katern.c4_1} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                    <TableCell>
-                                                        {(() => {
-                                                            const formula = getFormulaForColumn('maxGross');
-                                                            return formula
-                                                                ? <FormulaResultWithTooltip formula={formula.formula} job={katern} result={evaluateFormula(formula.formula, katern)} />
-                                                                : formatNumber(katern.maxGross);
-                                                        })()}
-                                                    </TableCell>
-                                                    <TableCell><Input type="number" value={katern.green} /></TableCell>
-                                                    <TableCell><Input type="number" value={katern.red} /></TableCell>
-                                                    <TableCell>
-                                                        {(() => {
-                                                            const formula = getFormulaForColumn('delta_number');
-                                                            return formula ? formatNumber(evaluateFormula(formula.formula, katern)) : formatNumber(katern.delta);
-                                                        })()}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {(() => {
-                                                            const formula = getFormulaForColumn('delta_percentage');
-                                                            const result = formula
-                                                                ? evaluateFormula(formula.formula, katern)
-                                                                : formatNumber(katern.deltaPercentage);
+                                            {wo.katernen.map((katern) => {
+                                                const maxGrossFormula = getFormulaForColumn('maxGross');
+                                                const evaluatedMaxGrossStr = maxGrossFormula ? evaluateFormula(maxGrossFormula.formula, katern) : String(katern.maxGross);
+                                                const numericMaxGross = evaluatedMaxGrossStr ? parseFloat(evaluatedMaxGrossStr.replace(/\./g, '').replace(',', '.')) : 0;
+                                                const katernWithCalculatedMaxGross = { ...katern, maxGross: isNaN(numericMaxGross) ? 0 : numericMaxGross };
+                                                
+                                                return (
+                                                    <TableRow key={katern.id}>
+                                                        <TableCell>{wo.orderDate}</TableCell>
+                                                        <TableCell><Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.pages ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', e.target.value)} className="text-right" /></TableCell>
+                                                        <TableCell><Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} className="w-full text-center px-0 py-0" /></TableCell>
+                                                        <TableCell><Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} className="text-right" /></TableCell>
+                                                        <TableCell><Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell>
+                                                            {maxGrossFormula
+                                                                ? <FormulaResultWithTooltip formula={maxGrossFormula.formula} job={katern} result={evaluatedMaxGrossStr} />
+                                                                : formatNumber(katern.maxGross)}
+                                                        </TableCell>
+                                                        <TableCell><Input type="number" value={katern.green ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} /></TableCell>
+                                                        <TableCell><Input type="number" value={katern.red ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} /></TableCell>
+                                                        <TableCell>
+                                                            {(() => {
+                                                                const formula = getFormulaForColumn('delta_number');
+                                                                return formula ? evaluateFormula(formula.formula, katernWithCalculatedMaxGross) : formatNumber(katern.delta);
+                                                            })()}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {(() => {
+                                                                const formula = getFormulaForColumn('delta_percentage');
+                                                                const result = formula
+                                                                    ? evaluateFormula(formula.formula, katernWithCalculatedMaxGross)
+                                                                    : katern.deltaPercentage;
 
-                                                            const percentageValue = typeof result === 'string'
-                                                                ? parseFloat(result.replace(/\./g, '').replace(',', '.')) * 100
-                                                                : result * 100;
+                                                                const numericValue = typeof result === 'string'
+                                                                    ? parseFloat(result.replace(/\./g, '').replace(',', '.'))
+                                                                    : result;
 
-                                                            const formattedPercentage = Math.round(percentageValue * 100) / 100;
+                                                                if (isNaN(numericValue)) {
+                                                                    return '0.00%';
+                                                                }
 
-                                                            return formula
-                                                                ? formattedPercentage + '%'
-                                                                : formattedPercentage + '%';
-                                                        })()}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
+                                                                return `${(numericValue * 100).toFixed(2)}%`;
+                                                            })()}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                     <div className="flex justify-between items-center mt-2">
