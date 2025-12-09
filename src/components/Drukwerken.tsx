@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Edit, Trash2, Calculator, Check, Save, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit, Trash2, Calculator, Check, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatNumber } from '../utils/formatNumber';
 import {
     Dialog,
@@ -20,6 +20,9 @@ import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { AddFinishedJobDialog } from './AddFinishedJobDialog';
+import { AddKaternDialog } from './AddKaternDialog';
+import { AddWerkorderDialog } from './AddWerkorderDialog';
 
 interface Press {
     id: string;
@@ -28,9 +31,36 @@ interface Press {
     archived: boolean;
 }
 
+export interface Katern {
+    id: string;
+    version: string;
+    pages: number;
+    exOmw: string;
+    netRun: number;
+    startup: boolean;
+    c4_4: number;
+    c4_0: number;
+    c1_0: number;
+    c1_1: number;
+    c4_1: number;
+    maxGross: number;
+    green: number;
+    red: number;
+    delta: number;
+    deltaPercentage: number;
+}
+
+export interface Werkorder {
+    id: string;
+    orderNr: string;
+    orderName: string; // Added orderName
+    orderDate: string;
+    katernen: Katern[];
+}
 
 
-interface FinishedPrintJob {
+
+export interface FinishedPrintJob {
     id: string;
     date: string; // YYYY/MM/DD
     datum: string;
@@ -53,12 +83,6 @@ interface FinishedPrintJob {
     delta_percentage: number;
     delta: number;
     performance: string;
-}
-
-interface AdditionalJob extends Omit<FinishedPrintJob, 'id' | 'orderNr' | 'orderName'> {
-    // Inherits most props, but some are fixed from the main job
-    delta_number: number;
-    delta_percentage: number;
 }
 
 interface CalculatedField {
@@ -127,6 +151,53 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const activePresses = presses
         .filter(p => p.active && !p.archived)
         .map(p => p.name);
+    
+    const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
+    const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
+    const [isAddingKatern, setIsAddingKatern] = useState(false);
+    const [editingWerkorderId, setEditingWerkorderId] = useState<string | null>(null);
+    const [isAddingWerkorder, setIsAddingWerkorder] = useState(false);
+
+    const [werkorders, setWerkorders] = useState<Werkorder[]>([
+        {
+            id: '1',
+            orderNr: '0001',
+            orderName: 'Spar 2025-01', // Added default orderName
+            orderDate: '2025-01-01',
+            katernen: [
+                { id: '1-1', version: 'Nederlands - Katern 1', pages: 40, exOmw: '2', netRun: 100000, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 101000, red: 3000, delta: 0, deltaPercentage: 0 },
+                { id: '1-2', version: 'Frans - Katern 1', pages: 40, exOmw: '2', netRun: 50000, startup: false, c4_4: 1, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 50500, red: 1500, delta: 0, deltaPercentage: 0 },
+            ]
+        }
+    ]);
+
+    const handleAddKaternClick = (werkorderId: string) => {
+        setEditingWerkorderId(werkorderId);
+        setIsAddingKatern(true);
+    };
+
+    const handleKaternSubmit = (katernData: Omit<Katern, 'id'>) => {
+        if (editingWerkorderId) {
+            setWerkorders(werkorders.map(wo => {
+                if (wo.id === editingWerkorderId) {
+                    const newKatern = { ...katernData, id: `${wo.id}-${wo.katernen.length + 1}` };
+                    return { ...wo, katernen: [...wo.katernen, newKatern] };
+                }
+                return wo;
+            }));
+        }
+    };
+
+    const handleWerkorderSubmit = (werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
+        const newWerkorder: Werkorder = {
+            ...werkorderData,
+            id: Date.now().toString(),
+            katernen: [],
+        };
+        setWerkorders([newWerkorder, ...werkorders]);
+    };
+
+
 
     // Parameters state - one set per press
     const [parameters, setParameters] = useState<Record<string, Record<string, any>>>(() => {
@@ -340,220 +411,72 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         })
         : filteredJobs;
 
-    const [newJob, setNewJob] = useState<Omit<FinishedPrintJob, 'id'>>({
-        date: new Date().toISOString().split('T')[0],
-        datum: '',
-        orderNr: '',
-        orderName: '',
-        version: '',
-        pages: 0,
-        exOmw: '',
-        netRun: 0,
-        startup: false,
-        c4_4: 0,
-        c4_0: 0,
-        c1_0: 0,
-        c1_1: 0,
-        c4_1: 0,
-        maxGross: 0,
-        green: 0,
-        red: 0,
-        delta: 0,
-        delta_number: 0,
-        delta_percentage: 0,
-        performance: ''
-    });
-
-    // Live calculation of delta values
-    useEffect(() => {
-        // Calculate maxGross
-        const maxGrossCalc = getFormulaForColumn('maxGross');
-        const calculatedMaxGross = maxGrossCalc
-            ? (typeof evaluateFormula(maxGrossCalc.formula, newJob) === 'number'
-                ? evaluateFormula(maxGrossCalc.formula, newJob)
-                : Number(String(evaluateFormula(maxGrossCalc.formula, newJob)).replace(/\./g, '').replace(',', '.')))
-            : newJob.maxGross;
-        const maxGrossValue = Number(calculatedMaxGross) || 0;
-
-        // Create a temp job with the calculated maxGross to be used in subsequent formulas
-        const jobWithMaxGross = { ...newJob, maxGross: maxGrossValue };
-
-        // Calculate delta_number
-        const deltaNumberCalc = getFormulaForColumn('delta_number');
-        const calculatedDeltaNumber = deltaNumberCalc
-            ? (typeof evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross) === 'number'
-                ? evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross)
-                : Number(String(evaluateFormula(deltaNumberCalc.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-            : newJob.delta_number || 0;
-        const deltaNumberValue = Number(calculatedDeltaNumber) || 0;
-
-        // Calculate delta_percentage
-        const deltaPercentageCalc = getFormulaForColumn('delta_percentage');
-        const calculatedDeltaPercentage = deltaPercentageCalc
-            ? (() => {
-                // Try to evaluate formula first if valid
-                if (deltaPercentageCalc.formula && deltaPercentageCalc.formula.trim() !== '(green + red) / maxGross') {
-                    // If user has a custom formula, use it
-                    const res = typeof evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross) === 'number'
-                        ? evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross)
-                        : Number(String(evaluateFormula(deltaPercentageCalc.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
-                    return res;
-                }
-                // Default fallback logic matching previous implementation but cleaner
-                const percentage = maxGrossValue !== 0 ? ((newJob.green + newJob.red) / maxGrossValue) * 100 : 0;
-                return percentage;
-            })()
-            : newJob.delta_percentage || 0;
-        const deltaPercentageValue = Number(calculatedDeltaPercentage) || 0;
-
-        // Update the state with calculated values
-        setNewJob(prev => ({
-            ...prev,
-            maxGross: maxGrossValue,
-            delta_number: deltaNumberValue,
-            delta_percentage: deltaPercentageValue
-        }));
-    }, [newJob.netRun, newJob.green, newJob.red, newJob.startup, newJob.c4_4, newJob.c4_0, newJob.c1_0, newJob.c1_1, newJob.c4_1, newJob.exOmw, parameters]);
-
-    const [additionalJobs, setAdditionalJobs] = useState<AdditionalJob[]>([]);
-
-    const handleAddVersion = () => {
-        const newVersion: AdditionalJob = {
-            date: newJob.date,
-            datum: '', // Or copy from newJob if needed
-            version: '', // Version should be unique
-            pages: newJob.pages,
-            exOmw: newJob.exOmw,
-            netRun: 0,
-            startup: false,
-            c4_4: 0,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 0,
-            red: 0,
-            delta_number: 0,
-            delta_percentage: 0,
-            delta: 0,
-            performance: ''
-        };
-        setAdditionalJobs([...additionalJobs, newVersion]);
+    const handleJobSubmit = (jobData: Omit<FinishedPrintJob, 'id'>) => {
+        const processedJob = processJobFormulas(jobData);
+        if (editingJob) {
+            // Update existing job
+            setFinishedJobs(finishedJobs.map(j => j.id === editingJob.id ? { ...processedJob, id: j.id } : j));
+        } else {
+            // Add new job
+            setFinishedJobs([{ ...processedJob, id: Date.now().toString() }, ...finishedJobs]);
+        }
     };
 
-    const handleAddJob = () => {
-        const allJobsToAdd: FinishedPrintJob[] = [];
+    const processJobFormulas = (job: Omit<FinishedPrintJob, 'id'> | FinishedPrintJob) => {
+        const calculatedMaxGross = getFormulaForColumn('maxGross')
+            ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, job) === 'number'
+                ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)
+                : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)).replace(/\./g, '').replace(',', '.')))
+            : job.maxGross;
+        const maxGrossVal = Number(calculatedMaxGross) || 0;
 
-        // Main job
-        const mainJob: FinishedPrintJob = {
-            ...newJob,
-            id: Date.now().toString(),
-            maxGross: 0, // Will be recalculated
-            delta: 0
+        const jobWithMaxGross = { ...job, maxGross: maxGrossVal };
+
+        const calculatedGreen = getFormulaForColumn('green')
+            ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
+                ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
+                : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+            : job.green;
+
+        const calculatedRed = getFormulaForColumn('red')
+            ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
+                ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
+                : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+            : job.red;
+
+        const calculatedDeltaNumber = getFormulaForColumn('delta_number')
+            ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
+                ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
+                : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+            : job.delta_number || 0;
+
+        const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
+            ? (() => {
+                const f = getFormulaForColumn('delta_percentage')!;
+                if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
+                    return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
+                        ? evaluateFormula(f.formula, jobWithMaxGross)
+                        : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+                }
+                const percentage = maxGrossVal !== 0 ? ((job.green + job.red) / maxGrossVal) * 100 : 0;
+                return percentage;
+            })()
+            : job.delta_percentage || 0;
+
+        return {
+            ...job,
+            maxGross: maxGrossVal,
+            green: Number(calculatedGreen) || 0,
+            red: Number(calculatedRed) || 0,
+            delta_number: Number(calculatedDeltaNumber) || 0,
+            delta_percentage: Number(calculatedDeltaPercentage) || 0,
+            delta: 0 // This seems to be another delta, keeping as is for now
         };
-        allJobsToAdd.push(mainJob);
-
-        // Additional jobs
-        additionalJobs.forEach((addJob, index) => {
-            const versionJob: FinishedPrintJob = {
-                ...addJob,
-                id: `${Date.now().toString()}-${index}`,
-                orderNr: newJob.orderNr,
-                orderName: newJob.orderName,
-                pages: newJob.pages,
-                exOmw: newJob.exOmw,
-            };
-            allJobsToAdd.push(versionJob);
-        });
-
-        // Calculate formulas for all jobs and add them
-        const processedJobs = allJobsToAdd.map(job => {
-            const calculatedMaxGross = getFormulaForColumn('maxGross')
-                ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, job) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)
-                    : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, job)).replace(/\./g, '').replace(',', '.')))
-                : job.maxGross;
-            const maxGrossVal = Number(calculatedMaxGross) || 0;
-
-            // Create job context with updated maxGross for dependent formulas
-            const jobWithMaxGross = { ...job, maxGross: maxGrossVal };
-
-            const calculatedGreen = getFormulaForColumn('green')
-                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : job.green;
-
-            const calculatedRed = getFormulaForColumn('red')
-                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : job.red;
-
-            const calculatedDeltaNumber = getFormulaForColumn('delta_number')
-                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : job.delta_number || 0;
-
-            // Calculate delta_percentage
-            const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
-                ? (() => {
-                    const f = getFormulaForColumn('delta_percentage')!;
-                    if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
-                        return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
-                            ? evaluateFormula(f.formula, jobWithMaxGross)
-                            : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
-                    }
-                    const percentage = maxGrossVal !== 0 ? ((job.green + job.red) / maxGrossVal) * 100 : 0;
-                    return percentage;
-                })()
-                : job.delta_percentage || 0;
-
-            return {
-                ...job,
-                maxGross: maxGrossVal,
-                green: Number(calculatedGreen) || 0,
-                red: Number(calculatedRed) || 0,
-                delta_number: Number(calculatedDeltaNumber) || 0,
-                delta_percentage: Number(calculatedDeltaPercentage) || 0,
-                delta: 0
-            };
-        });
-
-        setFinishedJobs([...processedJobs, ...finishedJobs]);
-
-        // Reset fields
-        setNewJob({
-            ...newJob,
-            orderNr: '',
-            orderName: '',
-            version: '',
-            pages: 0,
-            exOmw: '',
-            netRun: 0,
-            startup: false,
-            c4_4: 0,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 0,
-            red: 0,
-            performance: ''
-        });
-        setAdditionalJobs([]);
     };
 
     const handleEditJob = (job: FinishedPrintJob) => {
-        // Set the job data to the newJob state for editing
-        setNewJob({
-            ...job,
-            // Remove id since newJob doesn't have it
-            id: undefined as any
-        });
+        setEditingJob(job);
+        setIsAddJobDialogOpen(true);
     };
 
     const handleDeleteJob = (jobId: string) => {
@@ -619,7 +542,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setCurrentFormula(prev => prev + ' ' + value);
     };
 
-    const evaluateFormula = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>): number | string => {
+    const evaluateFormula = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern): number | string => {
         try {
             // Return early if formula is empty
             if (!formula || !formula.trim()) {
@@ -715,7 +638,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     // Generate formula explanation with colored substitutions
-    const getFormulaExplanation = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>) => {
+    const getFormulaExplanation = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern) => {
         if (!formula || !formula.trim()) return null;
 
         const activePressName = activePresses.length > 0 ? activePresses[0] : '';
@@ -770,7 +693,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         result
     }: {
         formula: string;
-        job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'>;
+        job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern;
         result: string | number
     }) => {
         const explanation = getFormulaExplanation(formula, job);
@@ -898,11 +821,122 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     return (
         <div className="space-y-4">
-            <Tabs defaultValue="finished" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+            <Tabs defaultValue="werkorders" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                    <TabsTrigger value="werkorders">Werkorders</TabsTrigger>
                     <TabsTrigger value="finished">Finished</TabsTrigger>
                     <TabsTrigger value="parameters">Parameters</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="werkorders">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex justify-between items-center">
+                                <CardTitle>Werkorders</CardTitle>
+                                <Button onClick={() => setIsAddingWerkorder(true)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {werkorders.map((wo) => (
+                                <div key={wo.id} className="border p-4 rounded-lg">
+                                    <div className="flex justify-between items-center mb-4">
+                                                                                 <div className="flex gap-4">
+                                                                                    <div>
+                                                                                        <Label>Order Nr</Label>
+                                                                                        <Input value={wo.orderNr} readOnly />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <Label>Order</Label>
+                                                                                        <Input value={wo.orderName} readOnly />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <Label>Order Date</Label>
+                                                                                        <Input value={wo.orderDate} readOnly />
+                                                                                    </div>
+                                                                                </div>                                        <Button onClick={() => handleAddKaternClick(wo.id)}><Plus className="w-4 h-4 mr-2" /> Katern/Versie</Button>
+                                    </div>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Versie/Katern</TableHead>
+                                                <TableHead>Pages</TableHead>
+                                                <TableHead>ex/omw</TableHead>
+                                                <TableHead>Oplage</TableHead>
+                                                <TableHead>Opstart</TableHead>
+                                                <TableHead>4/4</TableHead>
+                                                <TableHead>4/0</TableHead>
+                                                <TableHead>1/0</TableHead>
+                                                <TableHead>1/1</TableHead>
+                                                <TableHead>4/1</TableHead>
+                                                <TableHead>Max Bruto</TableHead>
+                                                <TableHead>Groen</TableHead>
+                                                <TableHead>Rood</TableHead>
+                                                <TableHead>Delta</TableHead>
+                                                <TableHead>Delta %</TableHead>
+                                                <TableHead>Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {wo.katernen.map((katern) => (
+                                                <TableRow key={katern.id}>
+                                                    <TableCell><Input value={katern.version} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.pages} /></TableCell>
+                                                    <TableCell><Input value={katern.exOmw} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.netRun} /></TableCell>
+                                                    <TableCell><Checkbox checked={katern.startup} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.c4_4} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.c4_0} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.c1_0} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.c1_1} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.c4_1} /></TableCell>
+                                                    <TableCell>
+                                                        {(() => {
+                                                            const formula = getFormulaForColumn('maxGross');
+                                                            return formula
+                                                                ? <FormulaResultWithTooltip formula={formula.formula} job={katern} result={evaluateFormula(formula.formula, katern)} />
+                                                                : formatNumber(katern.maxGross);
+                                                        })()}
+                                                    </TableCell>
+                                                    <TableCell><Input type="number" value={katern.green} /></TableCell>
+                                                    <TableCell><Input type="number" value={katern.red} /></TableCell>
+                                                    <TableCell>
+                                                        {(() => {
+                                                            const formula = getFormulaForColumn('delta_number');
+                                                            return formula ? formatNumber(evaluateFormula(formula.formula, katern)) : formatNumber(katern.delta);
+                                                        })()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('delta_percentage');
+                                                        const result = formula
+                                                            ? evaluateFormula(formula.formula, katern)
+                                                            : formatNumber(katern.deltaPercentage);
+
+                                                        const percentageValue = typeof result === 'string'
+                                                            ? parseFloat(result.replace(/\./g, '').replace(',', '.')) * 100
+                                                            : result * 100;
+                                                        
+                                                        const formattedPercentage = Math.round(percentageValue * 100) / 100;
+
+                                                        return formula
+                                                            ? formattedPercentage + '%'
+                                                            : formattedPercentage + '%';
+                                                    })()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
 
                 <TabsContent value="finished">
                     <Card>
@@ -929,212 +963,14 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                 </div>
+                                <Button onClick={() => { setEditingJob(null); setIsAddJobDialogOpen(true); }}>
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Add Finished Job
+                                </Button>
                             </div>
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
-                                {/* NEW JOB TABLE */}
-                                <Table className="table-fixed w-full mb-4">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead colSpan={6} className="text-center bg-blue-100" style={{ borderRight: '1px solid black' }}>Data</TableHead>
-                                            <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Wissels</TableHead>
-                                            <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Berekening</TableHead>
-                                            <TableHead colSpan={2} className="text-center bg-purple-100" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Prestatie</TableHead>
-                                            <TableHead></TableHead>
-                                        </TableRow>
-                                        <TableRow>
-                                            <TableHead style={{ width: '83px' }} className="border-r">Date</TableHead>
-                                            <TableHead style={{ width: '65px' }} className="border-r">Order nr</TableHead>
-                                            <TableHead className="min-w-[150px] border-r">Order</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-center border-r">Blz</TableHead>
-                                            <TableHead style={{ width: '40px' }} className="text-center leading-3 border-r">Ex/<br />Omw.</TableHead>
-                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Oplage netto</TableHead>
-                                            <TableHead style={{ width: '55px' }} className="text-center bg-gray-50">Opstart</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">4/4</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">4/0</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">1/0</TableHead>
-                                            <TableHead style={{ width: '30px' }} className="text-center bg-gray-50 border border-gray-300">1/1</TableHead>
-                                            <TableHead style={{ width: '30px', borderRight: '1px solid black' }} className="text-center bg-gray-50 border border-gray-300">4/1</TableHead>
-                                            <TableHead style={{ width: '90px' }} className="text-center border-r">Max Bruto</TableHead>
-                                            <TableHead style={{ width: '90px' }} className="text-center border-r">Groen</TableHead>
-                                            <TableHead style={{ width: '90px', borderRight: '1px solid black' }} className="text-center">Rood</TableHead>
-                                            <TableHead style={{ width: '80px' }} className="text-center border-r">Delta</TableHead>
-                                            <TableHead style={{ width: '80px', borderRight: '1px solid black' }} className="text-center">Delta %</TableHead>
-                                            <TableHead style={{ width: '100px' }} className="text-center">Acties</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {/* Input Row */}
-                                        <TableRow className="bg-gray-50 border-b-2 border-blue-100">
-                                            <TableCell className="p-1"><Input type="date" value={newJob.date} onChange={e => setNewJob({ ...newJob, date: e.target.value })} className="h-8 w-full appearance-none bg-transparent [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:opacity-0 p-2" /></TableCell>
-                                            <TableCell className="p-0">
-                                                <div className="flex items-center h-8">
-                                                    <span className="text-gray-500 text-xs px-1">DT</span>
-                                                    <Input type="number" value={newJob.orderNr} onChange={e => setNewJob({ ...newJob, orderNr: e.target.value })} className="h-8 w-full text-center px-0 border-0" />
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-1">
-                                                <div className="flex flex-col gap-1">
-                                                    <Input value={newJob.orderName} onChange={e => setNewJob({ ...newJob, orderName: e.target.value })} className="h-8 w-full font-medium" placeholder="Order naam" />
-                                                    <div className="flex items-center">
-                                                        <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block shrink-0"></span>
-                                                        <Input value={newJob.version} onChange={e => setNewJob({ ...newJob, version: e.target.value })} className="h-7 w-full text-xs" placeholder="Versie/Katern" />
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-0 text-center"><Input type="number" value={newJob.pages || ''} onChange={e => setNewJob({ ...newJob, pages: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center"><Input value={newJob.exOmw} onChange={e => setNewJob({ ...newJob, exOmw: e.target.value })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center" style={{ borderRight: '1px solid black' }}><FormattedNumberInput value={newJob.netRun || ''} onChange={val => setNewJob({ ...newJob, netRun: val })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-1 text-center bg-gray-50">
-                                                <div className="flex justify-center">
-                                                    <Checkbox checked={newJob.startup} onCheckedChange={c => setNewJob({ ...newJob, startup: !!c })} />
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c4_4 || ''} onChange={e => setNewJob({ ...newJob, c4_4: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c4_0 || ''} onChange={e => setNewJob({ ...newJob, c4_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c1_0 || ''} onChange={e => setNewJob({ ...newJob, c1_0: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={newJob.c1_1 || ''} onChange={e => setNewJob({ ...newJob, c1_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300" style={{ borderRight: '1px solid black' }}><Input type="number" value={newJob.c4_1 || ''} onChange={e => setNewJob({ ...newJob, c4_1: Number(e.target.value) })} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                            <TableCell className={`p-1 text-right ${getFormulaForColumn('maxGross') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('maxGross');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
-                                                        : <Input type="number" value={newJob.maxGross || ''} onChange={e => setNewJob({ ...newJob, maxGross: Number(e.target.value) })} className="h-8 w-full text-right" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('green') ? 'bg-gray-100 font-medium text-gray-700' : ''}`}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('green');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
-                                                        : <FormattedNumberInput value={newJob.green || ''} onChange={val => setNewJob({ ...newJob, green: val })} className="h-8 w-full text-center px-0 border-0" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className={`p-0 text-center ${getFormulaForColumn('red') ? 'bg-gray-100 font-medium text-gray-700' : ''}`} style={{ borderRight: '1px solid black' }}>
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('red');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={newJob} result={evaluateFormula(formula.formula, newJob)} />
-                                                        : <FormattedNumberInput value={newJob.red || ''} onChange={val => setNewJob({ ...newJob, red: val })} className="h-8 w-full text-center px-0 border-0" />;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="p-0 text-center">
-                                                <FormattedNumberInput value={newJob.delta || ''} onChange={val => setNewJob({ ...newJob, delta: val })} className="h-8 w-full text-center px-0 border-0" />
-                                            </TableCell>
-                                            <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input value={newJob.performance} onChange={e => setNewJob({ ...newJob, performance: e.target.value })} className="h-8 w-full text-right" /></TableCell>
-                                            <TableCell className="p-1 text-center">
-                                                <Button size="sm" variant="ghost" onClick={handleAddJob} className="hover:bg-blue-100 text-blue-600">
-                                                    <Save className="w-4 h-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                        {additionalJobs.map((addJob, index) => (
-                                            <TableRow key={index} className="bg-gray-50">
-                                                <TableCell className="p-1 font-mono text-xs text-gray-500">{newJob.date}</TableCell>
-                                                <TableCell className="p-1 font-mono text-xs text-gray-500">
-                                                    <div className="flex items-center">
-                                                        <span className="text-gray-500 mr-1 text-sm">DT</span>
-                                                        {newJob.orderNr}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="p-1">
-                                                    <div className="flex flex-col gap-1">
-                                                        <Input value={newJob.orderName} disabled className="h-8 w-full bg-gray-50 font-medium text-gray-500" />
-                                                        <div className="flex items-center">
-                                                            <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block shrink-0"></span>
-                                                            <Input value={addJob.version} onChange={e => {
-                                                                const updated = [...additionalJobs];
-                                                                updated[index].version = e.target.value;
-                                                                setAdditionalJobs(updated);
-                                                            }} className="h-7 w-full text-xs" placeholder="Versie/Katern" />
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="p-0 text-center"><Input type="number" value={addJob.pages || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].pages = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center"><Input value={addJob.exOmw || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].exOmw = e.target.value;
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.netRun || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].netRun = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-center bg-gray-50">
-                                                    <div className="flex justify-center">
-                                                        <Checkbox checked={addJob.startup} onCheckedChange={c => {
-                                                            const updated = [...additionalJobs];
-                                                            updated[index].startup = !!c;
-                                                            setAdditionalJobs(updated);
-                                                        }} />
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c4_4 || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].c4_4 = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c4_0 || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].c4_0 = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c1_0 || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].c1_0 = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300"><Input type="number" value={addJob.c1_1 || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].c1_1 = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-0 text-center bg-gray-50 border-l border-gray-300" style={{ borderRight: '1px solid black' }}><Input type="number" value={addJob.c4_1 || ''} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].c4_1 = Number(e.target.value);
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-center px-0 border-0" /></TableCell>
-                                                <TableCell className="p-1 bg-gray-100"></TableCell>
-                                                <TableCell className="p-1 bg-gray-100"></TableCell>
-                                                <TableCell className="p-1 bg-gray-100" style={{ borderRight: '1px solid black' }}></TableCell>
-                                                <TableCell className="p-0 text-center">
-                                                    <FormattedNumberInput value={addJob.delta || ''} onChange={val => {
-                                                        const updated = [...additionalJobs];
-                                                        updated[index].delta = val;
-                                                        setAdditionalJobs(updated);
-                                                    }} className="h-8 w-full text-center px-0 border-0" />
-                                                </TableCell>
-                                                <TableCell className="p-1 text-right" style={{ borderRight: '1px solid black' }}><Input value={addJob.performance} onChange={e => {
-                                                    const updated = [...additionalJobs];
-                                                    updated[index].performance = e.target.value;
-                                                    setAdditionalJobs(updated);
-                                                }} className="h-8 w-full text-right" /></TableCell>
-                                                <TableCell className="p-1 text-center">
-                                                    <Button size="sm" variant="ghost" onClick={() => {
-                                                        const updated = additionalJobs.filter((_, i) => i !== index);
-                                                        setAdditionalJobs(updated);
-                                                    }} className="hover:bg-red-100 text-red-500">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-
-                                <div className="mb-4">
-                                    <Button onClick={handleAddVersion} variant="outline" className="gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        Add Versie/Katern
-                                    </Button>
-                                </div>
                                 <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
@@ -1465,6 +1301,25 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     </div>
                 </TabsContent>
             </Tabs >
+
+            <AddFinishedJobDialog
+                open={isAddJobDialogOpen}
+                onOpenChange={setIsAddJobDialogOpen}
+                onSubmit={handleJobSubmit}
+                editJob={editingJob}
+            />
+
+            <AddKaternDialog
+                open={isAddingKatern}
+                onOpenChange={setIsAddingKatern}
+                onSubmit={handleKaternSubmit}
+            />
+
+            <AddWerkorderDialog
+                open={isAddingWerkorder}
+                onOpenChange={setIsAddingWerkorder}
+                onSubmit={handleWerkorderSubmit}
+            />
 
             {/* Formula Builder Dialog */}
             < Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen} >
