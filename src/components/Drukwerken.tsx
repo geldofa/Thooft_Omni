@@ -917,12 +917,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             {werkorders.map((wo) => (
                                 <div key={wo.id} className="border p-4 rounded-lg">
                                     <div className="flex justify-between items-center mb-4">
-                                        <div className="grid grid-cols-1 gap-4 w-full">
-                                            <div className="w-full">
+                                        <div className="flex gap-4 w-full items-end">
+                                            <div className="w-[60px]">
                                                 <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} readOnly className="w-full" />
+                                                <Input value={`DT ${wo.orderNr}`} readOnly />
                                             </div>
-                                            <div className="w-full">
+                                            <div>
                                                 <Label>Order</Label>
                                                 <Input value={wo.orderName} readOnly className="w-full" />
                                             </div>
