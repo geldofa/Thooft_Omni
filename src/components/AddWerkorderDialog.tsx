@@ -41,7 +41,8 @@ export function AddWerkorderDialog({
     useEffect(() => {
         if (open) {
             if (editWerkorder) {
-                setWerkorderFormData({ ...editWerkorder, id: undefined, katernen: undefined });
+                const { id, katernen, ...rest } = editWerkorder;
+                setWerkorderFormData(rest);
             } else {
                 setWerkorderFormData(initialWerkorderData);
             }

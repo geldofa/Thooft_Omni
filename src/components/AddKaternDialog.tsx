@@ -10,10 +10,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Calendar } from './ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Checkbox } from './ui/checkbox';
-import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Katern } from './Drukwerken';
 
@@ -102,7 +99,8 @@ export function AddKaternDialog({
     useEffect(() => {
         if (open) {
             if (editKatern) {
-                setKaternFormData({ ...editKatern, id: undefined as any });
+                const { id, ...rest } = editKatern;
+                setKaternFormData(rest);
             } else {
                 setKaternFormData(initialKaternData);
             }

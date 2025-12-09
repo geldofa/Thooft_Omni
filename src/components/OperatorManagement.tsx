@@ -98,7 +98,6 @@ export function OperatorManagement() {
   });
   const [showInactivePloegen, setShowInactivePloegen] = useState(false);
   const [ploegEditMode, setPloegEditMode] = useState(false);
-  const [editedPloegen, setEditedPloegen] = useState<Ploeg[]>([]);
 
   // --- Operator Logic ---
   useEffect(() => {

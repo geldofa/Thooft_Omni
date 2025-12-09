@@ -85,21 +85,21 @@ export function AddFinishedJobDialog({
         orderNr: '',
         orderName: '',
         version: '',
-        pages: 0,
+        pages: '',
         exOmw: '',
-        netRun: 0,
+        netRun: '',
         startup: false,
-        c4_4: 0,
-        c4_0: 0,
-        c1_0: 0,
-        c1_1: 0,
-        c4_1: 0,
-        maxGross: 0,
-        green: 0,
-        red: 0,
-        delta: 0,
-        delta_number: 0,
-        delta_percentage: 0,
+        c4_4: '',
+        c4_0: '',
+        c1_0: '',
+        c1_1: '',
+        c4_1: '',
+        maxGross: '',
+        green: '',
+        red: '',
+        delta: '',
+        delta_number: '',
+        delta_percentage: '',
         performance: ''
     };
 
@@ -108,7 +108,8 @@ export function AddFinishedJobDialog({
     useEffect(() => {
         if (open) {
             if (editJob) {
-                setJobFormData({ ...editJob, id: undefined as any });
+                const { id, ...rest } = editJob;
+                setJobFormData(rest);
             } else {
                 setJobFormData(initialJobData);
             }
@@ -203,39 +204,39 @@ export function AddFinishedJobDialog({
 
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="startup" className="text-right">Opstart</Label>
-                             <div className="col-span-3 flex items-center">
+                            <div className="col-span-3 flex items-center">
                                 <Checkbox id="startup" checked={jobFormData.startup} onCheckedChange={c => setJobFormData({ ...jobFormData, startup: !!c })} />
                             </div>
                         </div>
-                        
+
                         <h3 className="font-semibold col-span-4 pt-4">Wissels</h3>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_4" className="text-right">4/4</Label>
                             <Input id="c4_4" type="number" value={jobFormData.c4_4 || ''} onChange={e => setJobFormData({ ...jobFormData, c4_4: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_0" className="text-right">4/0</Label>
                             <Input id="c4_0" type="number" value={jobFormData.c4_0 || ''} onChange={e => setJobFormData({ ...jobFormData, c4_0: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c1_0" className="text-right">1/0</Label>
                             <Input id="c1_0" type="number" value={jobFormData.c1_0 || ''} onChange={e => setJobFormData({ ...jobFormData, c1_0: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c1_1" className="text-right">1/1</Label>
                             <Input id="c1_1" type="number" value={jobFormData.c1_1 || ''} onChange={e => setJobFormData({ ...jobFormData, c1_1: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_1" className="text-right">4/1</Label>
                             <Input id="c4_1" type="number" value={jobFormData.c4_1 || ''} onChange={e => setJobFormData({ ...jobFormData, c4_1: Number(e.target.value) })} className="col-span-3" />
                         </div>
 
                         <h3 className="font-semibold col-span-4 pt-4">Resultaten</h3>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="green" className="text-right">Groen</Label>
                             <FormattedNumberInput value={jobFormData.green || ''} onChange={val => setJobFormData({ ...jobFormData, green: val })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="red" className="text-right">Rood</Label>
                             <FormattedNumberInput value={jobFormData.red || ''} onChange={val => setJobFormData({ ...jobFormData, red: val })} className="col-span-3" />
                         </div>
