@@ -927,16 +927,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             {werkorders.map((wo) => (
                                 <div key={wo.id} className="border p-4 rounded-lg">
                                     <div className="flex justify-between items-center mb-4">
-                                                                                 <div className="flex gap-4">
-                                                                                    <div>
-                                                                                        <Label>Order Nr</Label>
-                                                                                        <Input value={`DT ${wo.orderNr}`} readOnly />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <Label>Order</Label>
-                                                                                        <Input value={wo.orderName} readOnly />
-                                                                                    </div>
-                                                                                </div>
+                                                                                                                                                                      <div className="flex gap-4">
+                                                                                                                                                                     <div>
+                                                                                                                                                                         <Label>Order Nr</Label>
+                                                                                                                                                                         <Input value={`DT ${wo.orderNr}`} readOnly />
+                                                                                                                                                                     </div>
+                                                                                                                                                                     <div className="flex-1">
+                                                                                                                                                                         <Label>Order</Label>
+                                                                                                                                                                         <Input value={wo.orderName} readOnly />
+                                                                                                                                                                     </div>                                                                                </div>
                                     </div>
                                     <Table>
                                         <TableHeader>
@@ -1021,7 +1020,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
                                             <Plus className="w-4 h-4 mr-1" /> Add Katern/Versie
                                         </Button>
-                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm">
+                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
                                             Order Opslaan
                                         </Button>
                                     </div>
