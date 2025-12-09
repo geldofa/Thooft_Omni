@@ -87,21 +87,21 @@ export function AddWerkorderDialog({
 
                 <form onSubmit={handleSubmit}>
                     <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="orderNr" className="text-right">Order Nr.</Label>
-                            <Input id="orderNr" value={werkorderFormData.orderNr} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderNr: e.target.value })} className="col-span-3" />
+                        <div className="grid gap-2">
+                            <Label htmlFor="orderNr">Order Nr.</Label>
+                            <Input id="orderNr" value={werkorderFormData.orderNr} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderNr: e.target.value })} className="col-span-full" />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="orderName" className="text-right">Order Name</Label>
-                            <Input id="orderName" value={werkorderFormData.orderName} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderName: e.target.value })} className="col-span-3" />
+                        <div className="grid gap-2">
+                            <Label htmlFor="orderName">Order Name</Label>
+                            <Input id="orderName" value={werkorderFormData.orderName} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderName: e.target.value })} className="col-span-full" />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="orderDate" className="text-right">Order Date</Label>
+                        <div className="grid gap-2">
+                            <Label htmlFor="orderDate">Order Date</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
                                         variant="outline"
-                                        className="col-span-3 justify-start text-left"
+                                        className="col-span-full justify-start text-left"
                                     >
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {formatDate(werkorderFormData.orderDate)}
