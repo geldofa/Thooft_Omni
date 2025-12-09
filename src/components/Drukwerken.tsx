@@ -920,11 +920,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <div className="flex gap-4 w-full items-end">
                                             <div className="w-[60px]">
                                                 <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} readOnly />
+                                                <Input value={`DT ${wo.orderNr}`} readOnly className="w-full px-0 py-0 border-none text-center" />
                                             </div>
-                                            <div>
+                                            <div className="flex-1">
                                                 <Label>Order</Label>
-                                                <Input value={wo.orderName} readOnly className="w-full" />
+                                                <Input value={wo.orderName} readOnly className="w-full px-0 py-0 border-none" />
                                             </div>
                                         </div>
                                     </div>
