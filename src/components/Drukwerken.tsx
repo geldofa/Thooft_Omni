@@ -194,11 +194,36 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
+    const defaultKatern: Katern = {
+        id: 'new-katern-1', // Temporary ID, will be replaced with `${newWerkorder.id}-1`
+        version: 'New Version 1',
+        pages: 0,
+        exOmw: '0',
+        netRun: 0,
+        startup: false,
+        c4_4: 0,
+        c4_0: 0,
+        c1_0: 0,
+        c1_1: 0,
+        c4_1: 0,
+        maxGross: 0,
+        green: 0,
+        red: 0,
+        delta: 0,
+        deltaPercentage: 0,
+    };
+
     const handleWerkorderSubmit = (werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
+        const newWerkorderId = Date.now().toString();
+        const newKaternWithId: Katern = {
+            ...defaultKatern,
+            id: `${newWerkorderId}-1`, // Assign a proper ID
+        };
+
         const newWerkorder: Werkorder = {
             ...werkorderData,
-            id: Date.now().toString(),
-            katernen: [],
+            id: newWerkorderId,
+            katernen: [newKaternWithId], // Now includes the default katern
         };
         setWerkorders([newWerkorder, ...werkorders]);
     };
