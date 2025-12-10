@@ -227,13 +227,17 @@ function MainApp() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Wrench className="w-5 h-5 text-white" />
-            </div>
+          {/* Left Spacer / Future Left Navigation */}
+          <div className="flex-1 flex justify-start">
+            {/* Can add left-aligned elements here if needed */}
+          </div>
+
+          {/* Centered Logo/Branding and Tabs */}
+          <div className="flex-shrink-0">
+            <h1 className="text-xl font-bold text-[#1A1A1A] text-center mb-2">Antigravity</h1>
             {user.role === 'admin' || user.role === 'meestergast' ? (
               <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
-                <TabsList className="ml-4">
+                <TabsList className="mx-auto"> {/* Centering TabsList */}
                   <TabsTrigger value="tasks" className="gap-2">
                     <ClipboardList className="w-4 h-4" />
                     Taken
@@ -278,7 +282,7 @@ function MainApp() {
               </Tabs>
             ) : user.role === 'press' ? (
               <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
-                <TabsList className="ml-4">
+                <TabsList className="mx-auto"> {/* Centering TabsList */}
                   <TabsTrigger value="tasks" className="gap-2">
                     <ClipboardList className="w-4 h-4" />
                     Taken
@@ -289,34 +293,18 @@ function MainApp() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-            ) : (
-              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">
-                Maintenance Manager
-              </h1>
-            )}
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-6 mr-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                <span className="text-sm font-medium text-gray-600">All Systems Operational</span>
-              </div>
-              <div className="h-4 w-px bg-gray-200"></div>
-              <div className="text-sm text-gray-500">
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              </div>
+          {/* Right-aligned user info and logout */}
+          <div className="flex-1 flex justify-end items-center gap-3">
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-900">{user?.name || user?.username}</div>
+              <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
             </div>
-
-            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">{user?.name || user?.username}</div>
-                <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
-              </div>
-              <Button variant="ghost" size="icon" onClick={logout}>
-                <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
-              </Button>
-            </div>
+            <Button variant="ghost" size="icon" onClick={logout}>
+              <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
+            </Button>
           </div>
         </div>
       </header>
