@@ -1,7 +1,8 @@
 import { useEffect, useState, Profiler, lazy, Suspense, startTransition } from 'react';
-import { AuthProvider, useAuth, PressType, MaintenanceTask } from './components/AuthContext';
+import { AuthProvider, useAuth, MaintenanceTask } from './components/AuthContext';
 import { GroupedTask } from './components/AuthContext';
 import { LoginForm } from './components/LoginForm';
+import { Header } from './components/Header'; // Import the new Header component
 const MaintenanceTable = lazy(() => import('./components/MaintenanceTable').then(m => ({ default: m.MaintenanceTable })));
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
 const OperatorManagement = lazy(() => import('./components/OperatorManagement').then(m => ({ default: m.OperatorManagement })));
@@ -37,10 +38,10 @@ function MainApp() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<MaintenanceTask | null>(null);
-  const [editingGroup, setEditingGroup] = useState<MaintenanceTask[] | null>(null);
-  const [selectedPress, setSelectedPress] = useState<PressType>(() => {
+  const [editingGroup, setEditingTaskGroup] = useState<MaintenanceTask[] | null>(null);
+  const [selectedPress, setSelectedPress] = useState<string>(() => { // Changed type from PressType to string
     if (typeof sessionStorage !== 'undefined') {
-      return sessionStorage.getItem('selectedPress') as PressType || 'Lithoman';
+      return sessionStorage.getItem('selectedPress') || 'Lithoman';
     }
     return 'Lithoman';
   });
@@ -200,7 +201,7 @@ function MainApp() {
       }
       setIsAddDialogOpen(false);
       setEditingTask(null);
-      setEditingGroup(null);
+      setEditingTaskGroup(null);
       toast.success('Group updated successfully');
     } catch (error) {
       console.error('Failed to update group:', error);
@@ -225,109 +226,27 @@ function MainApp() {
       <Toaster position="top-right" />
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            {/* Left: Logo Text */}
-            <div className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-[#1A1A1A]">Antigravity</h1>
-            </div>
-
-            {/* Center: Tabs Component (Navigation Tree) */}
-            <div className="flex-1 flex justify-center"> {/* Use flex-1 to allow it to grow and justify-center to center content */}
-              {user.role === 'admin' || user.role === 'meestergast' ? (
-                <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))}>
-                  <TabsList> {/* Removed w-full and mx-auto as parent flex will handle centering */}
-                    <TabsTrigger value="tasks" className="gap-2">
-                      <ClipboardList className="w-4 h-4" />
-                      Taken
-                    </TabsTrigger>
-                    <TabsTrigger value="drukwerken" className="gap-2">
-                      <Printer className="w-4 h-4" />
-                      Drukwerken
-                    </TabsTrigger>
-                    <TabsTrigger value="reports" className="gap-2">
-                      <Printer className="w-4 h-4" />
-                      Rapport
-                    </TabsTrigger>
-                    <TabsTrigger value="checklist" className="gap-2">
-                      <ListChecks className="w-4 h-4" />
-                      Checklist
-                    </TabsTrigger>
-                    <TabsTrigger value="operators" className="gap-2">
-                      <Users className="w-4 h-4" />
-                      Personeel
-                    </TabsTrigger>
-                    <TabsTrigger value="categories" className="gap-2">
-                      <Tags className="w-4 h-4" />
-                      Categorieën
-                    </TabsTrigger>
-                    {user.role === 'admin' && (
-                      <TabsTrigger value="presses" className="gap-2">
-                        <Factory className="w-4 h-4" />
-                        Persen
-                      </TabsTrigger>
-                    )}
-                    {user.role === 'admin' && (
-                      <TabsTrigger value="passwords" className="gap-2">
-                        <Key className="w-4 h-4" />
-                        Accounts
-                      </TabsTrigger>
-                    )}
-                    <TabsTrigger value="logs" className="gap-2">
-                      <FileText className="w-4 h-4" />
-                      Logboek
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              ) : user.role === 'press' ? (
-                <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))}>
-                  <TabsList> {/* Removed w-full and mx-auto as parent flex will handle centering */}
-                    <TabsTrigger value="tasks" className="gap-2">
-                      <ClipboardList className="w-4 h-4" />
-                      Taken
-                    </TabsTrigger>
-                    <TabsTrigger value="drukwerken" className="gap-2">
-                      <Printer className="w-4 h-4" />
-                      Drukwerken
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              ) : null}
-            </div>
-
-            {/* Right: Admin Actions */}
-            <div className="flex-shrink-0 flex items-center gap-3">
-              <div className="text-right">
-                <div className="text-sm font-medium text-[#1A1A1A]">{user?.name || user?.username}</div>
-                <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
-              </div>
-              <Button variant="ghost" size="icon" onClick={logout}>
-                <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
-              </Button>
-            </div>
-          </div>
-      </header>
+      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {(user.role === 'admin' || user.role === 'meestergast') && (
           <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading…</div>}>
             {activeTab === 'tasks' && (
               <div className="space-y-3">
-                <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as PressType))} className="space-y-3">
+                <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="space-y-3">
                   <TabsList>
                     {activePresses.map(press => (
                       <TabsTrigger key={press.id} value={press.name}>{press.name}</TabsTrigger>
                     ))}
                   </TabsList>
 
-                  {activePresses.map(press => (
-                    <TabsContent key={press.id} value={press.name}>
+                  <TabsContent value={selectedPress}> {/* Changed to use selectedPress directly */}
                       <MaintenanceTable
-                        tasks={groupedTasks.filter(group => group.press === press.name as PressType)}
+                        tasks={groupedTasks.filter(group => group.press === selectedPress)}
                         onEdit={(task) => {
                           startTransition(() => {
                             setEditingTask(task);
-                            setEditingGroup(null);
+                            setEditingTaskGroup(null);
                             setIsAddDialogOpen(true);
                           });
                         }}
@@ -337,7 +256,7 @@ function MainApp() {
                         }}
                         onEditGroup={(groupTasks) => {
                           startTransition(() => {
-                            setEditingGroup(groupTasks.subtasks.map(subtask => ({
+                            setEditingTaskGroup(groupTasks.subtasks.map(subtask => ({
                               id: subtask.id,
                               task: subtask.subtaskName,
                               taskSubtext: subtask.subtext,
@@ -360,13 +279,12 @@ function MainApp() {
                         onAddTask={() => {
                           startTransition(() => {
                             setEditingTask(null);
-                            setEditingGroup(null);
+                            setEditingTaskGroup(null);
                             setIsAddDialogOpen(true);
                           });
                         }}
                       />
-                    </TabsContent>
-                  ))}
+                  </TabsContent>
                 </Tabs>
               </div>
             )}
