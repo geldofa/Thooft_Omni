@@ -226,29 +226,99 @@ function MainApp() {
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            {/* Left navigation group */}
-            <nav className="flex items-center space-x-6">
-              <a href="#" className="text-sm font-normal text-[#1A1A1A]">Features</a>
-              <a href="#" className="text-sm font-normal text-[#1A1A1A]">Pricing</a>
-            </nav>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <Wrench className="w-5 h-5 text-white" />
+            </div>
+            {user.role === 'admin' || user.role === 'meestergast' ? (
+              <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
+                <TabsList className="ml-4">
+                  <TabsTrigger value="tasks" className="gap-2">
+                    <ClipboardList className="w-4 h-4" />
+                    Taken
+                  </TabsTrigger>
+                  <TabsTrigger value="drukwerken" className="gap-2">
+                    <Printer className="w-4 h-4" />
+                    Drukwerken
+                  </TabsTrigger>
+                  <TabsTrigger value="reports" className="gap-2">
+                    <Printer className="w-4 h-4" />
+                    Rapport
+                  </TabsTrigger>
+                  <TabsTrigger value="checklist" className="gap-2">
+                    <ListChecks className="w-4 h-4" />
+                    Checklist
+                  </TabsTrigger>
+                  <TabsTrigger value="operators" className="gap-2">
+                    <Users className="w-4 h-4" />
+                    Personeel
+                  </TabsTrigger>
+                  <TabsTrigger value="categories" className="gap-2">
+                    <Tags className="w-4 h-4" />
+                    Categorieën
+                  </TabsTrigger>
+                  {user.role === 'admin' && (
+                    <TabsTrigger value="presses" className="gap-2">
+                      <Factory className="w-4 h-4" />
+                      Persen
+                    </TabsTrigger>
+                  )}
+                  {user.role === 'admin' && (
+                    <TabsTrigger value="passwords" className="gap-2">
+                      <Key className="w-4 h-4" />
+                      Accounts
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="logs" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Logboek
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            ) : user.role === 'press' ? (
+              <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
+                <TabsList className="ml-4">
+                  <TabsTrigger value="tasks" className="gap-2">
+                    <ClipboardList className="w-4 h-4" />
+                    Taken
+                  </TabsTrigger>
+                  <TabsTrigger value="drukwerken" className="gap-2">
+                    <Printer className="w-4 h-4" />
+                    Drukwerken
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            ) : (
+              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">
+                Maintenance Manager
+              </h1>
+            )}
+          </div>
 
-            {/* Centered Wordmark Logo */}
-            <div className="flex-1 flex justify-center">
-              <h1 className="text-xl font-bold text-[#1A1A1A]">Antigravity</h1>
+          <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-6 mr-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <span className="text-sm font-medium text-gray-600">All Systems Operational</span>
+              </div>
+              <div className="h-4 w-px bg-gray-200"></div>
+              <div className="text-sm text-gray-500">
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              </div>
             </div>
 
-            {/* Right navigation group and CTA */}
-            <div className="flex items-center space-x-6">
-              <nav className="flex items-center space-x-6">
-                <a href="#" className="text-sm font-normal text-[#1A1A1A]">Docs</a>
-                <a href="#" className="text-sm font-normal text-[#1A1A1A]">Blog</a>
-              </nav>
-              <Button className="bg-black text-white px-4 py-2 rounded-md hover:bg-gray-800 transition-colors duration-200">
-                Sign In
+            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+              <div className="text-right">
+                <div className="text-sm font-medium text-gray-900">{user?.name || user?.username}</div>
+                <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={logout}>
+                <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
               </Button>
             </div>
           </div>
+        </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
