@@ -226,87 +226,86 @@ function MainApp() {
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          {/* Left Spacer / Future Left Navigation */}
-          <div className="flex-1 flex justify-start">
-            {/* Can add left-aligned elements here if needed */}
-          </div>
-
-          {/* Centered Logo/Branding and Tabs */}
-          <div className="flex-shrink-0">
-            <h1 className="text-xl font-bold text-[#1A1A1A] text-center mb-2">Antigravity</h1>
-            {user.role === 'admin' || user.role === 'meestergast' ? (
-              <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
-                <TabsList className="mx-auto"> {/* Centering TabsList */}
-                  <TabsTrigger value="tasks" className="gap-2">
-                    <ClipboardList className="w-4 h-4" />
-                    Taken
-                  </TabsTrigger>
-                  <TabsTrigger value="drukwerken" className="gap-2">
-                    <Printer className="w-4 h-4" />
-                    Drukwerken
-                  </TabsTrigger>
-                  <TabsTrigger value="reports" className="gap-2">
-                    <Printer className="w-4 h-4" />
-                    Rapport
-                  </TabsTrigger>
-                  <TabsTrigger value="checklist" className="gap-2">
-                    <ListChecks className="w-4 h-4" />
-                    Checklist
-                  </TabsTrigger>
-                  <TabsTrigger value="operators" className="gap-2">
-                    <Users className="w-4 h-4" />
-                    Personeel
-                  </TabsTrigger>
-                  <TabsTrigger value="categories" className="gap-2">
-                    <Tags className="w-4 h-4" />
-                    Categorieën
-                  </TabsTrigger>
-                  {user.role === 'admin' && (
-                    <TabsTrigger value="presses" className="gap-2">
-                      <Factory className="w-4 h-4" />
-                      Persen
-                    </TabsTrigger>
-                  )}
-                  {user.role === 'admin' && (
-                    <TabsTrigger value="passwords" className="gap-2">
-                      <Key className="w-4 h-4" />
-                      Accounts
-                    </TabsTrigger>
-                  )}
-                  <TabsTrigger value="logs" className="gap-2">
-                    <FileText className="w-4 h-4" />
-                    Logboek
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            ) : user.role === 'press' ? (
-              <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))} className="w-full">
-                <TabsList className="mx-auto"> {/* Centering TabsList */}
-                  <TabsTrigger value="tasks" className="gap-2">
-                    <ClipboardList className="w-4 h-4" />
-                    Taken
-                  </TabsTrigger>
-                  <TabsTrigger value="drukwerken" className="gap-2">
-                    <Printer className="w-4 h-4" />
-                    Drukwerken
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            ) : null}
-          </div>
-
-          {/* Right-aligned user info and logout */}
-          <div className="flex-1 flex justify-end items-center gap-3">
-            <div className="text-right">
-              <div className="text-sm font-medium text-gray-900">{user?.name || user?.username}</div>
-              <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            {/* Left: Logo Text */}
+            <div className="flex-shrink-0">
+              <h1 className="text-xl font-bold text-[#1A1A1A]">Antigravity</h1>
             </div>
-            <Button variant="ghost" size="icon" onClick={logout}>
-              <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
-            </Button>
+
+            {/* Center: Tabs Component (Navigation Tree) */}
+            <div className="flex-1 flex justify-center"> {/* Use flex-1 to allow it to grow and justify-center to center content */}
+              {user.role === 'admin' || user.role === 'meestergast' ? (
+                <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))}>
+                  <TabsList> {/* Removed w-full and mx-auto as parent flex will handle centering */}
+                    <TabsTrigger value="tasks" className="gap-2">
+                      <ClipboardList className="w-4 h-4" />
+                      Taken
+                    </TabsTrigger>
+                    <TabsTrigger value="drukwerken" className="gap-2">
+                      <Printer className="w-4 h-4" />
+                      Drukwerken
+                    </TabsTrigger>
+                    <TabsTrigger value="reports" className="gap-2">
+                      <Printer className="w-4 h-4" />
+                      Rapport
+                    </TabsTrigger>
+                    <TabsTrigger value="checklist" className="gap-2">
+                      <ListChecks className="w-4 h-4" />
+                      Checklist
+                    </TabsTrigger>
+                    <TabsTrigger value="operators" className="gap-2">
+                      <Users className="w-4 h-4" />
+                      Personeel
+                    </TabsTrigger>
+                    <TabsTrigger value="categories" className="gap-2">
+                      <Tags className="w-4 h-4" />
+                      Categorieën
+                    </TabsTrigger>
+                    {user.role === 'admin' && (
+                      <TabsTrigger value="presses" className="gap-2">
+                        <Factory className="w-4 h-4" />
+                        Persen
+                      </TabsTrigger>
+                    )}
+                    {user.role === 'admin' && (
+                      <TabsTrigger value="passwords" className="gap-2">
+                        <Key className="w-4 h-4" />
+                        Accounts
+                      </TabsTrigger>
+                    )}
+                    <TabsTrigger value="logs" className="gap-2">
+                      <FileText className="w-4 h-4" />
+                      Logboek
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              ) : user.role === 'press' ? (
+                <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))}>
+                  <TabsList> {/* Removed w-full and mx-auto as parent flex will handle centering */}
+                    <TabsTrigger value="tasks" className="gap-2">
+                      <ClipboardList className="w-4 h-4" />
+                      Taken
+                    </TabsTrigger>
+                    <TabsTrigger value="drukwerken" className="gap-2">
+                      <Printer className="w-4 h-4" />
+                      Drukwerken
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              ) : null}
+            </div>
+
+            {/* Right: Admin Actions */}
+            <div className="flex-shrink-0 flex items-center gap-3">
+              <div className="text-right">
+                <div className="text-sm font-medium text-[#1A1A1A]">{user?.name || user?.username}</div>
+                <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={logout}>
+                <LogOut className="w-5 h-5 text-gray-500 hover:text-red-600" />
+              </Button>
+            </div>
           </div>
-        </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
