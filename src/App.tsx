@@ -460,24 +460,7 @@ function MainApp() {
 
 
 
-        <AddMaintenanceDialog
-          open={isAddDialogOpen}
-          onOpenChange={(open) => startTransition(() => setIsAddDialogOpen(open))}
-          onSubmit={async (task) => {
-            await startTransition(async () => {
-              if (editingTask) {
-                await handleEditTask({ ...editingTask, ...task } as MaintenanceTask);
-              } else {
-                await handleAddTask(task);
-              }
-            });
-          }}
-          editTask={editingTask}
-          initialGroup={editingGroup || undefined}
-          onUpdateGroup={handleUpdateGroup}
-        />
-      </main>
-      <ScrollToTop />
+
     </div>
   );
 }
