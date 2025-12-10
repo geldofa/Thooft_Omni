@@ -98,6 +98,7 @@ export function OperatorManagement() {
   });
   const [showInactivePloegen, setShowInactivePloegen] = useState(false);
   const [ploegEditMode, setPloegEditMode] = useState(false);
+  const [selectedPressForPloeg, setSelectedPressForPloeg] = useState<string | null>(null);
 
   // --- Operator Logic ---
   useEffect(() => {
@@ -986,6 +987,7 @@ export function OperatorManagement() {
         if (!open) {
           setEditingPloeg(null);
           setPloegFormData({ name: '', operatorIds: [], presses: [], active: true });
+          setSelectedPressForPloeg(null);
         }
       }}>
         <DialogContent className="max-w-md">
@@ -1020,6 +1022,21 @@ export function OperatorManagement() {
               </div>
 
               <div className="grid gap-2">
+                <Label>Press *</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={selectedPressForPloeg || ''}
+                  onChange={(e) => setSelectedPressForPloeg(e.target.value || null)}
+                  required
+                >
+                  <option value="">Select a press...</option>
+                  {activePresses.map(press => (
+                    <option key={press} value={press}>{press}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-2">
                 <Label>Team Members (2-3) *</Label>
                 <div className="space-y-2">
                   {[0, 1, 2].map((index) => (
@@ -1041,7 +1058,7 @@ export function OperatorManagement() {
                       >
                         <option value="">Select operator...</option>
                         {operators
-                          .filter(op => op.active && !ploegFormData.operatorIds.includes(op.id) || ploegFormData.operatorIds[index] === op.id)
+                          .filter(op => op.active && (!selectedPressForPloeg || op.presses.includes(selectedPressForPloeg)) && (!ploegFormData.operatorIds.includes(op.id) || ploegFormData.operatorIds[index] === op.id))
                           .map(op => (
                             <option key={op.id} value={op.id}>{op.name}</option>
                           ))}
