@@ -106,6 +106,7 @@ export interface Press {
 
 export interface UserAccount {
   username: string;
+  name?: string; // Display name
   password: string;
   role: UserRole;
   press?: PressType;
@@ -134,6 +135,9 @@ interface AuthContextType {
   deletePress: (id: string) => void;
   userAccounts: UserAccount[];
   changePassword: (username: string, newPassword: string) => void;
+  addUserAccount: (account: UserAccount) => void;
+  updateUserAccount: (username: string, updates: Partial<UserAccount>) => void;
+  deleteUserAccount: (username: string) => void;
   getElevatedOperators: () => Operator[];
   tasks: GroupedTask[]; // Added tasks to AuthContextType
   fetchTasks: () => void;
@@ -155,10 +159,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const INITIAL_USER_ACCOUNTS: UserAccount[] = [
-  { username: 'admin', password: 'admin123', role: 'admin' },
-  { username: 'lithoman', password: 'litho123', role: 'press', press: 'Lithoman' },
-  { username: 'c80', password: 'c80123', role: 'press', press: 'C80' },
-  { username: 'c818', password: 'c818123', role: 'press', press: 'C818' }
+  { username: 'admin', name: 'Admin User', password: 'admin123', role: 'admin' },
+  { username: 'tom', name: 'Tom Peeters', password: 'tom123', role: 'admin' },
+  { username: 'meestergast', name: 'Meestergast', password: 'mg123', role: 'meestergast' },
+  { username: 'lithoman', name: 'Lithoman Operator', password: 'litho123', role: 'press', press: 'Lithoman' },
+  { username: 'c80', name: 'C80 Operator', password: 'c80123', role: 'press', press: 'C80' },
+  { username: 'c818', name: 'C818 Operator', password: 'c818123', role: 'press', press: 'C818' }
 ];
 
 export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: GroupedTask[] }) {
@@ -298,6 +304,7 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     if (foundUser) {
       const userData = {
         username: foundUser.username,
+        name: foundUser.name, // Ensure name is passed
         role: foundUser.role,
         press: foundUser.press
       };
@@ -313,6 +320,9 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
 
   const logout = () => {
     setUser(null);
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('user');
+    }
   };
 
   const addOperator = (operator: Omit<Operator, 'id'>) => {
@@ -414,6 +424,20 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
     ));
   };
 
+  const addUserAccount = (account: UserAccount) => {
+    setUserAccounts([...userAccounts, account]);
+  };
+
+  const updateUserAccount = (username: string, updates: Partial<UserAccount>) => {
+    setUserAccounts(userAccounts.map(u =>
+      u.username === username ? { ...u, ...updates } : u
+    ));
+  };
+
+  const deleteUserAccount = (username: string) => {
+    setUserAccounts(userAccounts.filter(u => u.username !== username));
+  };
+
   const getElevatedOperators = () => {
     return operators.filter(op => op.canEditTasks || op.canAccessOperatorManagement);
   };
@@ -508,6 +532,9 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
       deletePress,
       userAccounts,
       changePassword,
+      addUserAccount,
+      updateUserAccount,
+      deleteUserAccount,
       getElevatedOperators,
       tasks: tasksState,
       fetchTasks,

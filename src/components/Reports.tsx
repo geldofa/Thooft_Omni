@@ -29,17 +29,6 @@ export function Reports({ tasks }: ReportsProps) {
   ];
 
   // --- STYLING CONSTANTS ---
-  const pillListClass = "bg-gray-100 !h-auto p-1 rounded-xl gap-1 border border-transparent inline-flex items-center";
-  const pillTriggerClass = `
-    rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
-    !h-auto
-    !text-gray-500
-    hover:!text-black hover:!bg-gray-200
-    active:scale-95
-    data-[state=active]:!bg-white
-    data-[state=active]:!text-black
-    data-[state=active]:!shadow-md
-  `;
 
   const formatDate = (date: Date | null): string => {
     if (!date) return 'N/A';
@@ -194,12 +183,12 @@ export function Reports({ tasks }: ReportsProps) {
       <div className="no-print flex items-center justify-between gap-4 w-full">
 
         {/* LEFT: PRESS SELECTION */}
-        <div className="bg-gray-100 py-1 px-1 rounded-xl gap-1 border border-transparent inline-flex items-center !h-auto">
+        <div className="flex-1 overflow-x-auto no-scrollbar py-2">
           <Tabs value={selectedPress} onValueChange={(value) => setSelectedPress(value as PressType | 'all')}>
-            <TabsList className={pillListClass}>
-              <TabsTrigger value="all" className={pillTriggerClass}>All</TabsTrigger>
+            <TabsList className="tab-pill-list">
+              <TabsTrigger value="all" className="tab-pill-trigger">All</TabsTrigger>
               {activePresses.map((press) => (
-                <TabsTrigger key={press.id} value={press.name} className={pillTriggerClass}>
+                <TabsTrigger key={press.id} value={press.name} className="tab-pill-trigger">
                   {press.name}
                 </TabsTrigger>
               ))}
@@ -208,13 +197,13 @@ export function Reports({ tasks }: ReportsProps) {
         </div>
 
         {/* RIGHT: OVERDUE FILTER */}
-        <div className="bg-gray-100 py-1 px-1 rounded-xl gap-1 border border-transparent inline-flex items-center !h-auto">
+        <div>
           <Tabs value={overdueFilter} onValueChange={(value) => setOverdueFilter(value as OverdueFilter)}>
-            <TabsList className={pillListClass}>
-              <TabsTrigger value="all" className={pillTriggerClass}>All</TabsTrigger>
-              <TabsTrigger value="1m" className={pillTriggerClass}>&gt; 1 Month</TabsTrigger>
-              <TabsTrigger value="3m" className={pillTriggerClass}>&gt; 3 Months</TabsTrigger>
-              <TabsTrigger value="1y" className={pillTriggerClass}>&gt; 1 Year</TabsTrigger>
+            <TabsList className="tab-pill-list">
+              <TabsTrigger value="all" className="tab-pill-trigger">All</TabsTrigger>
+              <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Month</TabsTrigger>
+              <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Months</TabsTrigger>
+              <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Year</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>

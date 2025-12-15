@@ -108,6 +108,7 @@ export function LoginForm() {
 
 const DEMO_USERS = {
   ADMIN: { username: 'admin', password: 'admin123' },
+  TOM: { username: 'tom', password: 'tom123' },
   LITHOMAN: { username: 'lithoman', password: 'litho123' },
   C80: { username: 'c80', password: 'c80123' },
   C818: { username: 'c818', password: 'c818123' },

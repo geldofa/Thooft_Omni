@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { PressType } from './AuthContext';
+import { useState } from 'react';
+import { PressType, useAuth } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+// import { pillListClass, pillTriggerClass } from '../styles/TabStyles';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -100,13 +101,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         .filter(p => p.active && !p.archived)
         .map(p => p.name);
 
-    const [activeTab, setActiveTab] = useState(() => {
-        return localStorage.getItem('drukwerkenActiveTab') || 'werkorders';
-    });
+    const { user } = useAuth();
 
-    useEffect(() => {
-        localStorage.setItem('drukwerkenActiveTab', activeTab);
-    }, [activeTab]);
+    const [activeTab, setActiveTab] = useState('werkorders');
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
@@ -939,10 +936,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="flex w-full whitespace-nowrap">
-                    <TabsTrigger value="werkorders">Werkorders</TabsTrigger>
-                    <TabsTrigger value="finished">Finished</TabsTrigger>
-                    <TabsTrigger value="parameters">Parameters</TabsTrigger>
+                <TabsList className="tab-pill-list">
+                    <TabsTrigger value="werkorders" className="tab-pill-trigger">Werkorders</TabsTrigger>
+                    <TabsTrigger value="finished" className="tab-pill-trigger">Finished</TabsTrigger>
+                    {user?.role !== 'press' && (
+                        <TabsTrigger value="parameters" className="tab-pill-trigger">Parameters</TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="werkorders">
@@ -1090,10 +1089,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                 </div>
-                                <Button onClick={() => { setEditingJob(null); setIsAddJobDialogOpen(true); }}>
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Add Finished Job
-                                </Button>
+
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -1166,7 +1162,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     </div>
                                                 </div>
                                             </TableHead>
-                                            <TableHead style={{ width: '90px' }}  className="text-center border-r">
+                                            <TableHead style={{ width: '90px' }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <span className="font-bold">Delta</span>
                                                 </div>
@@ -1184,32 +1180,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     </TableHeader>
                                     <TableBody>
                                         {sortedJobs.map((job) => (
-                                            <TableRow key={job.id}>
-                                                <TableCell>{job.date}</TableCell>
+                                            <TableRow key={job.id} className="h-8 hover:bg-gray-100 [&>td]:hover:bg-gray-100 transition-colors">
+                                                <TableCell className="py-1 px-2">{job.date}</TableCell>
                                                 {/* Datum removed */}
-                                                <TableCell>DT {job.orderNr}</TableCell>
-                                                <TableCell>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-medium">{job.orderName}</span>
-                                                        <div className="flex items-center text-xs text-gray-500 mt-0.5">
-                                                            <span className="w-3 h-3 border-l border-b border-gray-300 mr-1 rounded-bl-sm inline-block"></span>
-                                                            {job.version}
-                                                        </div>
-                                                    </div>
+                                                <TableCell className="py-1 px-2">DT {job.orderNr}</TableCell>
+                                                <TableCell className="py-1 px-2">
+                                                    <span className="font-medium mr-2">{job.orderName}</span>
+                                                    <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
                                                 </TableCell>
-                                                <TableCell className="text-center p-0">{formatNumber(job.pages)} blz</TableCell>
-                                                <TableCell className="text-center p-0">{job.exOmw}</TableCell>
-                                                <TableCell className="text-center p-0 border-r">{formatNumber(job.netRun)}</TableCell>
-                                                <TableCell className="text-center p-0 bg-gray-50">
+                                                <TableCell className="text-center py-1 px-1">{formatNumber(job.pages)} blz</TableCell>
+                                                <TableCell className="text-center py-1 px-1">{job.exOmw}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 border-r">{formatNumber(job.netRun)}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 bg-gray-50">
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
                                                     </div>
-                                                </TableCell>                                                <TableCell className="text-center p-0 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
-                                                <TableCell className="text-center p-0 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
-                                                <TableCell className="text-center p-0 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
-                                                <TableCell className="text-center p-0 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
-                                                <TableCell className="text-center p-0 bg-gray-50 border-r">{formatNumber(job.c4_1)}</TableCell>
-                                                <TableCell className="p-0 text-center">
+                                                </TableCell>                                                <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell className="text-center py-1 px-1 bg-gray-50 border-r">{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell className="py-1 px-1 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('maxGross');
                                                         return formula
@@ -1217,7 +1208,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.maxGross);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="p-0 text-center">
+                                                <TableCell className="py-1 px-1 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('green');
                                                         return formula
@@ -1225,7 +1216,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.green);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="p-0 text-center" style={{ borderRight: '1px solid black' }}>
+                                                <TableCell className="py-1 px-1 text-center" style={{ borderRight: '1px solid black' }}>
                                                     {(() => {
                                                         const formula = getFormulaForColumn('red');
                                                         return formula
@@ -1233,14 +1224,14 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formatNumber(job.red);
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className="text-center p-0">
+                                                <TableCell className="text-center py-1 px-1">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('delta_number');
                                                         return formula
                                                             ? formatNumber(evaluateFormula(formula.formula, job))
                                                             : formatNumber(job.delta_number);
                                                     })()}
-                                                </TableCell><TableCell className="text-center p-0 border-r">
+                                                </TableCell><TableCell className="text-center py-1 px-1 border-r">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('delta_percentage');
                                                         const result = formula
@@ -1259,13 +1250,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             : formattedPercentage + '%';
                                                     })()}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="flex gap-2">
-                                                        <Button size="sm" variant="ghost" className="hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
-                                                            <Edit className="w-4 h-4" />
+                                                <TableCell className="py-1 px-1">
+                                                    <div className="flex gap-1 justify-center">
+                                                        <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
+                                                            <Edit className="w-3 h-3" />
                                                         </Button>
-                                                        <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
-                                                            <Trash2 className="w-4 h-4" />
+                                                        <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-red-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
+                                                            <Trash2 className="w-3 h-3" />
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -1278,152 +1269,154 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="parameters">
-                    <div className="space-y-4">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Parameters</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead className="w-[200px]">Parameter</TableHead>
-                                                <TableHead className="w-[50px] text-center">Link</TableHead>
-                                                {activePresses.map(press => (
-                                                    <TableHead key={press} className="text-center min-w-[120px]">{press}</TableHead>
-                                                ))}
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            <TableRow>
-                                                <TableCell className="font-medium">Marge</TableCell>
-                                                <TableCell className="text-center">
-                                                    <Checkbox
-                                                        checked={linkedParams.margePercentage}
-                                                        onCheckedChange={() => toggleLink('margePercentage')}
-                                                    />
-                                                </TableCell>
-                                                {activePresses.map(press => (
-                                                    <TableCell key={press}>
-                                                        <div className="flex gap-2">
-                                                            <Input
-                                                                type="text"
-                                                                placeholder="%"
-                                                                className="h-8"
-                                                                value={parameters[press]?.margePercentage || ''}
-                                                                onChange={(e) => handleParameterChange(press, 'margePercentage', e.target.value)}
-                                                            />
-                                                        </div>
-                                                    </TableCell>
-                                                ))}
-                                            </TableRow>
-
-                                            <TableRow>
-                                                <TableCell className="font-medium">Opstart</TableCell>
-                                                <TableCell className="text-center">
-                                                    <Checkbox
-                                                        checked={linkedParams.opstart}
-                                                        onCheckedChange={() => toggleLink('opstart')}
-                                                    />
-                                                </TableCell>
-                                                {activePresses.map(press => (
-                                                    <TableCell key={press} className="text-center">
-                                                        <Input
-                                                            type="number"
-                                                            className="h-8"
-                                                            value={parameters[press]?.opstart || 0}
-                                                            onChange={(e) => handleParameterChange(press, 'opstart', Number(e.target.value))}
-                                                        />
-                                                    </TableCell>
-                                                ))}
-                                            </TableRow>
-
-                                            {[
-                                                { id: 'param_4_4', label: '4/4' },
-                                                { id: 'param_4_0', label: '4/0' },
-                                                { id: 'param_1_0', label: '1/0' },
-                                                { id: 'param_1_1', label: '1/1' },
-                                                { id: 'param_4_1', label: '4/1' },
-                                            ].map(param => (
-                                                <TableRow key={param.id}>
-                                                    <TableCell className="font-medium">{param.label}</TableCell>
+                {user?.role !== 'press' && (
+                    <TabsContent value="parameters">
+                        <div className="space-y-4">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Parameters</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-[200px]">Parameter</TableHead>
+                                                    <TableHead className="w-[50px] text-center">Link</TableHead>
+                                                    {activePresses.map(press => (
+                                                        <TableHead key={press} className="text-center min-w-[120px]">{press}</TableHead>
+                                                    ))}
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                <TableRow>
+                                                    <TableCell className="font-medium">Marge</TableCell>
                                                     <TableCell className="text-center">
                                                         <Checkbox
-                                                            checked={linkedParams[param.id]}
-                                                            onCheckedChange={() => toggleLink(param.id)}
+                                                            checked={linkedParams.margePercentage}
+                                                            onCheckedChange={() => toggleLink('margePercentage')}
                                                         />
                                                     </TableCell>
                                                     {activePresses.map(press => (
                                                         <TableCell key={press}>
+                                                            <div className="flex gap-2">
+                                                                <Input
+                                                                    type="text"
+                                                                    placeholder="%"
+                                                                    className="h-8"
+                                                                    value={parameters[press]?.margePercentage || ''}
+                                                                    onChange={(e) => handleParameterChange(press, 'margePercentage', e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+
+                                                <TableRow>
+                                                    <TableCell className="font-medium">Opstart</TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Checkbox
+                                                            checked={linkedParams.opstart}
+                                                            onCheckedChange={() => toggleLink('opstart')}
+                                                        />
+                                                    </TableCell>
+                                                    {activePresses.map(press => (
+                                                        <TableCell key={press} className="text-center">
                                                             <Input
                                                                 type="number"
                                                                 className="h-8"
-                                                                value={parameters[press]?.[param.id] || 0}
-                                                                onChange={(e) => handleParameterChange(press, param.id, Number(e.target.value))}
+                                                                value={parameters[press]?.opstart || 0}
+                                                                onChange={(e) => handleParameterChange(press, 'opstart', Number(e.target.value))}
                                                             />
                                                         </TableCell>
                                                     ))}
                                                 </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                                <div className="mt-4 flex justify-end">
-                                    <Button>Save Changes</Button>
-                                </div>
-                            </CardContent>
-                        </Card>
 
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <CardTitle>Calculated Fields</CardTitle>
-                                <Button onClick={() => handleOpenFormulaDialog()} className="gap-2">
-                                    <Plus className="w-4 h-4" />
-                                    Add Formula
-                                </Button>
-                            </CardHeader>
-                            <CardContent>
-                                {calculatedFields.length === 0 ? (
-                                    <p className="text-gray-500 text-center py-8">
-                                        No calculated fields yet. Click "Add Formula" to create one.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {calculatedFields.map((field) => (
-                                            <div key={field.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                                <div className="flex-1">
-                                                    <div className="font-medium">{field.name}</div>
-                                                    <div className="text-sm text-gray-600 font-mono">{field.formula}</div>
-                                                    <div className="text-xs text-gray-500 mt-1">
-                                                        Preview: {evaluateFormula(field.formula, finishedJobs[0])}
+                                                {[
+                                                    { id: 'param_4_4', label: '4/4' },
+                                                    { id: 'param_4_0', label: '4/0' },
+                                                    { id: 'param_1_0', label: '1/0' },
+                                                    { id: 'param_1_1', label: '1/1' },
+                                                    { id: 'param_4_1', label: '4/1' },
+                                                ].map(param => (
+                                                    <TableRow key={param.id}>
+                                                        <TableCell className="font-medium">{param.label}</TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Checkbox
+                                                                checked={linkedParams[param.id]}
+                                                                onCheckedChange={() => toggleLink(param.id)}
+                                                            />
+                                                        </TableCell>
+                                                        {activePresses.map(press => (
+                                                            <TableCell key={press}>
+                                                                <Input
+                                                                    type="number"
+                                                                    className="h-8"
+                                                                    value={parameters[press]?.[param.id] || 0}
+                                                                    onChange={(e) => handleParameterChange(press, param.id, Number(e.target.value))}
+                                                                />
+                                                            </TableCell>
+                                                        ))}
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                    <div className="mt-4 flex justify-end">
+                                        <Button>Save Changes</Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <CardTitle>Calculated Fields</CardTitle>
+                                    <Button onClick={() => handleOpenFormulaDialog()} className="gap-2">
+                                        <Plus className="w-4 h-4" />
+                                        Add Formula
+                                    </Button>
+                                </CardHeader>
+                                <CardContent>
+                                    {calculatedFields.length === 0 ? (
+                                        <p className="text-gray-500 text-center py-8">
+                                            No calculated fields yet. Click "Add Formula" to create one.
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {calculatedFields.map((field) => (
+                                                <div key={field.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                                    <div className="flex-1">
+                                                        <div className="font-medium">{field.name}</div>
+                                                        <div className="text-sm text-gray-600 font-mono">{field.formula}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">
+                                                            Preview: {evaluateFormula(field.formula, finishedJobs[0])}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleOpenFormulaDialog(field)}
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleDeleteFormula(field.id)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4 text-red-500" />
+                                                        </Button>
                                                     </div>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleOpenFormulaDialog(field)}
-                                                    >
-                                                        <Edit className="w-4 h-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleDeleteFormula(field.id)}
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-500" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-                </TabsContent>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </TabsContent>
+                )}
             </Tabs >
 
             <AddFinishedJobDialog

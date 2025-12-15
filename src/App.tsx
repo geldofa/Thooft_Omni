@@ -33,6 +33,8 @@ function MainApp() {
     fetchUserAccounts
   } = useAuth();
 
+  const activePresses = presses.filter(p => p.active && !p.archived);
+
   // Flatten grouped tasks for specific views (like Reports)
   const tasks: MaintenanceTask[] = groupedTasks.flatMap(group =>
     group.subtasks.map(subtask => ({
@@ -52,12 +54,8 @@ function MainApp() {
   const [editingGroup, setEditingTaskGroup] = useState<MaintenanceTask[] | null>(null);
 
   // State initialization
-  const [selectedPress, setSelectedPress] = useState<string>(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      return sessionStorage.getItem('selectedPress') || 'Lithoman';
-    }
-    return 'Lithoman';
-  });
+  // State initialization
+  const [selectedPress, setSelectedPress] = useState<string>('Lithoman');
 
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof sessionStorage !== 'undefined') {
@@ -73,15 +71,16 @@ function MainApp() {
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('selectedPress', selectedPress);
-    }
-  }, [selectedPress]);
+
 
   // Data fetching based on tab
   useEffect(() => {
-    if (activeTab === 'tasks') fetchTasks();
+    if (activeTab === 'tasks') {
+      fetchTasks();
+      // Reset press to first active press if available, or default
+      const firstPress = activePresses[0]?.name || 'Lithoman';
+      setSelectedPress(firstPress);
+    }
     else if (activeTab === 'logs') fetchActivityLogs();
     else if (activeTab === 'passwords') fetchUserAccounts();
   }, [activeTab, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
@@ -167,8 +166,8 @@ function MainApp() {
       for (const task of tasks) {
         if (task.id) await updateTask(task);
         else {
-          const { id, ...rest } = task;
-          await addTask({ ...rest, created: rest.created || new Date().toISOString(), updated: new Date().toISOString() });
+          const { id, created, updated, ...rest } = task;
+          await addTask(rest);
         }
       }
       setIsAddDialogOpen(false);
@@ -183,17 +182,7 @@ function MainApp() {
 
   // --- STYLING CONSTANTS ---
   // Updated p-2 to p-1 as requested
-  const pillListClass = "bg-gray-100 !h-auto p-1 rounded-xl gap-1 border border-transparent inline-flex items-center";
-  const pillTriggerClass = `
-    rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
-    !h-auto
-    !text-gray-500
-    hover:!text-black hover:!bg-gray-200
-    active:scale-95
-    data-[state=active]:!bg-white
-    data-[state=active]:!text-black
-    data-[state=active]:!shadow-md
-  `;
+
 
   if (!user) return <LoginForm />;
 
@@ -201,7 +190,7 @@ function MainApp() {
     ? groupedTasks.filter(group => group.press === user.press)
     : groupedTasks;
 
-  const activePresses = presses.filter(p => p.active && !p.archived);
+
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
@@ -219,12 +208,12 @@ function MainApp() {
             {activeTab === 'tasks' && (
               <div className="space-y-3">
                 <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="space-y-3">
-                  <TabsList className={pillListClass} style={{ height: 'auto' }}>
+                  <TabsList className="tab-pill-list">
                     {activePresses.map(press => (
                       <TabsTrigger
                         key={press.id}
                         value={press.name}
-                        className={pillTriggerClass}
+                        className="tab-pill-trigger"
                       >
                         {press.name}
                       </TabsTrigger>
@@ -305,24 +294,11 @@ function MainApp() {
               />
             )}
             {activeTab === 'drukwerken' && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
+            {activeTab === 'logs' && <ActivityLog />}
           </Suspense>
         )}
 
-        {user.role === 'user' && (
-          <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading...</div>}>
-            <MaintenanceTable
-              tasks={filteredTasks}
-              onEdit={(task: MaintenanceTask) => {
-                startTransition(() => {
-                  setEditingTask(task);
-                  setIsAddDialogOpen(true);
-                });
-              }}
-              onDelete={handleDeleteTask}
-              onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
-            />
-          </Suspense>
-        )}
+
 
         <AddMaintenanceDialog
           open={isAddDialogOpen}
@@ -344,8 +320,8 @@ function MainApp() {
 
 // Performance Profiler Callback
 function onRenderCallback(
-  id: string,
-  phase: 'mount' | 'update' | 'nested-update',
+  _id: string,
+  _phase: 'mount' | 'update' | 'nested-update',
   actualDuration: number,
   _baseDuration: number,
   _startTime: number,

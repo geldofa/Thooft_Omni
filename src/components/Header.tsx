@@ -28,16 +28,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
      - p-2 (List): Uniform 8px padding on all sides.
      - hover:!bg-gray-200: Solid hover color for visibility.
   */
-  const tabTriggerClass = `
-    rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
-    !h-auto
-    !text-gray-500
-    hover:!text-black hover:!bg-gray-200
-    active:scale-95
-    data-[state=active]:!bg-white
-    data-[state=active]:!text-black
-    data-[state=active]:!shadow-md
-  `;
+
 
   return (
     <header className="border-b border-gray-100 sticky top-0 z-50 h-20 flex items-center bg-white">
@@ -51,49 +42,44 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               onValueChange={(value) => startTransition(() => setActiveTab(value))}
               className="w-auto inline-block"
             >
-              {/* UNIFORM PADDING: p-2 */}
-              <TabsList
-                style={{ height: 'auto' }}
-                className="bg-gray-100 !h-auto p-2 rounded-xl gap-1 border border-transparent inline-flex items-center"
-              >
-
-                <TabsTrigger value="tasks" className={tabTriggerClass}>
+              <TabsList className="tab-pill-list">
+                <TabsTrigger value="tasks" className="tab-pill-trigger">
                   <ClipboardList className="w-4 h-4" /> Taken
                 </TabsTrigger>
 
-                <TabsTrigger value="drukwerken" className={tabTriggerClass}>
+                <TabsTrigger value="drukwerken" className="tab-pill-trigger">
                   <Printer className="w-4 h-4" /> Drukwerken
                 </TabsTrigger>
 
-                <TabsTrigger value="reports" className={tabTriggerClass}>
+                <TabsTrigger value="reports" className="tab-pill-trigger">
                   <Printer className="w-4 h-4" /> Rapport
                 </TabsTrigger>
 
-                <TabsTrigger value="checklist" className={tabTriggerClass}>
+                <TabsTrigger value="checklist" className="tab-pill-trigger">
                   <ListChecks className="w-4 h-4" /> Checklist
                 </TabsTrigger>
 
-                <TabsTrigger value="operators" className={tabTriggerClass}>
+                <TabsTrigger value="operators" className="tab-pill-trigger">
                   <Users className="w-4 h-4" /> Personeel
                 </TabsTrigger>
 
-                <TabsTrigger value="categories" className={tabTriggerClass}>
+                <TabsTrigger value="categories" className="tab-pill-trigger">
                   <Tags className="w-4 h-4" /> Categorieën
                 </TabsTrigger>
 
                 {user.role === 'admin' && (
-                  <TabsTrigger value="presses" className={tabTriggerClass}>
+                  <TabsTrigger value="presses" className="tab-pill-trigger">
                     <Factory className="w-4 h-4" /> Persen
                   </TabsTrigger>
                 )}
 
                 {user.role === 'admin' && (
-                  <TabsTrigger value="passwords" className={tabTriggerClass}>
+                  <TabsTrigger value="passwords" className="tab-pill-trigger">
                     <Key className="w-4 h-4" /> Accounts
                   </TabsTrigger>
                 )}
 
-                <TabsTrigger value="logs" className={tabTriggerClass}>
+                <TabsTrigger value="logs" className="tab-pill-trigger">
                   <FileText className="w-4 h-4" /> Logboek
                 </TabsTrigger>
 
@@ -105,15 +91,15 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               onValueChange={(value) => startTransition(() => setActiveTab(value))}
               className="w-auto inline-block"
             >
-              <TabsList
-                style={{ height: 'auto' }}
-                className="bg-gray-100 !h-auto p-2 rounded-xl gap-1 border border-transparent inline-flex items-center"
-              >
-                <TabsTrigger value="tasks" className={tabTriggerClass}>
+              <TabsList className="tab-pill-list">
+                <TabsTrigger value="tasks" className="tab-pill-trigger">
                   <ClipboardList className="w-4 h-4" /> Taken
                 </TabsTrigger>
-                <TabsTrigger value="drukwerken" className={tabTriggerClass}>
+                <TabsTrigger value="drukwerken" className="tab-pill-trigger">
                   <Printer className="w-4 h-4" /> Drukwerken
+                </TabsTrigger>
+                <TabsTrigger value="logs" className="tab-pill-trigger">
+                  <FileText className="w-4 h-4" /> Logboek
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -132,7 +118,11 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           </div>
 
           <button
-            onClick={logout}
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab('tasks');
+              logout();
+            }}
             className="group flex items-center gap-2 text-sm font-medium text-[#1A1A1A] hover:text-black active:scale-95 transition-all"
             title="Logout"
           >

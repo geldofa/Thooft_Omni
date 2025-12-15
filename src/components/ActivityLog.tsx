@@ -16,7 +16,7 @@ import { Search, Calendar } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function ActivityLog() {
-  const { activityLogs } = useAuth();
+  const { activityLogs, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterPress, setFilterPress] = useState<string>('all');
@@ -55,12 +55,22 @@ export function ActivityLog() {
         log.details.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesAction = filterAction === 'all' || log.action === filterAction;
-      const matchesPress = filterPress === 'all' || log.press === filterPress;
+
+      // Press filter logic
+      let matchesPress = true;
+      if (user?.role === 'press' && user.press) {
+        // Strict filtering for press users
+        matchesPress = log.press === user.press;
+      } else {
+        // Normal filtering for others
+        matchesPress = filterPress === 'all' || log.press === filterPress;
+      }
+
       const matchesEntity = filterEntity === 'all' || log.entity === filterEntity;
 
       return matchesSearch && matchesAction && matchesPress && matchesEntity;
     });
-  }, [activityLogs, searchQuery, filterAction, filterPress, filterEntity]);
+  }, [activityLogs, searchQuery, filterAction, filterPress, filterEntity, user]);
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -110,20 +120,23 @@ export function ActivityLog() {
             </Select>
           </div>
 
-          <div>
-            <Label htmlFor="filterPress" className="mb-2 block">Press</Label>
-            <Select value={filterPress} onValueChange={setFilterPress}>
-              <SelectTrigger id="filterPress">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Presses</SelectItem>
-                <SelectItem value="Lithoman">Lithoman</SelectItem>
-                <SelectItem value="C80">C80</SelectItem>
-                <SelectItem value="C818">C818</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Hide Press Filter for Press Role */}
+          {user?.role !== 'press' && (
+            <div>
+              <Label htmlFor="filterPress" className="mb-2 block">Press</Label>
+              <Select value={filterPress} onValueChange={setFilterPress}>
+                <SelectTrigger id="filterPress">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Presses</SelectItem>
+                  <SelectItem value="Lithoman">Lithoman</SelectItem>
+                  <SelectItem value="C80">C80</SelectItem>
+                  <SelectItem value="C818">C818</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="filterEntity" className="mb-2 block">Entity</Label>

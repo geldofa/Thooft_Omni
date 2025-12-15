@@ -2918,3 +2918,46 @@ html {
     scrollbar-width: none;
   }
 }
+
+/* Custom Tab Styles */
+.tab-pill-list {
+  background-color: var(--color-gray-100) !important;
+  padding: 0.5rem !important;
+  border-radius: 0.75rem !important;
+  gap: 0.5rem !important;
+  border: 1px solid transparent !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  height: auto !important;
+}
+
+.tab-pill-trigger {
+  border-radius: 0.5rem !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+  gap: 0.5rem !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease-in-out !important;
+  height: auto !important;
+  color: var(--color-gray-500) !important;
+  background-color: transparent !important;
+  border: none !important;
+  white-space: nowrap !important;
+}
+
+.tab-pill-trigger:hover {
+  color: black !important;
+  background-color: var(--color-gray-200) !important;
+}
+
+.tab-pill-trigger[data-state="active"] {
+  background-color: white !important;
+  color: black !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+.tab-pill-trigger:active {
+  transform: scale(0.95) !important;
+}
