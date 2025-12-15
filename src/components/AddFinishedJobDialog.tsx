@@ -12,6 +12,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
 import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -85,6 +86,7 @@ export function AddFinishedJobDialog({
         orderNr: '',
         orderName: '',
         version: '',
+        opmerkingen: '',
         pages: null,
         exOmw: '',
         netRun: null,
@@ -192,6 +194,10 @@ export function AddFinishedJobDialog({
                         <div className="grid grid-cols-4 items-center gap-2">
                             <Label htmlFor="version" className="text-right text-xs">Version/Katern</Label>
                             <Input id="version" value={jobFormData.version} onChange={e => setJobFormData({ ...jobFormData, version: e.target.value })} className="col-span-3 text-xs h-8" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-2">
+                            <Label htmlFor="opmerkingen" className="text-right text-xs">Opmerkingen</Label>
+                            <Textarea id="opmerkingen" value={jobFormData.opmerkingen} onChange={e => setJobFormData({ ...jobFormData, opmerkingen: e.target.value })} className="col-span-3 text-xs" />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-2">
                             <Label htmlFor="pages" className="text-right text-xs">Pages</Label>
