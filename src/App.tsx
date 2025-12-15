@@ -181,9 +181,22 @@ function MainApp() {
     }
   };
 
+  // --- STYLING CONSTANTS ---
+  // Updated p-2 to p-1 as requested
+  const pillListClass = "bg-gray-100 !h-auto p-1 rounded-xl gap-1 border border-transparent inline-flex items-center";
+  const pillTriggerClass = `
+    rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
+    !h-auto
+    !text-gray-500
+    hover:!text-black hover:!bg-gray-200
+    active:scale-95
+    data-[state=active]:!bg-white
+    data-[state=active]:!text-black
+    data-[state=active]:!shadow-md
+  `;
+
   if (!user) return <LoginForm />;
 
-  // Filter tasks for 'press' role
   const filteredTasks = user.role === 'press'
     ? groupedTasks.filter(group => group.press === user.press)
     : groupedTasks;
@@ -193,25 +206,28 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       <Toaster position="top-right" />
-      <ScrollToTop /> {/* Ensure this is used if imported */}
+      <ScrollToTop />
 
-      {/* --- NEW HEADER INTEGRATION --- */}
-      {/* The Header now handles the Navigation Tabs and Admin Actions */}
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* CHANGED py-8 to py-4 to reduce top gap */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 
-        {/* --- ADMIN / MEESTERGAST VIEW --- */}
         {(user.role === 'admin' || user.role === 'meestergast') && (
           <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading modules...</div>}>
 
-            {/* TASKS VIEW: Contains Press Selection Tabs */}
             {activeTab === 'tasks' && (
               <div className="space-y-3">
                 <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="space-y-3">
-                  <TabsList>
+                  <TabsList className={pillListClass} style={{ height: 'auto' }}>
                     {activePresses.map(press => (
-                      <TabsTrigger key={press.id} value={press.name}>{press.name}</TabsTrigger>
+                      <TabsTrigger
+                        key={press.id}
+                        value={press.name}
+                        className={pillTriggerClass}
+                      >
+                        {press.name}
+                      </TabsTrigger>
                     ))}
                   </TabsList>
 
@@ -262,7 +278,6 @@ function MainApp() {
               </div>
             )}
 
-            {/* OTHER MODULES */}
             {activeTab === 'drukwerken' && <Drukwerken presses={activePresses} />}
             {activeTab === 'reports' && <Reports tasks={tasks} />}
             {activeTab === 'checklist' && <MaintenanceChecklist tasks={tasks} />}
@@ -274,7 +289,6 @@ function MainApp() {
           </Suspense>
         )}
 
-        {/* --- PRESS ROLE VIEW --- */}
         {user.role === 'press' && (
           <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading...</div>}>
             {activeTab === 'tasks' && (
@@ -294,7 +308,6 @@ function MainApp() {
           </Suspense>
         )}
 
-        {/* --- GENERIC USER ROLE VIEW --- */}
         {user.role === 'user' && (
           <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading...</div>}>
             <MaintenanceTable
@@ -345,7 +358,6 @@ function onRenderCallback(
 }
 
 function App() {
-  // Initial demo data (kept from your original code)
   const [tasks] = useState<GroupedTask[]>([
     {
       id: '1',

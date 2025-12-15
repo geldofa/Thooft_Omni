@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PressType } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -22,8 +22,6 @@ import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AddFinishedJobDialog } from './AddFinishedJobDialog';
-
-
 
 interface Press {
     id: string;
@@ -54,12 +52,10 @@ export interface Katern {
 export interface Werkorder {
     id: string;
     orderNr: string;
-    orderName: string; // Added orderName
+    orderName: string;
     orderDate: string;
     katernen: Katern[];
 }
-
-
 
 export interface FinishedPrintJob {
     id: string;
@@ -95,7 +91,6 @@ interface CalculatedField {
 }
 
 export function Drukwerken({ presses }: { presses: Press[] }) {
-    // Get active presses for columns
     const activePresses = presses
         .filter(p => p.active && !p.archived)
         .map(p => p.name);
@@ -103,9 +98,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
 
+    // --- STYLING CONSTANTS ---
+    const pillListClass = "bg-gray-100 !h-auto p-1 rounded-xl gap-1 border border-transparent inline-flex items-center";
+    const pillTriggerClass = `
+        rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
+        !h-auto
+        !text-gray-500
+        hover:!text-black hover:!bg-gray-200
+        active:scale-95
+        data-[state=active]:!bg-white
+        data-[state=active]:!text-black
+        data-[state=active]:!shadow-md
+    `;
+
+    const inputPillClass = "bg-gray-50 border-transparent hover:bg-gray-100 focus:bg-white focus:ring-2 focus:ring-gray-200 focus:border-transparent rounded-lg transition-all duration-200 shadow-sm";
+
+    // Updated table input class to work well on both white and gray backgrounds
+    const tableInputClass = "bg-transparent border-none shadow-none hover:bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:text-black rounded-md transition-all duration-200 text-center px-1";
+
     const defaultWerkorderData: Omit<Werkorder, 'id' | 'katernen'> = {
         orderNr: '',
-        orderName: 'New Werkorder', // Provide a default name
+        orderName: 'New Werkorder',
         orderDate: new Date().toISOString().split('T')[0],
     };
 
@@ -127,18 +140,35 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         deltaPercentage: 0,
     };
 
-    const [werkorders, setWerkorders] = useState<Werkorder[]>([
+    const [werkorders, setWerkorders] = useState<Werkorder[]>(() => {
+        try {
+            const savedWerkorders = localStorage.getItem('werkorders');
+            if (savedWerkorders) {
+                return JSON.parse(savedWerkorders);
+            }
+        } catch (error) {
+            console.error("Error reading werkorders from localStorage", error);
+        }
+        return [
         {
             id: '1',
             orderNr: '0001',
-            orderName: 'Spar 2025-01', // Added default orderName
+            orderName: 'Spar 2025-01',
             orderDate: '2025-01-01',
             katernen: [
                 { id: '1-1', version: 'Nederlands - Katern 1', pages: 40, exOmw: '2', netRun: 100000, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 101000, red: 3000, delta: 0, deltaPercentage: 0 },
                 { id: '1-2', version: 'Frans - Katern 1', pages: 40, exOmw: '2', netRun: 50000, startup: false, c4_4: 1, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 50500, red: 1500, delta: 0, deltaPercentage: 0 },
             ]
         }
-    ]);
+    ]});
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('werkorders', JSON.stringify(werkorders));
+        } catch (error) {
+            console.error("Error saving werkorders to localStorage", error);
+        }
+    }, [werkorders]);
 
     const handleAddKaternClick = (werkorderId: string) => {
         handleKaternSubmit(defaultKaternToAdd, werkorderId);
@@ -155,7 +185,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const defaultKatern: Katern = {
-        id: 'new-katern-1', // Temporary ID, will be replaced with `${newWerkorder.id}-1`
+        id: 'new-katern-1',
         version: '',
         pages: null,
         exOmw: '',
@@ -177,13 +207,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         const newWerkorderId = Date.now().toString();
         const newKaternWithId: Katern = {
             ...defaultKatern,
-            id: `${newWerkorderId}-1`, // Assign a proper ID
+            id: `${newWerkorderId}-1`,
         };
 
         const newWerkorder: Werkorder = {
             ...werkorderData,
             id: newWerkorderId,
-            katernen: [newKaternWithId], // Now includes the default katern
+            katernen: [newKaternWithId],
         };
         setWerkorders([newWerkorder, ...werkorders]);
     };
@@ -196,12 +226,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         ...wo,
                         katernen: wo.katernen.map(k => {
                             if (k.id === katernId) {
-                                // For number inputs, handle empty string and convert to number
                                 if (['pages', 'netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red'].includes(field)) {
                                     const numValue = value === '' ? null : Number(value);
                                     return { ...k, [field]: numValue };
                                 }
-                                // For boolean (checkbox)
                                 if (field === 'startup') {
                                     return { ...k, [field]: Boolean(value) };
                                 }
@@ -271,7 +299,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 : katern.deltaPercentage;
 
             return {
-                id: Date.now().toString() + '-' + katern.id, // Unique ID
+                id: Date.now().toString() + '-' + katern.id,
                 date: formattedDate,
                 datum: formattedDatum,
                 orderNr: werkorder.orderNr,
@@ -291,21 +319,23 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 red: Number(calculatedRed) || 0,
                 delta_number: Number(calculatedDeltaNumber) || 0,
                 delta_percentage: Number(calculatedDeltaPercentage) || 0,
-                delta: Number(calculatedDeltaNumber) || 0, // Assuming delta is delta_number
-                performance: '100%' // Placeholder
+                delta: Number(calculatedDeltaNumber) || 0,
+                performance: '100%'
             };
         });
 
         setFinishedJobs(prevJobs => [...newFinishedJobs, ...prevJobs]);
-        // Optionally, remove the werkorder from the current list after saving
-        // setWerkorders(prevWerkorders => prevWerkorders.filter(wo => wo.id !== werkorder.id));
     };
 
-
-
-
-    // Parameters state - one set per press
     const [parameters, setParameters] = useState<Record<string, Record<string, any>>>(() => {
+        try {
+            const saved = localStorage.getItem('parameters');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (error) {
+            console.error("Error reading parameters from localStorage", error);
+        }
         const initial: Record<string, Record<string, any>> = {};
         activePresses.forEach(press => {
             initial[press] = {
@@ -322,10 +352,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return initial;
     });
 
-    // Helper to get formula for a specific column
+    useEffect(() => {
+        try {
+            localStorage.setItem('parameters', JSON.stringify(parameters));
+        } catch (error) {
+            console.error("Error saving parameters to localStorage", error);
+        }
+    }, [parameters]);
+
     const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage') => calculatedFields.find(f => f.targetColumn === col);
 
-    // Track which parameters are linked across presses
     const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>({
         marge: false,
         margePercentage: false,
@@ -339,14 +375,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const handleParameterChange = (press: string, param: string, value: any) => {
         if (linkedParams[param]) {
-            // Update all presses
             const updated = { ...parameters };
             activePresses.forEach(p => {
                 updated[p] = { ...updated[p], [param]: value };
             });
             setParameters(updated);
         } else {
-            // Update only this press
             setParameters({
                 ...parameters,
                 [press]: {
@@ -361,7 +395,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         const newLinked = !linkedParams[param];
         setLinkedParams({ ...linkedParams, [param]: newLinked });
 
-        // If linking, sync all presses to first press value
         if (newLinked && activePresses.length > 0) {
             const firstPressValue = parameters[activePresses[0]][param];
             const updated = { ...parameters };
@@ -372,7 +405,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
-    const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([
+    const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>(() => {
+        try {
+            const saved = localStorage.getItem('finishedJobs');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (error) {
+            console.error("Error reading finishedJobs from localStorage", error);
+        }
+        return [
         {
             id: '1',
             date: '2025-01-01',
@@ -390,8 +432,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             c1_1: 0,
             c4_1: 0,
             maxGross: 0,
-            green: 101000, // 101% of 100000
-            red: 3000,     // 3% of 100000
+            green: 101000,
+            red: 3000,
             delta_number: 0,
             delta_percentage: 0,
             delta: 0,
@@ -414,8 +456,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             c1_1: 0,
             c4_1: 0,
             maxGross: 0,
-            green: 50500, // 101% of 50000
-            red: 1500,    // 3% of 50000
+            green: 50500,
+            red: 1500,
             delta_number: 0,
             delta_percentage: 0,
             delta: 0,
@@ -438,8 +480,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             c1_1: 0,
             c4_1: 0,
             maxGross: 0,
-            green: 101000, // 101% of 100000
-            red: 3000,     // 3% of 100000
+            green: 101000,
+            red: 3000,
             delta_number: 0,
             delta_percentage: 0,
             delta: 0,
@@ -462,14 +504,22 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             c1_1: 0,
             c4_1: 0,
             maxGross: 0,
-            green: 50500, // 101% of 50000
-            red: 1500,    // 3% of 50000
+            green: 50500,
+            red: 1500,
             delta_number: 0,
             delta_percentage: 0,
             delta: 0,
             performance: '100%'
         }
-    ]);
+    ]});
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('finishedJobs', JSON.stringify(finishedJobs));
+        } catch (error) {
+            console.error("Error saving finishedJobs to localStorage", error);
+        }
+    }, [finishedJobs]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -478,11 +528,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const handleSort = (key: string) => {
         setSortConfig(current => {
             if (current?.key === key) {
-                // Toggle: asc -> desc -> null (reset)
                 if (current.direction === 'asc') {
                     return { key, direction: 'desc' };
                 } else {
-                    return null; // Reset to original order
+                    return null;
                 }
             }
             return { key, direction: 'asc' };
@@ -519,10 +568,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const handleJobSubmit = (jobData: Omit<FinishedPrintJob, 'id'>) => {
         const processedJob = processJobFormulas(jobData);
         if (editingJob) {
-            // Update existing job
             setFinishedJobs(finishedJobs.map(j => j.id === editingJob.id ? { ...processedJob, id: j.id } : j));
         } else {
-            // Add new job
             setFinishedJobs([{ ...processedJob, id: Date.now().toString() }, ...finishedJobs]);
         }
     };
@@ -575,7 +622,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             red: Number(calculatedRed) || 0,
             delta_number: Number(calculatedDeltaNumber) || 0,
             delta_percentage: Number(calculatedDeltaPercentage) || 0,
-            delta: 0 // This seems to be another delta, keeping as is for now
+            delta: 0
         };
     };
 
@@ -588,7 +635,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setFinishedJobs(finishedJobs.filter(job => job.id !== jobId));
     };
 
-    const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
+    const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>(() => {
+        try {
+            const saved = localStorage.getItem('calculatedFields');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (error) {
+            console.error("Error reading calculatedFields from localStorage", error);
+        }
+        return [
         {
             id: 'main-cost-formula',
             name: 'Max Bruto',
@@ -607,14 +663,21 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             formula: '(green + red) / maxGross',
             targetColumn: 'delta_percentage'
         }
-    ]);
+    ]});
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('calculatedFields', JSON.stringify(calculatedFields));
+        } catch (error) {
+            console.error("Error saving calculatedFields to localStorage", error);
+        }
+    }, [calculatedFields]);
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
     const [editingFormula, setEditingFormula] = useState<CalculatedField | null>(null);
     const [formulaName, setFormulaName] = useState('');
     const [currentFormula, setCurrentFormula] = useState('');
     const [targetColumn, setTargetColumn] = useState<'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage' | undefined>(undefined);
 
-    // Available fields for formula builder
     const finishedFields = [
         { key: 'pages', label: "Pagina's" },
         { key: 'exOmw', label: 'ex/omw.' },
@@ -649,25 +712,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const evaluateFormula = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern): number | string => {
         try {
-            // Return early if formula is empty
             if (!formula || !formula.trim()) {
                 return '';
             }
 
-            // Helper function for IF logic
             const IF = (condition: boolean, trueVal: any, falseVal: any) => condition ? trueVal : falseVal;
 
-            // Get parameters from the first active press (or default if none)
             const activePressName = activePresses.length > 0 ? activePresses[0] : '';
             const pressParams = activePressName ? parameters[activePressName] : {};
 
-            // Replace field names with actual values
             let evalFormula = formula;
-
-            // Helper function to escape regex special characters
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-            // Replace finished job fields
             finishedFields.forEach(field => {
                 const regex = new RegExp(escapeRegex(field.key), 'g');
                 let value: any = (job as any)[field.key];
@@ -676,27 +732,21 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     value = 0;
                 }
 
-                // Special handling for startup (Opstart)
                 if (field.key === 'startup') {
-                    // If startup is checked (true), use the Opstart parameter value
-                    // If unchecked (false), use 0
                     value = value ? (pressParams['opstart'] || 0) : 0;
                 }
 
                 evalFormula = evalFormula.replace(regex, String(value));
             });
 
-            // Replace parameter fields with actual values from the first active press
             parameterFields.forEach(field => {
                 const regex = new RegExp(escapeRegex(field.key), 'g');
-                // Map friendly parameter keys to internal state keys
                 let paramKey = field.key;
                 if (field.key === 'Marge') paramKey = 'marge';
                 if (field.key === 'Opstart') paramKey = 'opstart';
 
                 let value = pressParams[paramKey] || 0;
 
-                // Special handling for Marge percentage parsing (e.g., "4,2" -> 0.042)
                 if (paramKey === 'marge') {
                     value = (parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
                 }
@@ -704,13 +754,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 evalFormula = evalFormula.replace(regex, String(value));
             });
 
-            // Evaluate the formula safely with the IF function in scope
             const result = Function('IF', '"use strict"; return (' + evalFormula + ')')(IF);
 
-            // Format the result with thousand separators
             if (typeof result === 'number') {
                 const rounded = Math.round(result * 100) / 100;
-                // Format with dots as thousand separators (European style)
                 return rounded.toLocaleString('nl-NL', {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 2
@@ -724,29 +771,25 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
-    // Color palette for formula explanation elements - each field has a unique color (inline styles)
     const fieldColors: Record<string, { bg: string; text: string }> = {
-        // Job fields - each with distinct color
-        pages: { bg: '#dbeafe', text: '#1e40af' },      // blue
-        exOmw: { bg: '#cffafe', text: '#0e7490' },      // cyan
-        netRun: { bg: '#ccfbf1', text: '#0f766e' },     // teal
-        startup: { bg: '#d1fae5', text: '#047857' },    // emerald
-        c4_4: { bg: '#e0e7ff', text: '#4338ca' },       // indigo
-        c4_0: { bg: '#ede9fe', text: '#6d28d9' },       // violet
-        c1_0: { bg: '#f3e8ff', text: '#7c3aed' },       // purple
-        c1_1: { bg: '#fae8ff', text: '#a21caf' },       // fuchsia
-        c4_1: { bg: '#fce7f3', text: '#be185d' },       // pink
-        // Parameter fields - each with distinct color
-        Marge: { bg: '#dcfce7', text: '#15803d' },      // green
-        Opstart: { bg: '#ecfccb', text: '#4d7c0f' },    // lime
-        param_4_4: { bg: '#fef9c3', text: '#a16207' },  // yellow
-        param_4_0: { bg: '#fef3c7', text: '#b45309' },  // amber
-        param_1_0: { bg: '#ffedd5', text: '#c2410c' },  // orange
-        param_1_1: { bg: '#fee2e2', text: '#b91c1c' },  // red
-        param_4_1: { bg: '#ffe4e6', text: '#be123c' },  // rose
+        pages: { bg: '#dbeafe', text: '#1e40af' },
+        exOmw: { bg: '#cffafe', text: '#0e7490' },
+        netRun: { bg: '#ccfbf1', text: '#0f766e' },
+        startup: { bg: '#d1fae5', text: '#047857' },
+        c4_4: { bg: '#e0e7ff', text: '#4338ca' },
+        c4_0: { bg: '#ede9fe', text: '#6d28d9' },
+        c1_0: { bg: '#f3e8ff', text: '#7c3aed' },
+        c1_1: { bg: '#fae8ff', text: '#a21caf' },
+        c4_1: { bg: '#fce7f3', text: '#be185d' },
+        Marge: { bg: '#dcfce7', text: '#15803d' },
+        Opstart: { bg: '#ecfccb', text: '#4d7c0f' },
+        param_4_4: { bg: '#fef9c3', text: '#a16207' },
+        param_4_0: { bg: '#fef3c7', text: '#b45309' },
+        param_1_0: { bg: '#ffedd5', text: '#c2410c' },
+        param_1_1: { bg: '#fee2e2', text: '#b91c1c' },
+        param_4_1: { bg: '#ffe4e6', text: '#be123c' },
     };
 
-    // Generate formula explanation with colored substitutions
     const getFormulaExplanation = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern) => {
         if (!formula || !formula.trim()) return null;
 
@@ -755,7 +798,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
         const substitutions: { key: string; label: string; value: string | number; color: { bg: string; text: string } }[] = [];
 
-        // Collect job field substitutions
         finishedFields.forEach(field => {
             if (formula.includes(field.key)) {
                 let value: any = (job as any)[field.key];
@@ -771,7 +813,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             }
         });
 
-        // Collect parameter field substitutions
         parameterFields.forEach(field => {
             if (formula.includes(field.key)) {
                 let paramKey = field.key;
@@ -795,7 +836,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return substitutions;
     };
 
-    // Component to render formula result with tooltip
     const FormulaResultWithTooltip = ({
         formula,
         job,
@@ -811,10 +851,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             return <span>{result}</span>;
         }
 
-        // Build a map of field keys to their substitution info for quick lookup
         const subMap = new Map(explanation.map(sub => [sub.key, sub]));
 
-        // Render formula with colored badges - parse and replace variables with styled spans
         const renderFormulaWithBadges = () => {
             const allKeys = explanation.map(sub => sub.key).sort((a, b) => b.length - a.length);
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -931,10 +969,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     return (
         <div className="space-y-4">
             <Tabs defaultValue="werkorders" className="w-full">
-                <TabsList className="flex w-full whitespace-nowrap">
-                    <TabsTrigger value="werkorders">Werkorders</TabsTrigger>
-                    <TabsTrigger value="finished">Finished</TabsTrigger>
-                    <TabsTrigger value="parameters">Parameters</TabsTrigger>
+                <TabsList className={pillListClass} style={{ height: 'auto' }}>
+                    <TabsTrigger value="werkorders" className={pillTriggerClass}>Werkorders</TabsTrigger>
+                    <TabsTrigger value="finished" className={pillTriggerClass}>Finished</TabsTrigger>
+                    <TabsTrigger value="parameters" className={pillTriggerClass}>Parameters</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="werkorders">
@@ -951,12 +989,21 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     <div className="flex justify-between items-center mb-4">
                                         <div className="flex gap-4 w-full items-end">
                                             <div className="flex flex-col items-center">
-                                                <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} readOnly style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Label className="mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nr</Label>
+                                                <Input
+                                                    value={`DT ${wo.orderNr}`}
+                                                    readOnly
+                                                    style={{ width: '85px' }}
+                                                    className={`text-center font-bold ${inputPillClass}`}
+                                                />
                                             </div>
                                             <div className="flex-1">
-                                                <Label className="pl-3">Order</Label>
-                                                <Input value={wo.orderName} readOnly className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Label className="pl-1 mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Order Name</Label>
+                                                <Input
+                                                    value={wo.orderName}
+                                                    readOnly
+                                                    className={`w-full font-medium ${inputPillClass}`}
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -968,12 +1015,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableHead style={{ width: '40px' }} className="text-center">Pagina's</TableHead>
                                                 <TableHead style={{ width: '100px' }} className="text-center">Ex/Omw.</TableHead>
                                                 <TableHead style={{ width: '100px' }}>Oplage</TableHead>
-                                                <TableHead style={{ width: '60px' }}>Opstart</TableHead>
-                                                <TableHead style={{ width: '40px' }} className="text-center">4/4</TableHead>
-                                                <TableHead style={{ width: '40px' }} className="text-center">4/0</TableHead>
-                                                <TableHead style={{ width: '40px' }} className="text-center">1/0</TableHead>
-                                                <TableHead style={{ width: '40px' }} className="text-center">1/1</TableHead>
-                                                <TableHead style={{ width: '40px' }} className="text-center">4/1</TableHead>
+
+                                                {/* ADDED GRAY BACKGROUND TO HEADERS */}
+                                                <TableHead style={{ width: '60px' }} className="bg-gray-100 text-center">Opstart</TableHead>
+                                                <TableHead style={{ width: '40px' }} className="bg-gray-100 text-center">4/4</TableHead>
+                                                <TableHead style={{ width: '40px' }} className="bg-gray-100 text-center">4/0</TableHead>
+                                                <TableHead style={{ width: '40px' }} className="bg-gray-100 text-center">1/0</TableHead>
+                                                <TableHead style={{ width: '40px' }} className="bg-gray-100 text-center">1/1</TableHead>
+                                                <TableHead style={{ width: '40px' }} className="bg-gray-100 text-center">4/1</TableHead>
+
                                                 <TableHead style={{ width: '100px' }} className="text-center">Max Bruto</TableHead>
                                                 <TableHead style={{ width: '100px' }} className="text-center">Groen</TableHead>
                                                 <TableHead style={{ width: '100px' }} className="text-center">Rood</TableHead>
@@ -988,27 +1038,30 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 const evaluatedMaxGrossStr = maxGrossFormula ? evaluateFormula(maxGrossFormula.formula, katern) : String(katern.maxGross);
                                                 const numericMaxGross = evaluatedMaxGrossStr ? parseFloat(evaluatedMaxGrossStr.replace(/\./g, '').replace(',', '.')) : 0;
                                                 const katernWithCalculatedMaxGross = { ...katern, maxGross: isNaN(numericMaxGross) ? 0 : numericMaxGross };
-                                                
+
                                                 return (
                                                     <TableRow key={katern.id}>
                                                         <TableCell>{wo.orderDate}</TableCell>
-                                                        <TableCell><Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.pages ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', e.target.value)} className="text-right" /></TableCell>
-                                                        <TableCell><Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} className="w-full text-center px-0 py-0" /></TableCell>
-                                                        <TableCell><Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} className="text-right" /></TableCell>
-                                                        <TableCell><Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
+                                                        <TableCell><Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} className={`${tableInputClass} text-left`} /></TableCell>
+                                                        <TableCell className="text-center"><Input type="number" value={katern.pages ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', e.target.value)} className={`text-right ${tableInputClass}`} /></TableCell>
+                                                        <TableCell><Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} className={`w-full text-center ${tableInputClass}`} /></TableCell>
+                                                        <TableCell><Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} className={`text-right ${tableInputClass}`} /></TableCell>
+
+                                                        {/* ADDED GRAY BACKGROUND TO CELLS + INPUTS */}
+                                                        <TableCell className="text-center bg-gray-100"><Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} /></TableCell>
+                                                        <TableCell className="text-center bg-gray-100"><Input type="number" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', e.target.value)} className={tableInputClass} /></TableCell>
+                                                        <TableCell className="text-center bg-gray-100"><Input type="number" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', e.target.value)} className={tableInputClass} /></TableCell>
+                                                        <TableCell className="text-center bg-gray-100"><Input type="number" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', e.target.value)} className={tableInputClass} /></TableCell>
+                                                        <TableCell className="text-center bg-gray-100"><Input type="number" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className={tableInputClass} /></TableCell>
+                                                        <TableCell className="text-center bg-gray-100"><Input type="number" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className={tableInputClass} /></TableCell>
+
                                                         <TableCell>
                                                             {maxGrossFormula
                                                                 ? <FormulaResultWithTooltip formula={maxGrossFormula.formula} job={katern} result={evaluatedMaxGrossStr} />
                                                                 : formatNumber(katern.maxGross)}
                                                         </TableCell>
-                                                        <TableCell><Input type="number" value={katern.green ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} /></TableCell>
-                                                        <TableCell><Input type="number" value={katern.red ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} /></TableCell>
+                                                        <TableCell><Input type="number" value={katern.green ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} className={tableInputClass} /></TableCell>
+                                                        <TableCell><Input type="number" value={katern.red ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} className={tableInputClass} /></TableCell>
                                                         <TableCell>
                                                             {(() => {
                                                                 const formula = getFormulaForColumn('delta_number');
@@ -1063,7 +1116,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             <CardTitle>Finished Print Jobs</CardTitle>
                             <div className="flex gap-2 items-center">
                                 <Select value={searchField} onValueChange={setSearchField}>
-                                    <SelectTrigger className="w-[130px]">
+                                    <SelectTrigger className={`w-[130px] ${inputPillClass}`}>
                                         <SelectValue placeholder="Filter by" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1074,10 +1127,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     </SelectContent>
                                 </Select>
                                 <div className="relative">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
                                     <Input
                                         placeholder="Search..."
-                                        className="pl-8 w-[200px]"
+                                        className={`pl-8 w-[200px] ${inputPillClass}`}
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
@@ -1101,18 +1154,20 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         </TableRow>
                                         <TableRow>
                                             <TableHead onClick={() => handleSort('date')} style={{ width: '83px' }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
-                                            {/* Datum removed */}
                                             <TableHead onClick={() => handleSort('orderNr')} style={{ width: '65px' }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('orderName')} className="cursor-pointer hover:bg-gray-100 min-w-[150px] border-r"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('pages')} className="cursor-pointer hover:bg-gray-100 text-center border-r"><div className="flex items-center justify-center">Blz {getSortIcon('pages')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('exOmw')} className="cursor-pointer hover:bg-gray-100 text-center leading-3 border-r"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
                                             <TableHead onClick={() => handleSort('netRun')} className="cursor-pointer hover:bg-gray-100 text-center border-r"><div className="flex items-center justify-center">Oplage netto {getSortIcon('netRun')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
-                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black border-r"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
+
+                                            {/* UPDATED TO GRAY-100 */}
+                                            <TableHead onClick={() => handleSort('startup')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_4')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100 border border-black"><div className="flex items-center justify-center">4/4 {getSortIcon('c4_4')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_0')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100 border border-black"><div className="flex items-center justify-center">4/0 {getSortIcon('c4_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_0')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100 border border-black"><div className="flex items-center justify-center">1/0 {getSortIcon('c1_0')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c1_1')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100 border border-black"><div className="flex items-center justify-center">1/1 {getSortIcon('c1_1')}</div></TableHead>
+                                            <TableHead onClick={() => handleSort('c4_1')} className="cursor-pointer hover:bg-gray-200 text-center bg-gray-100 border border-black border-r"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
+
                                             <TableHead style={{ width: '90px' }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
                                                     <Button
@@ -1178,7 +1233,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         {sortedJobs.map((job) => (
                                             <TableRow key={job.id}>
                                                 <TableCell>{job.date}</TableCell>
-                                                {/* Datum removed */}
                                                 <TableCell>DT {job.orderNr}</TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-col">
@@ -1192,15 +1246,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableCell className="w-full text-center p-0">{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell className="w-full text-center p-0">{job.exOmw}</TableCell>
                                                 <TableCell className="w-full text-center p-0 border-r">{formatNumber(job.netRun)}</TableCell>
-                                                <TableCell className="w-full text-center p-0 bg-gray-50">
+
+                                                {/* UPDATED TO GRAY-100 */}
+                                                <TableCell className="w-full text-center p-0 bg-gray-100">
                                                     <div className="flex justify-center">
                                                         {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
                                                     </div>
-                                                </TableCell>                                                <TableCell className="w-full text-center p-0 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
-                                                <TableCell className="w-full text-center p-0 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
-                                                <TableCell className="w-full text-center p-0 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
-                                                <TableCell className="w-full text-center p-0 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
-                                                <TableCell className="w-full text-center p-0 bg-gray-50 border-r">{formatNumber(job.c4_1)}</TableCell>
+                                                </TableCell>                                                <TableCell className="w-full text-center p-0 bg-gray-100">{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell className="w-full text-center p-0 bg-gray-100">{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell className="w-full text-center p-0 bg-gray-100">{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell className="w-full text-center p-0 bg-gray-100">{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell className="w-full text-center p-0 bg-gray-100 border-r">{formatNumber(job.c4_1)}</TableCell>
+
                                                 <TableCell className="p-0 text-center">
                                                     {(() => {
                                                         const formula = getFormulaForColumn('maxGross');
@@ -1239,12 +1296,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             ? evaluateFormula(formula.formula, job)
                                                             : formatNumber(job.delta_percentage);
 
-                                                        // Format the percentage correctly
                                                         const percentageValue = typeof result === 'string'
                                                             ? parseFloat(result.replace(/\./g, '').replace(',', '.')) * 100
                                                             : result * 100;
 
-                                                        const formattedPercentage = Math.round(percentageValue * 100) / 100; // Round to 2 decimal places
+                                                        const formattedPercentage = Math.round(percentageValue * 100) / 100;
 
                                                         return formula
                                                             ? formattedPercentage + '%'
@@ -1269,7 +1325,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </CardContent>
                     </Card>
                 </TabsContent>
-
+                {/* ... Parameters Tab ... */}
                 <TabsContent value="parameters">
                     <div className="space-y-4">
                         <Card>
@@ -1303,7 +1359,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             <Input
                                                                 type="text"
                                                                 placeholder="%"
-                                                                className="h-8"
+                                                                className={`h-9 ${inputPillClass}`}
                                                                 value={parameters[press]?.margePercentage || ''}
                                                                 onChange={(e) => handleParameterChange(press, 'margePercentage', e.target.value)}
                                                             />
@@ -1324,7 +1380,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <TableCell key={press} className="text-center">
                                                         <Input
                                                             type="number"
-                                                            className="h-8"
+                                                            className={`h-9 ${inputPillClass}`}
                                                             value={parameters[press]?.opstart || 0}
                                                             onChange={(e) => handleParameterChange(press, 'opstart', Number(e.target.value))}
                                                         />
@@ -1351,7 +1407,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         <TableCell key={press}>
                                                             <Input
                                                                 type="number"
-                                                                className="h-8"
+                                                                className={`h-9 ${inputPillClass}`}
                                                                 value={parameters[press]?.[param.id] || 0}
                                                                 onChange={(e) => handleParameterChange(press, param.id, Number(e.target.value))}
                                                             />
@@ -1425,10 +1481,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 editJob={editingJob}
             />
 
-
-
-            {/* Formula Builder Dialog */}
-            < Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen} >
+            <Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">

@@ -23,6 +23,22 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
   if (!user) return null;
 
+  /* STYLE NOTES:
+     - !h-auto: Overrides default shadcn height.
+     - p-2 (List): Uniform 8px padding on all sides.
+     - hover:!bg-gray-200: Solid hover color for visibility.
+  */
+  const tabTriggerClass = `
+    rounded-lg px-4 py-2 gap-2 font-medium transition-all duration-200 ease-in-out
+    !h-auto
+    !text-gray-500
+    hover:!text-black hover:!bg-gray-200
+    active:scale-95
+    data-[state=active]:!bg-white
+    data-[state=active]:!text-black
+    data-[state=active]:!shadow-md
+  `;
+
   return (
     <header className="border-b border-gray-100 sticky top-0 z-50 h-20 flex items-center bg-white">
       <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
@@ -35,47 +51,49 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               onValueChange={(value) => startTransition(() => setActiveTab(value))}
               className="w-auto inline-block"
             >
-              <TabsList className="bg-gray-100 h-auto p-1.5 rounded-xl gap-1 border border-transparent inline-flex items-center">
+              {/* UNIFORM PADDING: p-2 */}
+              <TabsList
+                style={{ height: 'auto' }}
+                className="bg-gray-100 !h-auto p-2 rounded-xl gap-1 border border-transparent inline-flex items-center"
+              >
 
-                {/* ADDED 'active:scale-95' to all triggers below for click effect */}
-
-                <TabsTrigger value="tasks" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="tasks" className={tabTriggerClass}>
                   <ClipboardList className="w-4 h-4" /> Taken
                 </TabsTrigger>
 
-                <TabsTrigger value="drukwerken" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="drukwerken" className={tabTriggerClass}>
                   <Printer className="w-4 h-4" /> Drukwerken
                 </TabsTrigger>
 
-                <TabsTrigger value="reports" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="reports" className={tabTriggerClass}>
                   <Printer className="w-4 h-4" /> Rapport
                 </TabsTrigger>
 
-                <TabsTrigger value="checklist" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="checklist" className={tabTriggerClass}>
                   <ListChecks className="w-4 h-4" /> Checklist
                 </TabsTrigger>
 
-                <TabsTrigger value="operators" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="operators" className={tabTriggerClass}>
                   <Users className="w-4 h-4" /> Personeel
                 </TabsTrigger>
 
-                <TabsTrigger value="categories" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="categories" className={tabTriggerClass}>
                   <Tags className="w-4 h-4" /> Categorieën
                 </TabsTrigger>
 
                 {user.role === 'admin' && (
-                  <TabsTrigger value="presses" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                  <TabsTrigger value="presses" className={tabTriggerClass}>
                     <Factory className="w-4 h-4" /> Persen
                   </TabsTrigger>
                 )}
 
                 {user.role === 'admin' && (
-                  <TabsTrigger value="passwords" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                  <TabsTrigger value="passwords" className={tabTriggerClass}>
                     <Key className="w-4 h-4" /> Accounts
                   </TabsTrigger>
                 )}
 
-                <TabsTrigger value="logs" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="logs" className={tabTriggerClass}>
                   <FileText className="w-4 h-4" /> Logboek
                 </TabsTrigger>
 
@@ -87,11 +105,14 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               onValueChange={(value) => startTransition(() => setActiveTab(value))}
               className="w-auto inline-block"
             >
-              <TabsList className="bg-gray-100 h-auto p-1.5 rounded-xl gap-1 border border-transparent inline-flex items-center">
-                <TabsTrigger value="tasks" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+              <TabsList
+                style={{ height: 'auto' }}
+                className="bg-gray-100 !h-auto p-2 rounded-xl gap-1 border border-transparent inline-flex items-center"
+              >
+                <TabsTrigger value="tasks" className={tabTriggerClass}>
                   <ClipboardList className="w-4 h-4" /> Taken
                 </TabsTrigger>
-                <TabsTrigger value="drukwerken" className="rounded-lg px-4 py-2 text-gray-600 hover:text-black active:scale-95 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm transition-all gap-2">
+                <TabsTrigger value="drukwerken" className={tabTriggerClass}>
                   <Printer className="w-4 h-4" /> Drukwerken
                 </TabsTrigger>
               </TabsList>
