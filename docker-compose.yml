@@ -1,0 +1,23 @@
+version: "3.8"
+services:
+  pocketbase-prod:
+    build:
+      context: ./backend
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb_data_prod:/pb/pb_data
+    restart: unless-stopped
+    container_name: pb_prod
+
+  pocketbase-dev:
+    build:
+      context: ./backend
+    ports:
+      - "8092:8090" # Map host 8092 to container 8090
+    volumes:
+      - ./pb_data_dev:/pb/pb_data
+      # Mount migrations locally for Dev so we can add them easily
+      - ./backend/pb_migrations:/pb/pb_migrations
+    restart: unless-stopped
+    container_name: pb_dev

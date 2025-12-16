@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import PocketBase from 'pocketbase';
+import { toast } from 'sonner';
+
+// Initialize PocketBase Client
+const PB_URL = `http://${typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'}:8090`;
+export const client = new PocketBase(PB_URL); // Export and rename to 'client' if needed, or just `pb`
+const pb = client;
+pb.autoCancellation(false);
 
 export interface GroupedTask {
   id: string;
@@ -32,9 +40,9 @@ export interface MaintenanceTask {
   nextMaintenance: Date;
   maintenanceInterval: number;
   maintenanceIntervalUnit: 'days' | 'weeks' | 'months';
-  assignedTo: string; // Deprecated: kept for backward compatibility
-  assignedToIds?: string[]; // New: Array of IDs (ploeg, operator, or external entity)
-  assignedToTypes?: ('ploeg' | 'operator' | 'external')[]; // Corresponding types
+  assignedTo: string;
+  assignedToIds?: string[];
+  assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
   opmerkingen: string;
   commentDate: Date | null;
   created: string;
@@ -45,6 +53,7 @@ export type UserRole = 'admin' | 'press' | 'meestergast' | null;
 export type PressType = string;
 
 interface User {
+  id: string;
   username: string;
   name?: string;
   role: UserRole;
@@ -71,7 +80,7 @@ export interface ExternalEntity {
 export interface Ploeg {
   id: string;
   name: string;
-  operatorIds: string[]; // Ordered list of 2-3 operator IDs
+  operatorIds: string[];
   presses: PressType[];
   active: boolean;
 }
@@ -105,9 +114,10 @@ export interface Press {
 }
 
 export interface UserAccount {
+  id: string;
   username: string;
-  name?: string; // Display name
-  password: string;
+  name?: string;
+  password?: string;
   role: UserRole;
   press?: PressType;
   operatorId?: string;
@@ -115,405 +125,488 @@ export interface UserAccount {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   operators: Operator[];
-  addOperator: (operator: Omit<Operator, 'id'>) => void;
-  updateOperator: (operator: Operator) => void;
-  deleteOperator: (id: string) => void;
+  addOperator: (operator: Omit<Operator, 'id'>) => Promise<void>;
+  updateOperator: (operator: Operator) => Promise<void>;
+  deleteOperator: (id: string) => Promise<void>;
   categories: Category[];
-  addCategory: (category: Omit<Category, 'id'>) => void;
-  updateCategory: (category: Category) => void;
-  deleteCategory: (id: string) => void;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
+  updateCategory: (category: Category) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   categoryOrder: string[];
   updateCategoryOrder: (order: string[]) => void;
   activityLogs: ActivityLog[];
-  addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => void;
+  addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
   presses: Press[];
-  addPress: (press: Omit<Press, 'id'>) => void;
-  updatePress: (press: Press) => void;
-  deletePress: (id: string) => void;
+  addPress: (press: Omit<Press, 'id'>) => Promise<void>;
+  updatePress: (press: Press) => Promise<void>;
+  deletePress: (id: string) => Promise<void>;
   userAccounts: UserAccount[];
-  changePassword: (username: string, newPassword: string) => void;
-  addUserAccount: (account: UserAccount) => void;
-  updateUserAccount: (username: string, updates: Partial<UserAccount>) => void;
-  deleteUserAccount: (username: string) => void;
+  changePassword: (username: string, newPassword: string) => Promise<void>;
+  addUserAccount: (account: UserAccount) => Promise<void>;
+  updateUserAccount: (username: string, updates: Partial<UserAccount>) => Promise<void>;
+  deleteUserAccount: (username: string) => Promise<void>;
   getElevatedOperators: () => Operator[];
-  tasks: GroupedTask[]; // Added tasks to AuthContextType
-  fetchTasks: () => void;
-  fetchActivityLogs: () => void;
-  fetchUserAccounts: () => void;
-  addTask: (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => void;
+  tasks: GroupedTask[];
+  fetchTasks: () => Promise<void>;
+  fetchActivityLogs: () => Promise<void>;
+  fetchUserAccounts: () => Promise<void>;
+  addTask: (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => Promise<void>;
   updateTask: (task: MaintenanceTask) => Promise<void>;
-  deleteTask: (id: string) => void;
+  deleteTask: (id: string) => Promise<void>;
   externalEntities: ExternalEntity[];
-  addExternalEntity: (entity: Omit<ExternalEntity, 'id'>) => void;
-  updateExternalEntity: (entity: ExternalEntity) => void;
-  deleteExternalEntity: (id: string) => void;
+  addExternalEntity: (entity: Omit<ExternalEntity, 'id'>) => Promise<void>;
+  updateExternalEntity: (entity: ExternalEntity) => Promise<void>;
+  deleteExternalEntity: (id: string) => Promise<void>;
   ploegen: Ploeg[];
-  addPloeg: (ploeg: Omit<Ploeg, 'id'>) => void;
-  updatePloeg: (ploeg: Ploeg) => void;
-  deletePloeg: (id: string) => void;
+  addPloeg: (ploeg: Omit<Ploeg, 'id'>) => Promise<void>;
+  updatePloeg: (ploeg: Ploeg) => Promise<void>;
+  deletePloeg: (id: string) => Promise<void>;
+  sendFeedback: (type: string, message: string, context?: any) => Promise<boolean>;
+  fetchFeedback: () => Promise<any[]>;
+  resolveFeedback?: (id: string) => Promise<boolean>;
+  fetchParameters: () => Promise<Record<string, any>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const INITIAL_USER_ACCOUNTS: UserAccount[] = [
-  { username: 'admin', name: 'Admin User', password: 'admin123', role: 'admin' },
-  { username: 'tom', name: 'Tom Peeters', password: 'tom123', role: 'admin' },
-  { username: 'meestergast', name: 'Meestergast', password: 'mg123', role: 'meestergast' },
-  { username: 'lithoman', name: 'Lithoman Operator', password: 'litho123', role: 'press', press: 'Lithoman' },
-  { username: 'c80', name: 'C80 Operator', password: 'c80123', role: 'press', press: 'C80' },
-  { username: 'c818', name: 'C818 Operator', password: 'c818123', role: 'press', press: 'C818' }
-];
+export function AuthProvider({ children }: { children: ReactNode; tasks: GroupedTask[] }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [tasksState, setTasksState] = useState<GroupedTask[]>([]);
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]); // Preserved unused var for now
 
-export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: GroupedTask[] }) {
-  const [tasksState, setTasksState] = useState<GroupedTask[]>(tasks);
-  const [user, setUser] = useState<User | null>(() => {
-    // Initialize user from sessionStorage if available
-    if (typeof sessionStorage !== 'undefined') {
+  // Placeholders for things we haven't migrated schemas for yet or are keeping local for now
+  const [operators, setOperators] = useState<Operator[]>([]);
+  const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([]);
+  const [ploegen, setPloegen] = useState<any[]>([]); // Define proper type if needed
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
+
+  // 1. Initialize Auth
+  useEffect(() => {
+    // Check if valid auth token exists
+    if (pb.authStore.isValid) {
+      const model = pb.authStore.model;
+      if (model) {
+        setUser({
+          id: model.id,
+          username: model.username,
+          name: model.name,
+          role: 'admin', // Default to admin for the superuser
+          press: model.press
+        });
+      }
+    }
+  }, []);
+
+  // 2. Fetch Initial Data
+  const loadData = async () => {
+    try {
+      console.log('Loading Data from PocketBase...');
+
+      // Load Presses
+      const pressesResult = await pb.collection('presses').getFullList();
+      setPresses(pressesResult.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        active: p.active,
+        archived: false
+      })));
+
+      // Load Categories
+      const categoriesResult = await pb.collection('categories').getFullList();
+      setCategories(categoriesResult.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        presses: [], // Simplify for now
+        active: c.active
+      })));
+
+      await fetchTasks();
+      await fetchUserAccounts(); // Pre-load users/operators
+
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+
+    // 3. Realtime Subscriptions
+    pb.collection('maintenance_tasks').subscribe('*', function (e) {
+      console.log('Realtime task update:', e);
+      fetchTasks();
+    });
+
+    pb.collection('presses').subscribe('*', () => { loadData() });
+    pb.collection('categories').subscribe('*', () => { loadData() });
+
+    return () => {
+      pb.collection('maintenance_tasks').unsubscribe('*');
+      pb.collection('presses').unsubscribe('*');
+      pb.collection('categories').unsubscribe('*');
+    };
+  }, []);
+
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      // 1. Try Regular User Login (Collection 'users')
       try {
-        const savedUser = sessionStorage.getItem('user');
-        if (savedUser) {
-          return JSON.parse(savedUser);
+        const authData = await pb.collection('users').authWithPassword(username, password);
+        if (pb.authStore.isValid && authData.record) {
+          setUser({
+            id: authData.record.id,
+            username: authData.record.username,
+            name: authData.record.name,
+            role: authData.record.role || 'press', // Default role if missing
+            press: authData.record.press
+          });
+          return true;
         }
-      } catch (e) {
-        console.warn('Failed to load user from sessionStorage:', e);
+      } catch (userError) {
+        // Continue to try admin...
       }
-    }
-    return null;
-  });
-  const [userAccounts, setUserAccounts] = useState<UserAccount[]>(INITIAL_USER_ACCOUNTS);
 
-  const [operators, setOperators] = useState<Operator[]>([
-    {
-      id: '1',
-      employeeId: 'EMP001',
-      name: 'John Smith',
-      presses: ['Lithoman', 'C80'],
-      active: true,
-      canEditTasks: false,
-      canAccessOperatorManagement: false
-    },
-    {
-      id: '2',
-      employeeId: 'EMP002',
-      name: 'Sarah Johnson',
-      presses: ['C80', 'C818'],
-      active: true,
-      canEditTasks: true,
-      canAccessOperatorManagement: false
-    },
-    {
-      id: '3',
-      employeeId: 'EMP003',
-      name: 'Mike Chen',
-      presses: ['Lithoman'],
-      active: true,
-      canEditTasks: false,
-      canAccessOperatorManagement: false
-    },
-    {
-      id: '4',
-      employeeId: 'EMP004',
-      name: 'David Martinez',
-      presses: ['C818'],
-      active: true,
-      canEditTasks: false,
-      canAccessOperatorManagement: false
-    }
-  ]);
-
-  const [presses, setPresses] = useState<Press[]>([
-    { id: '1', name: 'Lithoman', active: true, archived: false },
-    { id: '2', name: 'C80', active: true, archived: false },
-    { id: '3', name: 'C818', active: true, archived: false }
-  ]);
-
-  const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([
-    {
-      id: '1',
-      name: 'TechSupport Inc.',
-      presses: ['Lithoman', 'C80'],
-      active: true
-    },
-    {
-      id: '2',
-      name: 'CleanCo',
-      presses: ['C818'],
-      active: true
-    }
-  ]);
-
-  const [ploegen, setPloegen] = useState<Ploeg[]>([
-    {
-      id: '1',
-      name: 'Team Alpha',
-      operatorIds: ['1', '2'],
-      presses: ['Lithoman', 'C80'],
-      active: true
-    },
-    {
-      id: '2',
-      name: 'Team Beta',
-      operatorIds: ['3', '4'],
-      presses: ['Lithoman', 'C80'],
-      active: true
-    },
-    {
-      id: '3',
-      name: 'Team Gamma',
-      operatorIds: ['1', '3'],
-      presses: ['C818'],
-      active: true
-    }
-  ]);
-
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-
-  const [categories, setCategories] = useState<Category[]>([
-    {
-      id: '1',
-      name: 'Smering',
-      presses: ['Lithoman', 'C80', 'C818'],
-      active: true
-    },
-    {
-      id: '2',
-      name: 'Reiniging',
-      presses: ['Lithoman', 'C80'],
-      active: true
-    },
-    {
-      id: '3',
-      name: 'Controle',
-      presses: ['C818'],
-      active: true
-    }
-  ]);
-
-  const [categoryOrder, setCategoryOrder] = useState<string[]>([
-    'HVAC', 'Safety', 'Mechanical', 'Electrical', 'Plumbing', 'Building', 'IT', 'Other'
-  ]);
-
-  const login = (username: string, password: string): boolean => {
-    const foundUser = userAccounts.find(
-      u => u.username === username && u.password === password
-    );
-
-    if (foundUser) {
-      const userData = {
-        username: foundUser.username,
-        name: foundUser.name, // Ensure name is passed
-        role: foundUser.role,
-        press: foundUser.press
-      };
-      setUser(userData);
-      // Persist user login state
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('user', JSON.stringify(userData));
+      // 2. Try Admin Login (Superuser)
+      try {
+        const authData: any = await pb.admins.authWithPassword(username, password);
+        if (pb.authStore.isValid && authData.admin) {
+          setUser({
+            id: authData.admin.id,
+            username: authData.admin.email,
+            name: 'Admin',
+            role: 'admin'
+          });
+          return true;
+        }
+      } catch (adminError) {
+        console.warn("Login failed for both User and Admin");
       }
-      return true;
+
+      return false;
+    } catch (e) {
+      console.error("Login failed:", e);
     }
     return false;
   };
 
   const logout = () => {
+    pb.authStore.clear();
     setUser(null);
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem('user');
+  };
+
+  // --- Data Mapping Logic ---
+
+  const fetchTasks = async () => {
+    try {
+      const records = await pb.collection('maintenance_tasks').getFullList();
+
+      // Client-side sort
+      records.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+
+      const groups: Record<string, GroupedTask> = {};
+
+      records.forEach((record: any) => {
+        const groupKey = `${record.category}-${record.press}-${record.title}`; // Unique group key
+
+        if (!groups[groupKey]) {
+          groups[groupKey] = {
+            id: record.id + '_group',
+            taskName: record.title,
+            taskSubtext: record.subtext || '',
+            category: record.category,
+            press: record.press,
+            subtasks: []
+          };
+        }
+
+        groups[groupKey].subtasks.push({
+          id: record.id,
+          subtaskName: record.title,
+          subtext: record.subtext || '',
+          lastMaintenance: record.last_maintenance ? new Date(record.last_maintenance) : null,
+          nextMaintenance: record.next_maintenance ? new Date(record.next_maintenance) : new Date(),
+          maintenanceInterval: record.interval || 0,
+          maintenanceIntervalUnit: record.interval_unit || 'days',
+          assignedTo: record.assigned_to || '',
+          comment: record.notes || '',
+          commentDate: record.updated ? new Date(record.updated) : null
+        });
+      });
+
+      setTasksState(Object.values(groups));
+
+    } catch (e) {
+      console.error("Fetch tasks failed:", e);
     }
   };
 
-  const addOperator = (operator: Omit<Operator, 'id'>) => {
-    const newOperator = {
-      ...operator,
-      id: Date.now().toString()
-    };
-    setOperators([...operators, newOperator]);
-  };
-
-  const updateOperator = (operator: Operator) => {
-    setOperators(operators.map(op => op.id === operator.id ? operator : op));
-  };
-
-  const deleteOperator = (id: string) => {
-    setOperators(operators.filter(op => op.id !== id));
-  };
-
-  const updateCategoryOrder = (order: string[]) => {
-    setCategoryOrder(order);
-  };
-
-  const addActivityLog = (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
-    const newLog: ActivityLog = {
-      ...log,
-      id: Date.now().toString(),
-      timestamp: new Date()
-    };
-    setActivityLogs([newLog, ...activityLogs]);
-  };
-
-  const addPress = (press: Omit<Press, 'id'>) => {
-    const newPress: Press = {
-      ...press,
-      id: Date.now().toString()
-    };
-    setPresses([...presses, newPress]);
-  };
-
-  const updatePress = (press: Press) => {
-    setPresses(presses.map(p => p.id === press.id ? press : p));
-  };
-
-  const deletePress = (id: string) => {
-    setPresses(presses.filter(p => p.id !== id));
-  };
-
-  const addExternalEntity = (entity: Omit<ExternalEntity, 'id'>) => {
-    const newEntity = {
-      ...entity,
-      id: Date.now().toString()
-    };
-    setExternalEntities([...externalEntities, newEntity]);
-  };
-
-  const updateExternalEntity = (entity: ExternalEntity) => {
-    setExternalEntities(externalEntities.map(e => e.id === entity.id ? entity : e));
-  };
-
-  const deleteExternalEntity = (id: string) => {
-    setExternalEntities(externalEntities.filter(e => e.id !== id));
-  };
-
-  const addPloeg = (ploeg: Omit<Ploeg, 'id'>) => {
-    const newPloeg = {
-      ...ploeg,
-      id: Date.now().toString()
-    };
-    setPloegen([...ploegen, newPloeg]);
-  };
-
-  const updatePloeg = (ploeg: Ploeg) => {
-    setPloegen(ploegen.map(p => p.id === ploeg.id ? ploeg : p));
-  };
-
-  const deletePloeg = (id: string) => {
-    setPloegen(ploegen.filter(p => p.id !== id));
-  };
-
-  const addCategory = (category: Omit<Category, 'id'>) => {
-    const newCategory = {
-      ...category,
-      id: Date.now().toString()
-    };
-    setCategories([...categories, newCategory]);
-  };
-
-  const updateCategory = (category: Category) => {
-    setCategories(categories.map(c => c.id === category.id ? category : c));
-  };
-
-  const deleteCategory = (id: string) => {
-    setCategories(categories.filter(c => c.id !== id));
-  };
-
-  const changePassword = (username: string, newPassword: string) => {
-    setUserAccounts(userAccounts.map(u =>
-      u.username === username ? { ...u, password: newPassword } : u
-    ));
-  };
-
-  const addUserAccount = (account: UserAccount) => {
-    setUserAccounts([...userAccounts, account]);
-  };
-
-  const updateUserAccount = (username: string, updates: Partial<UserAccount>) => {
-    setUserAccounts(userAccounts.map(u =>
-      u.username === username ? { ...u, ...updates } : u
-    ));
-  };
-
-  const deleteUserAccount = (username: string) => {
-    setUserAccounts(userAccounts.filter(u => u.username !== username));
-  };
-
-  const getElevatedOperators = () => {
-    return operators.filter(op => op.canEditTasks || op.canAccessOperatorManagement);
-  };
-
-  const fetchTasks = () => {
-    // Mock fetch - in a real app this would be an API call
-    console.log('Fetching tasks...');
-  };
-
-  const fetchActivityLogs = () => {
-    // Mock fetch - in a real app this would be an API call
-    console.log('Fetching activity logs...');
-  };
-
-  const fetchUserAccounts = () => {
-    // Mock fetch - in a real app this would be an API call
-    console.log('Fetching user accounts...');
-  };
-
-  const addTask = (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
-    const newGroup: GroupedTask = {
-      id: Date.now().toString(),
-      taskName: task.task,
-      taskSubtext: task.taskSubtext,
-      category: task.category,
-      press: task.press,
-      subtasks: [{
-        id: Date.now().toString() + '-1',
-        subtaskName: task.task,
+  const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
+    try {
+      await pb.collection('maintenance_tasks').create({
+        title: task.task,
         subtext: task.taskSubtext,
-        lastMaintenance: task.lastMaintenance,
-        nextMaintenance: task.nextMaintenance,
-        maintenanceInterval: task.maintenanceInterval,
-        maintenanceIntervalUnit: task.maintenanceIntervalUnit,
-        assignedTo: task.assignedTo,
-        comment: task.opmerkingen,
-        commentDate: task.commentDate
-      }]
-    };
-    setTasksState([...tasksState, newGroup]);
+        category: task.category,
+        press: task.press,
+        last_maintenance: task.lastMaintenance,
+        next_maintenance: task.nextMaintenance,
+        interval: task.maintenanceInterval,
+        interval_unit: task.maintenanceIntervalUnit,
+        assigned_to: task.assignedTo,
+        notes: task.opmerkingen
+      });
+    } catch (e) {
+      console.error("Add task failed:", e);
+      alert("Failed to save to server");
+    }
   };
 
   const updateTask = async (task: MaintenanceTask) => {
-    setTasksState(prevTasks => prevTasks.map(group => {
-      const subtaskIndex = group.subtasks.findIndex(st => st.id === task.id);
-      if (subtaskIndex !== -1) {
-        const updatedSubtasks = [...group.subtasks];
-        updatedSubtasks[subtaskIndex] = {
-          ...updatedSubtasks[subtaskIndex],
-          subtaskName: task.task,
-          subtext: task.taskSubtext,
-          lastMaintenance: task.lastMaintenance,
-          nextMaintenance: task.nextMaintenance,
-          maintenanceInterval: task.maintenanceInterval,
-          maintenanceIntervalUnit: task.maintenanceIntervalUnit,
-          assignedTo: task.assignedTo,
-          comment: task.opmerkingen,
-          commentDate: task.commentDate
-        };
-        return {
-          ...group,
-          category: task.category,
-          press: task.press,
-          subtasks: updatedSubtasks
-        };
-      }
-      return group;
-    }));
+    try {
+      await pb.collection('maintenance_tasks').update(task.id, {
+        title: task.task,
+        subtext: task.taskSubtext,
+        category: task.category,
+        press: task.press,
+        last_maintenance: task.lastMaintenance,
+        next_maintenance: task.nextMaintenance,
+        interval: task.maintenanceInterval,
+        interval_unit: task.maintenanceIntervalUnit,
+        assigned_to: task.assignedTo,
+        notes: task.opmerkingen
+      });
+    } catch (e) {
+      console.error("Update task failed:", e);
+    }
   };
 
-  const deleteTask = (id: string) => {
-    setTasksState(prevTasks => prevTasks.map(group => ({
-      ...group,
-      subtasks: group.subtasks.filter(st => st.id !== id)
-    })).filter(group => group.subtasks.length > 0));
+  const deleteTask = async (id: string) => {
+    try {
+      await pb.collection('maintenance_tasks').delete(id);
+    } catch (e) {
+      console.error("Delete task failed:", e);
+    }
   };
+
+  const sendFeedback = async (type: string, message: string, context?: any): Promise<boolean> => {
+    try {
+      await pb.collection('feedback').create({
+        type,
+        message,
+        user: user?.username || 'Anonymous',
+        status: 'new',
+        context
+      });
+      return true;
+    } catch (e) {
+      console.error("Failed to send feedback:", e);
+      return false;
+    }
+  };
+
+  const resolveFeedback = async (id: string) => {
+    try {
+      await pb.collection('feedback').update(id, {
+        status: 'closed'
+      });
+      return true;
+    } catch (e) {
+      console.error("Resolve feedback failed", e);
+      return false;
+    }
+  };
+
+  const fetchFeedback = async (): Promise<any[]> => {
+    try {
+      const records = await pb.collection('feedback').getList(1, 100);
+
+      // Client-side sort
+      records.items.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
+
+      return records.items.map((r: any) => ({
+        id: r.id,
+        type: r.type,
+        message: r.message,
+        username: r.user,
+        // Fallback or multiple access attempts for date
+        created: r.created || r.updated || (r.context && r.context.timestamp) || new Date().toISOString(),
+        status: r.status,
+        url: r.context?.url,
+        ip: r.context?.ip,
+        contact_operator: r.context?.operator
+      }));
+    } catch (e) {
+      console.error("Failed to fetch feedback:", e);
+      return [];
+    }
+  };
+
+  // --- Stubs for other entities ---
+  const addOperator = async () => { };
+  const updateOperator = async () => { };
+  const deleteOperator = async () => { };
+
+  const addCategory = async (category: Omit<Category, 'id' | 'presses'>) => {
+    try {
+      await pb.collection('categories').create({
+        name: category.name,
+        active: category.active
+      });
+    } catch (e) { console.error("Add category failed", e); }
+  };
+
+  const updateCategory = async () => { };
+  const deleteCategory = async () => { };
+  const updateCategoryOrder = async () => { };
+
+  const addActivityLog = async (log: any) => {
+    try {
+      await pb.collection('activity_logs').create({
+        action: log.action,
+        entity: log.entity,
+        details: log.details,
+        user: log.user
+      });
+    } catch (e) {/* ignore */ }
+  };
+
+  const addPress = async (press: Omit<Press, 'id'>) => {
+    try {
+      await pb.collection('presses').create({
+        name: press.name,
+        active: press.active
+      });
+    } catch (e: any) {
+      console.error("Add press failed", e);
+      toast.error(`Failed to add press: ${e.message || e}`);
+    }
+  };
+
+
+  const updatePress = async (press: Press) => {
+    try {
+      await pb.collection('presses').update(press.id, {
+        name: press.name,
+        active: press.active
+      });
+    } catch (e) {
+      console.error("Update press failed", e);
+    }
+  };
+  const deletePress = async () => { };
+  const fetchActivityLogs = async () => { };
+
+  const fetchUserAccounts = async () => {
+    try {
+      const records = await pb.collection('users').getFullList({ sort: 'username' });
+      const accounts = records.map((r: any) => ({
+        id: r.id,
+        username: r.username,
+        name: r.name,
+        role: r.role,
+        press: r.press,
+        operatorId: r.operatorId
+      }));
+      setUserAccounts(accounts);
+
+      // Populate operators for the dropdown
+      setOperators(accounts.map(a => ({
+        id: a.id,
+        name: a.name || a.username,
+        employeeId: a.id,
+        presses: [],
+        active: true,
+        canEditTasks: false,
+        canAccessOperatorManagement: false
+      })));
+    } catch (e: any) {
+      console.error("Fetch users failed", e);
+    }
+  };
+
+  const addUserAccount = async (account: UserAccount) => {
+    try {
+      await pb.collection('users').create({
+        username: account.username,
+        email: `${account.username}@example.com`,
+        name: account.name,
+        password: account.password,
+        passwordConfirm: account.password,
+        role: account.role,
+        press: account.press
+      });
+      await fetchUserAccounts();
+      toast.success(`User ${account.username} created`);
+    } catch (e: any) {
+      console.error("Add user failed", e);
+      toast.error(`Failed to add user: ${e.message || e}`);
+    }
+  };
+
+  const updateUserAccount = async (username: string, updates: Partial<UserAccount>) => {
+    try {
+      const user = userAccounts.find(u => u.username === username);
+      if (!user) throw new Error("User not found");
+
+      await pb.collection('users').update(user.id, {
+        name: updates.name,
+        role: updates.role,
+        press: updates.press
+      });
+      await fetchUserAccounts();
+      toast.success(`User ${username} updated`);
+    } catch (e: any) {
+      console.error("Update user failed", e);
+      toast.error(`Failed to update user: ${e.message || e}`);
+    }
+  };
+
+  const deleteUserAccount = async (username: string) => {
+    try {
+      const user = userAccounts.find(u => u.username === username);
+      if (!user) throw new Error("User not found");
+
+      await pb.collection('users').delete(user.id);
+      await fetchUserAccounts();
+      toast.success(`User ${username} deleted`);
+    } catch (e: any) {
+      console.error("Delete user failed", e);
+      toast.error(`Failed to delete user: ${e.message || e}`);
+    }
+  };
+
+  const changePassword = async (username: string, newPw: string) => {
+    try {
+      const user = userAccounts.find(u => u.username === username);
+      if (!user) throw new Error("User not found");
+
+      await pb.collection('users').update(user.id, {
+        password: newPw,
+        passwordConfirm: newPw
+      });
+      toast.success(`Password updated for ${username}`);
+    } catch (e: any) {
+      console.error("Change password failed", e);
+      toast.error(`Failed to change password: ${e.message || e}`);
+    }
+  };
+
+  const addExternalEntity = async () => { };
+  const updateExternalEntity = async () => { };
+  const deleteExternalEntity = async () => { };
+  const addPloeg = async () => { };
+  const updatePloeg = async () => { };
+  const deletePloeg = async () => { };
+
+  const getElevatedOperators = () => [];
+
+  const fetchParameters = async () => { return {}; };
 
   return (
     <AuthContext.Provider value={{
@@ -556,7 +649,11 @@ export function AuthProvider({ children, tasks }: { children: ReactNode; tasks: 
       updateCategory,
       deleteCategory,
       categoryOrder,
-      updateCategoryOrder
+      updateCategoryOrder,
+      sendFeedback,
+      fetchFeedback,
+      resolveFeedback,
+      fetchParameters
     }}>
       {children}
     </AuthContext.Provider>

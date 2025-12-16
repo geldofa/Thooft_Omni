@@ -18,6 +18,7 @@ const PressManagement = lazy(() => import('./components/PressManagement').then(m
 const Reports = lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
 const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
+const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({ default: m.FeedbackList })));
 
 function MainApp() {
   const {
@@ -275,6 +276,7 @@ function MainApp() {
             {activeTab === 'presses' && user.role === 'admin' && <PressManagement />}
             {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
             {activeTab === 'logs' && <ActivityLog />}
+            {activeTab === 'feedback-list' && <FeedbackList />}
           </Suspense>
         )}
 
