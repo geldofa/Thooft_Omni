@@ -83,6 +83,7 @@ export interface FinishedPrintJob {
     red: number | null;
     delta_number: number;
     delta_percentage: number;
+    opmerkingen?: string;
     delta: number;
     performance: string;
 }

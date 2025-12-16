@@ -144,14 +144,14 @@ export function AddFinishedJobDialog({
             day: 'numeric'
         });
     };
-    
+
     const handleNumericInputChange = (field: keyof Omit<FinishedPrintJob, 'id'>) => (e: React.ChangeEvent<HTMLInputElement>) => {
         setJobFormData({ ...jobFormData, [field]: e.target.value === '' ? null : Number(e.target.value) });
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editJob ? 'Edit Finished Job' : 'Add Finished Job'}</DialogTitle>
                     <DialogDescription>
@@ -159,100 +159,122 @@ export function AddFinishedJobDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="grid gap-2 py-2">
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="date" className="text-right text-xs">Date</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        className="col-span-3 justify-start text-left text-xs h-8"
-                                    >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {formatDate(jobFormData.date)}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                    <Calendar
-                                        mode="single"
-                                        selected={new Date(jobFormData.date)}
-                                        onSelect={(date) => setJobFormData({ ...jobFormData, date: date?.toISOString().split('T')[0] || '' })}
-                                        initialFocus
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="orderNr" className="text-right text-xs">Order Nr.</Label>
-                            <Input id="orderNr" value={jobFormData.orderNr} onChange={e => setJobFormData({ ...jobFormData, orderNr: e.target.value })} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="orderName" className="text-right text-xs">Order</Label>
-                            <Input id="orderName" value={jobFormData.orderName} onChange={e => setJobFormData({ ...jobFormData, orderName: e.target.value })} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="version" className="text-right text-xs">Version/Katern</Label>
-                            <Input id="version" value={jobFormData.version} onChange={e => setJobFormData({ ...jobFormData, version: e.target.value })} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="opmerkingen" className="text-right text-xs">Opmerkingen</Label>
-                            <Textarea id="opmerkingen" value={jobFormData.opmerkingen} onChange={e => setJobFormData({ ...jobFormData, opmerkingen: e.target.value })} className="col-span-3 text-xs" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="pages" className="text-right text-xs">Pages</Label>
-                            <Input id="pages" type="number" value={jobFormData.pages ?? ''} onChange={handleNumericInputChange('pages')} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="exOmw" className="text-right text-xs">Ex/Omw.</Label>
-                            <Input id="exOmw" value={jobFormData.exOmw} onChange={e => setJobFormData({ ...jobFormData, exOmw: e.target.value })} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="netRun" className="text-right text-xs">Oplage Netto</Label>
-                            <FormattedNumberInput value={jobFormData.netRun} onChange={val => setJobFormData({ ...jobFormData, netRun: val })} className="col-span-3 text-xs h-8" />
-                        </div>
-
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="startup" className="text-right text-xs">Opstart</Label>
-                            <div className="col-span-3 flex items-center">
-                                <Checkbox id="startup" checked={jobFormData.startup} onCheckedChange={c => setJobFormData({ ...jobFormData, startup: !!c })} />
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Section 1: Order Details */}
+                    <div className="bg-gray-50 p-4 rounded-md border border-gray-100">
+                        <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Order Details</h3>
+                        <div className="flex flex-wrap gap-4">
+                            <div className="w-[23%] space-y-2">
+                                <Label htmlFor="date">Date</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            className="w-full justify-start text-left text-xs h-9"
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {formatDate(jobFormData.date)}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            mode="single"
+                                            selected={new Date(jobFormData.date)}
+                                            onSelect={(date) => setJobFormData({ ...jobFormData, date: date?.toISOString().split('T')[0] || '' })}
+                                            initialFocus
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                            <div className="w-[23%] space-y-2">
+                                <Label htmlFor="orderNr">Order Nr.</Label>
+                                <Input id="orderNr" value={jobFormData.orderNr} onChange={e => setJobFormData({ ...jobFormData, orderNr: e.target.value })} className="h-9" />
+                            </div>
+                            <div className="w-[30%] space-y-2">
+                                <Label htmlFor="orderName">Order Name</Label>
+                                <Input id="orderName" value={jobFormData.orderName} onChange={e => setJobFormData({ ...jobFormData, orderName: e.target.value })} className="h-9" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="version">Version</Label>
+                                <Input id="version" value={jobFormData.version} onChange={e => setJobFormData({ ...jobFormData, version: e.target.value })} className="h-9" />
                             </div>
                         </div>
-
-                        <h3 className="font-semibold col-span-4 pt-2 text-sm">Wissels</h3>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="c4_4" className="text-right text-xs">4/4</Label>
-                            <Input id="c4_4" type="number" value={jobFormData.c4_4 ?? ''} onChange={handleNumericInputChange('c4_4')} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="c4_0" className="text-right text-xs">4/0</Label>
-                            <Input id="c4_0" type="number" value={jobFormData.c4_0 ?? ''} onChange={handleNumericInputChange('c4_0')} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="c1_0" className="text-right text-xs">1/0</Label>
-                            <Input id="c1_0" type="number" value={jobFormData.c1_0 ?? ''} onChange={handleNumericInputChange('c1_0')} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="c1_1" className="text-right text-xs">1/1</Label>
-                            <Input id="c1_1" type="number" value={jobFormData.c1_1 ?? ''} onChange={handleNumericInputChange('c1_1')} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="c4_1" className="text-right text-xs">4/1</Label>
-                            <Input id="c4_1" type="number" value={jobFormData.c4_1 ?? ''} onChange={handleNumericInputChange('c4_1')} className="col-span-3 text-xs h-8" />
-                        </div>
-
-                        <h3 className="font-semibold col-span-4 pt-2 text-sm">Resultaten</h3>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="green" className="text-right text-xs">Groen</Label>
-                            <FormattedNumberInput value={jobFormData.green} onChange={val => setJobFormData({ ...jobFormData, green: val })} className="col-span-3 text-xs h-8" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-2">
-                            <Label htmlFor="red" className="text-right text-xs">Rood</Label>
-                            <FormattedNumberInput value={jobFormData.red} onChange={val => setJobFormData({ ...jobFormData, red: val })} className="col-span-3 text-xs h-8" />
-                        </div>
-
                     </div>
-                    <DialogFooter>
+
+                    {/* Section 2: Production Specs */}
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Production Specs</h3>
+                        <div className="flex flex-wrap gap-4">
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="pages">Pagina's</Label>
+                                <Input id="pages" type="number" value={jobFormData.pages ?? ''} onChange={handleNumericInputChange('pages')} className="h-9" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="exOmw">Ex/Omw.</Label>
+                                <Input id="exOmw" value={jobFormData.exOmw} onChange={e => setJobFormData({ ...jobFormData, exOmw: e.target.value })} className="h-9" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="netRun">Oplage Netto</Label>
+                                <FormattedNumberInput value={jobFormData.netRun} onChange={val => setJobFormData({ ...jobFormData, netRun: val })} className="h-9" />
+                            </div>
+                            <div className="flex-1 flex items-end pb-2">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="startup" checked={jobFormData.startup} onCheckedChange={c => setJobFormData({ ...jobFormData, startup: !!c })} />
+                                    <Label htmlFor="startup" className="cursor-pointer">Opstart</Label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section 3: Wissels */}
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Wissels</h3>
+                        <div className="flex gap-2">
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="c4_4" className="text-xs text-center block">4/4</Label>
+                                <Input id="c4_4" type="number" value={jobFormData.c4_4 ?? ''} onChange={handleNumericInputChange('c4_4')} className="h-9 text-center px-1" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="c4_0" className="text-xs text-center block">4/0</Label>
+                                <Input id="c4_0" type="number" value={jobFormData.c4_0 ?? ''} onChange={handleNumericInputChange('c4_0')} className="h-9 text-center px-1" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="c1_0" className="text-xs text-center block">1/0</Label>
+                                <Input id="c1_0" type="number" value={jobFormData.c1_0 ?? ''} onChange={handleNumericInputChange('c1_0')} className="h-9 text-center px-1" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="c1_1" className="text-xs text-center block">1/1</Label>
+                                <Input id="c1_1" type="number" value={jobFormData.c1_1 ?? ''} onChange={handleNumericInputChange('c1_1')} className="h-9 text-center px-1" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="c4_1" className="text-xs text-center block">4/1</Label>
+                                <Input id="c4_1" type="number" value={jobFormData.c4_1 ?? ''} onChange={handleNumericInputChange('c4_1')} className="h-9 text-center px-1" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section 4: Results & Comments */}
+                    <div className="grid grid-cols-2 gap-6">
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Resultaten</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="green" className="text-green-600">Groen</Label>
+                                    <FormattedNumberInput value={jobFormData.green} onChange={val => setJobFormData({ ...jobFormData, green: val })} className="h-9" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="red" className="text-red-600">Rood</Label>
+                                    <FormattedNumberInput value={jobFormData.red} onChange={val => setJobFormData({ ...jobFormData, red: val })} className="h-9" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="opmerkingen">Opmerkingen</Label>
+                            <Textarea id="opmerkingen" value={jobFormData.opmerkingen} onChange={e => setJobFormData({ ...jobFormData, opmerkingen: e.target.value })} className="min-h-[80px]" placeholder="Add any comments..." />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="pt-4 border-t">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                         <Button type="submit">{editJob ? 'Update Job' : 'Add Job'}</Button>
                     </DialogFooter>
