@@ -3,6 +3,7 @@ import path from 'path';
 import Papa from 'papaparse';
 import PocketBase from 'pocketbase';
 
+// Changed to connect to the pocketbase-dev service (port 8092)
 const pb = new PocketBase('http://127.0.0.1:8090');
 
 async function importLithomanTasks() {
@@ -21,16 +22,8 @@ async function importLithomanTasks() {
             comments: '#', // Assuming no comments, but good to have
         });
 
-        // console.log("--- Raw PapaParse Data (first 10 rows) ---");
-        // data.slice(0, 10).forEach((row, index) => console.log(`Row ${index}:`, row));
-        // console.log("------------------------------------------");
-
         // Skip initial header rows
         const taskData = data.slice(3); // Skip first 3 rows
-
-        // console.log("--- Task Data after slice(3) (first 10 rows) ---");
-        // taskData.slice(0, 10).forEach((row, index) => console.log(`Task Data Row ${index}:`, row));
-        // console.log("--------------------------------------------------");
 
         let currentPress = "Lithoman"; // As per the file name
         let currentCategory = "";
@@ -151,7 +144,7 @@ async function importLithomanTasks() {
                     console.error(`Failed to import task "${task.title}" (Category: ${task.category}, Press: ${task.press}):`, error.response?.data || error.message);
                 }
             } else if (colB && !currentCategory) {
-                console.warn(`Skipping task "${colB}" because no category has been identified yet.`);
+                // console.warn(`Skipping task "${colB}" because no category has been identified yet.`);
             }
         }
         console.log(`Successfully imported ${tasksImportedCount} tasks.`);
