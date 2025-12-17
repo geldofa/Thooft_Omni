@@ -9,3 +9,4 @@
 
   Run `npm run dev` to start the development server.
   
+Run `npm run build:prod` to build the application for production.
