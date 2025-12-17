@@ -1,10 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate((app) => {
-  // --- STAP 1: Superuser Aanmaken (Voor toegang tot het dashboard) ---
+  // Gegevens voor zowel Superuser (Dashboard) als App User (Frontend)
   const adminEmail = "geldofa@gmail.com";
   const adminPass = "cQGNFBWI$zVV%3UV!hBqi*8Le&K3nLS!V!z&#8*zJk9z6wIaoh7OdmebJuhWuq4$";
 
+  // --- DEEL 1: Superuser Aanmaken (Dashboard Toegang) ---
   try {
     app.findAuthRecordByEmail("_superusers", adminEmail);
   } catch (e) {
@@ -16,21 +17,21 @@ migrate((app) => {
     console.log("Superuser (Dashboard) aangemaakt!");
   }
 
-  // --- STAP 2: Collecties Definiëren ---
+  // --- DEEL 2: Collecties (Database Structuur) ---
   const collections = [
     {
-      // De standaard USERS collectie (Auth)
+      // USERS (Frontend Login)
       "id": "users000000000001",
       "name": "users",
       "type": "auth",
       "fields": [
         { "name": "name", "type": "text" },
         { "name": "avatar", "type": "file" },
-        // Hier bepalen we de rechten:
         { "name": "role", "type": "select", "values": ["Admin", "Meestergast", "Operator"] }
       ]
     },
     {
+      // PERSEN
       "id": "persen000000001",
       "name": "persen",
       "type": "base",
@@ -39,9 +40,8 @@ migrate((app) => {
         { "name": "status", "type": "select", "values": ["actief", "niet actief"] }
       ]
     },
-    // 'operatoren' houden we voorlopig als lijst voor de machines, 
-    // maar login verloopt via 'users'
     {
+      // OPERATOREN (Lijst voor koppeling machines)
       "id": "operat000000001",
       "name": "operatoren",
       "type": "base",
@@ -49,11 +49,11 @@ migrate((app) => {
         { "name": "naam", "type": "text", "required": true },
         { "name": "interne_id", "type": "number", "required": true, "min": 1, "max": 99 },
         { "name": "dienstverband", "type": "select", "values": ["Intern", "Extern"] },
-        // Optioneel: Link naar een user account als ze ook kunnen inloggen
         { "name": "linked_user", "type": "relation", "collectionId": "users000000000001", "maxSelect": 1 }
       ]
     },
     {
+      // PLOEGEN
       "id": "ploegen00000001",
       "name": "ploegen",
       "type": "base",
@@ -64,6 +64,7 @@ migrate((app) => {
       ]
     },
     {
+      // CATEGORIEEN
       "id": "catego000000001",
       "name": "categorieen",
       "type": "base",
@@ -73,6 +74,7 @@ migrate((app) => {
       ]
     },
     {
+      // ONDERHOUD
       "id": "onderh000000001",
       "name": "onderhoud",
       "type": "base",
@@ -93,6 +95,7 @@ migrate((app) => {
       ]
     },
     {
+      // DRUKWERKEN
       "id": "drukw0000000001",
       "name": "drukwerken",
       "type": "base",
@@ -121,35 +124,43 @@ migrate((app) => {
 
   collections.forEach((data) => {
     try {
-      // Verwijder bestaande om conflicten te voorkomen
-      const existing = app.findCollectionByNameOrId(data.name);
-      if (existing) {
-        app.delete(existing);
-      }
+      // Hard reset van collecties als ze al bestaan
+      try {
+        const existingById = app.findCollectionByNameOrId(data.id);
+        if (existingById) app.delete(existingById);
+      } catch (e) { }
+
+      try {
+        const existingByName = app.findCollectionByNameOrId(data.name);
+        if (existingByName) app.delete(existingByName);
+      } catch (e) { }
+
     } catch (e) { }
 
     const collection = new Collection(data);
     app.save(collection);
   });
 
-  // --- STAP 3: Demo Meestergast Aanmaken ---
+  // --- DEEL 3: App Admin User (Frontend Toegang) ---
   try {
     const usersCol = app.findCollectionByNameOrId("users");
-    // Check of hij al bestaat
+
     try {
-      app.findAuthRecordByEmail("users", "geldofa@gmail.com");
+      // Check of user al bestaat
+      app.findAuthRecordByEmail("users", adminEmail);
     } catch (e) {
+      // Maak user aan met DEZELFDE credentials als de superuser
       const user = new Record(usersCol);
-      user.set("email", "geldofa@gmail.com");
-      user.setPassword("cQGNFBWI$zVV%3UV!hBqi*8Le&K3nLS!V!z&#8*zJk9z6wIaoh7OdmebJuhWuq4$"); // Wachtwoord
+      user.set("email", adminEmail);
+      user.setPassword(adminPass);
       user.set("name", "Antony Geldof");
-      user.set("role", "Admin");
+      user.set("role", "Admin"); // Rol = Admin
       user.setVerified(true);
       app.save(user);
-      console.log("Demo Admin aangemaakt!");
+      console.log("Frontend Admin user aangemaakt (hetzelfde als dashboard login)!");
     }
   } catch (e) {
-    console.log("Kon demo user niet aanmaken: " + e);
+    console.log("Fout bij aanmaken app admin: " + e);
   }
 
 }, (app) => {

@@ -3,7 +3,7 @@ import PocketBase from 'pocketbase';
 import { toast } from 'sonner';
 
 // Initialize PocketBase Client
-const PB_URL = `http://${typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'}:8090`;
+const PB_URL = import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
 export const client = new PocketBase(PB_URL); // Export and rename to 'client' if needed, or just `pb`
 const pb = client;
 pb.autoCancellation(false);
