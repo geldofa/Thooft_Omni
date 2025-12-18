@@ -274,8 +274,33 @@ export function AddMaintenanceDialog({
     };
 
     if (onUpdateGroup && initialGroup) {
-      // Handle group update
-      onUpdateGroup(initialGroup);
+      // Handle group update - Propagate core fields from the form to all tasks in the group
+      const updatedTasks = subtasks.map(st => {
+        // Find if this subtask was in the initial group to keep its ID and other fields
+        const initialTask = initialGroup.find(it => it.id === st.id);
+
+        return {
+          ...st,
+          id: st.id, // This is either an existing ID or a temp one if new
+          task: taskFormData.task,
+          taskSubtext: taskFormData.taskSubtext,
+          categoryId: taskFormData.category,
+          category: selectedCategory?.name || '',
+          pressId: taskFormData.press,
+          press: selectedPress?.name || '',
+          // Use common group dates/intervals if they were set in the main form
+          lastMaintenance: taskFormData.lastMaintenance,
+          nextMaintenance: taskFormData.nextMaintenance,
+          maintenanceInterval: taskFormData.maintenanceInterval,
+          maintenanceIntervalUnit: taskFormData.maintenanceIntervalUnit,
+          assignedTo: initialTask?.assignedTo || '',
+          opmerkingen: taskFormData.opmerkingen,
+          commentDate: taskFormData.commentDate,
+          created: initialTask?.created || new Date().toISOString(),
+          updated: new Date().toISOString()
+        } as MaintenanceTask;
+      });
+      onUpdateGroup(updatedTasks);
     } else {
       // Handle single task submission
       onSubmit(taskToSubmit);

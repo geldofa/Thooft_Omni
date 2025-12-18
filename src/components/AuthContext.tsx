@@ -187,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   // Placeholders for things we haven't migrated schemas for yet or are keeping local for now
   const [operators, setOperators] = useState<Operator[]>([]);
   const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([]);
-  const [ploegen, setPloegen] = useState<any[]>([]); // Define proper type if needed
+  const [ploegen, setPloegen] = useState<Ploeg[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
 
@@ -289,6 +289,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       const groups: Record<string, GroupedTask> = {};
 
       records.forEach((record: any) => {
+        const categoryName = categories.find(c => c.id === record.category)?.name || record.expand?.category?.naam || record.category;
+        const pressName = presses.find(p => p.id === record.pers)?.name || record.expand?.pers?.naam || record.pers;
         const groupKey = `${record.category}-${record.pers}-${record.task}`; // Unique group key
 
         if (!groups[groupKey]) {
@@ -296,9 +298,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
             id: record.id + '_group',
             taskName: record.task,
             taskSubtext: record.task_subtext || '',
-            category: record.expand?.category?.naam || record.category,
+            category: categoryName,
             categoryId: record.category,
-            press: record.expand?.pers?.naam || record.pers,
+            press: pressName,
             pressId: record.pers,
             subtasks: []
           };
@@ -457,9 +459,133 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   }, []);
 
   // --- Stubs for other entities ---
-  const addOperator = async () => { };
-  const updateOperator = async () => { };
-  const deleteOperator = async () => { };
+  const addOperator = async (operator: Omit<Operator, 'id'>) => {
+    try {
+      const pressIds = presses.filter(p => operator.presses.includes(p.name)).map(p => p.id);
+      await pb.collection('operatoren').create({
+        naam: operator.name,
+        interne_id: operator.employeeId,
+        dienstverband: 'Intern',
+        presses: pressIds,
+        active: operator.active,
+        can_edit_tasks: operator.canEditTasks,
+        can_access_management: operator.canAccessOperatorManagement
+      });
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to add operator: ${e.message}`);
+    }
+  };
+
+  const updateOperator = async (operator: Operator) => {
+    try {
+      const pressIds = presses.filter(p => operator.presses.includes(p.name)).map(p => p.id);
+      await pb.collection('operatoren').update(operator.id, {
+        naam: operator.name,
+        interne_id: operator.employeeId,
+        presses: pressIds,
+        active: operator.active,
+        can_edit_tasks: operator.canEditTasks,
+        can_access_management: operator.canAccessOperatorManagement
+      });
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to update operator: ${e.message}`);
+    }
+  };
+
+  const deleteOperator = async (id: string) => {
+    try {
+      await pb.collection('operatoren').delete(id);
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to delete operator: ${e.message}`);
+    }
+  };
+
+  const addExternalEntity = async (entity: Omit<ExternalEntity, 'id'>) => {
+    try {
+      const pressIds = presses.filter(p => entity.presses.includes(p.name)).map(p => p.id);
+      await pb.collection('operatoren').create({
+        naam: entity.name,
+        dienstverband: 'Extern',
+        presses: pressIds,
+        active: entity.active
+      });
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to add external entity: ${e.message}`);
+    }
+  };
+
+  const updateExternalEntity = async (entity: ExternalEntity) => {
+    try {
+      const pressIds = presses.filter(p => entity.presses.includes(p.name)).map(p => p.id);
+      await pb.collection('operatoren').update(entity.id, {
+        naam: entity.name,
+        presses: pressIds,
+        active: entity.active
+      });
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to update external entity: ${e.message}`);
+    }
+  };
+
+  const deleteExternalEntity = async (id: string) => {
+    try {
+      await pb.collection('operatoren').delete(id);
+      await fetchOperators();
+    } catch (e: any) {
+      toast.error(`Failed to delete external entity: ${e.message}`);
+    }
+  };
+
+  const addPloeg = async (ploeg: Omit<Ploeg, 'id'>) => {
+    try {
+      const pressId = presses.find(p => ploeg.presses.includes(p.name))?.id;
+      await pb.collection('ploegen').create({
+        naam: ploeg.name,
+        pers: pressId,
+        leden: ploeg.operatorIds,
+        active: ploeg.active
+      });
+      await fetchPloegen();
+    } catch (e: any) {
+      toast.error(`Failed to add ploeg: ${e.message}`);
+    }
+  };
+
+  const updatePloeg = async (ploeg: Ploeg) => {
+    try {
+      const pressId = presses.find(p => ploeg.presses.includes(p.name))?.id;
+      await pb.collection('ploegen').update(ploeg.id, {
+        naam: ploeg.name,
+        pers: pressId,
+        leden: ploeg.operatorIds,
+        active: ploeg.active
+      });
+      await fetchPloegen();
+    } catch (e: any) {
+      toast.error(`Failed to update ploeg: ${e.message}`);
+    }
+  };
+
+  const deletePloeg = async (id: string) => {
+    try {
+      await pb.collection('ploegen').delete(id);
+      await fetchPloegen();
+    } catch (e: any) {
+      toast.error(`Failed to delete ploeg: ${e.message}`);
+    }
+  };
+
+  const getElevatedOperators = () => {
+    return operators.filter(op => op.canAccessOperatorManagement || op.canEditTasks);
+  };
+
+  const fetchParameters = useCallback(async () => { return {}; }, []);
+  // --- Category & Press Management ---
 
   const addCategory = async (category: Omit<Category, 'id'>) => {
     try {
@@ -470,8 +596,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       });
       await loadData();
     } catch (e: any) {
-      console.error("Add category failed", e);
-      toast.error(`Failed to add category: ${e.message || e}`);
+      toast.error(`Failed to add category: ${e.message}`);
     }
   };
 
@@ -484,8 +609,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       });
       await loadData();
     } catch (e: any) {
-      console.error("Update category failed", e);
-      toast.error(`Failed to update category: ${e.message || e}`);
+      toast.error(`Failed to update category: ${e.message}`);
     }
   };
 
@@ -494,21 +618,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       await pb.collection('categorieen').delete(id);
       await loadData();
     } catch (e: any) {
-      console.error("Delete category failed", e);
-      toast.error(`Failed to delete category: ${e.message || e}`);
+      toast.error(`Failed to delete category: ${e.message}`);
     }
   };
-  const updateCategoryOrder = async () => { };
 
-  const addActivityLog = async (log: any) => {
-    try {
-      await pb.collection('activity_logs').create({
-        action: log.action,
-        entity: log.entity,
-        details: log.details,
-        user: log.user
-      });
-    } catch (e) {/* ignore */ }
+  const updateCategoryOrder = (order: string[]) => {
+    setCategoryOrder(order);
   };
 
   const addPress = async (press: Omit<Press, 'id'>) => {
@@ -517,12 +632,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         naam: press.name,
         status: press.active ? 'actief' : 'niet actief'
       });
+      await loadData();
     } catch (e: any) {
-      console.error("Add press failed", e);
-      toast.error(`Failed to add press: ${e.message || e}`);
+      toast.error(`Failed to add press: ${e.message}`);
     }
   };
-
 
   const updatePress = async (press: Press) => {
     try {
@@ -530,14 +644,23 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         naam: press.name,
         status: press.active ? 'actief' : 'niet actief'
       });
-    } catch (e) {
-      console.error("Update press failed", e);
+      await loadData();
+    } catch (e: any) {
+      toast.error(`Failed to update press: ${e.message}`);
     }
   };
-  const deletePress = async () => { };
-  const fetchActivityLogs = useCallback(async () => { }, []);
 
-  // Role mapping helpers
+  const deletePress = async (id: string) => {
+    try {
+      await pb.collection('persen').delete(id);
+      await loadData();
+    } catch (e: any) {
+      toast.error(`Failed to delete press: ${e.message}`);
+    }
+  };
+
+  // --- User Account Management ---
+
   const mapDbRoleToUi = (dbRole: string): UserRole => {
     const roleMap: Record<string, UserRole> = {
       'Admin': 'admin',
@@ -559,88 +682,72 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const fetchUserAccounts = useCallback(async () => {
     try {
       const records = await pb.collection('users').getFullList({ sort: 'username' });
-      const accounts = records.map((r: any) => ({
+      setUserAccounts(records.map((r: any) => ({
         id: r.id,
         username: r.username,
         name: r.name,
         role: mapDbRoleToUi(r.role),
         press: r.press,
         operatorId: r.operatorId
-      }));
-      setUserAccounts(accounts);
-
-      // Populate operators for the dropdown
-      setOperators(accounts.map(a => ({
-        id: a.id,
-        name: a.name || a.username,
-        employeeId: a.id,
-        presses: [],
-        active: true,
-        canEditTasks: false,
-        canAccessOperatorManagement: false
       })));
-    } catch (e: any) {
+    } catch (e) {
       console.error("Fetch users failed", e);
     }
   }, []);
 
-  // 2. Fetch Initial Data
-  const loadData = useCallback(async () => {
+  const fetchOperators = useCallback(async () => {
     try {
-      console.log('Loading Data from PocketBase...');
-
-      // Load Presses
-      const pressesResult = await pb.collection('persen').getFullList();
-      setPresses(pressesResult.map((p: any) => ({
-        id: p.id,
-        name: p.naam,
-        active: p.status === 'actief',
-        archived: false
-      })));
-
-      // Load Categories
-      const categoriesResult = await pb.collection('categorieen').getFullList();
-      setCategories(categoriesResult.map((c: any) => ({
-        id: c.id,
-        name: c.naam,
-        pressIds: c.presses || [],
-        active: c.active !== false // Default to true if not specified
-      })));
-
-      await fetchTasks();
-      await fetchUserAccounts(); // Pre-load users/operators
-
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-    }
-  }, [fetchTasks, fetchUserAccounts]);
-
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-
-    // 3. Realtime Subscriptions
-    const subscribe = async () => {
-      await pb.collection('onderhoud').subscribe('*', function (e) {
-        console.log('Realtime task update:', e);
-        fetchTasks();
+      const records = await pb.collection('operatoren').getFullList({
+        expand: 'presses'
       });
 
-      await pb.collection('persen').subscribe('*', () => { loadData() });
-      await pb.collection('categorieen').subscribe('*', () => { loadData() });
-    };
+      const ops: Operator[] = [];
+      const externals: ExternalEntity[] = [];
 
-    if (user) {
-      subscribe();
+      records.forEach((r: any) => {
+        const entity = {
+          id: r.id,
+          name: r.naam,
+          employeeId: r.interne_id?.toString() || '',
+          presses: (r.expand?.presses || []).map((p: any) => p.naam as string),
+          active: r.active !== false,
+          canEditTasks: !!r.can_edit_tasks,
+          canAccessOperatorManagement: !!r.can_access_management
+        };
+
+        if (r.dienstverband === 'Extern') {
+          externals.push(entity as ExternalEntity);
+        } else {
+          ops.push(entity as Operator);
+        }
+      });
+
+      setOperators(ops);
+      setExternalEntities(externals);
+    } catch (e) {
+      console.error("Fetch operators failed", e);
     }
+  }, []);
 
-    return () => {
-      pb.collection('onderhoud').unsubscribe('*');
-      pb.collection('persen').unsubscribe('*');
-      pb.collection('categorieen').unsubscribe('*');
-    };
-  }, [user, loadData, fetchTasks]);
+  const fetchPloegen = useCallback(async () => {
+    try {
+      const records = await pb.collection('ploegen').getFullList({
+        expand: 'pers,leden'
+      });
+
+      const teams: Ploeg[] = records.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        operatorIds: r.leden || [],
+        presses: (r.expand?.pers ? [r.expand.pers.naam] : []),
+        active: r.active !== false
+      }));
+
+      setPloegen(teams);
+    } catch (e) {
+      console.error("Fetch ploegen failed", e);
+    }
+  }, []);
 
   const addUserAccount = async (account: UserAccount) => {
     try {
@@ -656,69 +763,137 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       await fetchUserAccounts();
       toast.success(`User ${account.username} created`);
     } catch (e: any) {
-      console.error("Add user failed", e);
-      toast.error(`Failed to add user: ${e.message || e}`);
+      toast.error(`Failed to add user: ${e.message}`);
     }
   };
 
   const updateUserAccount = async (username: string, updates: Partial<UserAccount>) => {
     try {
-      const user = userAccounts.find(u => u.username === username);
-      if (!user) throw new Error("User not found");
-
-      await pb.collection('users').update(user.id, {
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("User not found");
+      await pb.collection('users').update(usr.id, {
         name: updates.name,
-        role: mapUiRoleToDb(updates.role || user.role),
+        role: mapUiRoleToDb(updates.role || usr.role),
         press: updates.press
       });
       await fetchUserAccounts();
       toast.success(`User ${username} updated`);
     } catch (e: any) {
-      console.error("Update user failed", e);
-      toast.error(`Failed to update user: ${e.message || e}`);
+      toast.error(`Failed to update user: ${e.message}`);
     }
   };
 
   const deleteUserAccount = async (username: string) => {
     try {
-      const user = userAccounts.find(u => u.username === username);
-      if (!user) throw new Error("User not found");
-
-      await pb.collection('users').delete(user.id);
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("User not found");
+      await pb.collection('users').delete(usr.id);
       await fetchUserAccounts();
       toast.success(`User ${username} deleted`);
     } catch (e: any) {
-      console.error("Delete user failed", e);
-      toast.error(`Failed to delete user: ${e.message || e}`);
+      toast.error(`Failed to delete user: ${e.message}`);
     }
   };
 
   const changePassword = async (username: string, newPw: string) => {
     try {
-      const user = userAccounts.find(u => u.username === username);
-      if (!user) throw new Error("User not found");
-
-      await pb.collection('users').update(user.id, {
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("User not found");
+      await pb.collection('users').update(usr.id, {
         password: newPw,
         passwordConfirm: newPw
       });
       toast.success(`Password updated for ${username}`);
     } catch (e: any) {
-      console.error("Change password failed", e);
-      toast.error(`Failed to change password: ${e.message || e}`);
+      toast.error(`Failed to change password: ${e.message}`);
     }
   };
 
-  const addExternalEntity = async () => { };
-  const updateExternalEntity = async () => { };
-  const deleteExternalEntity = async () => { };
-  const addPloeg = async () => { };
-  const updatePloeg = async () => { };
-  const deletePloeg = async () => { };
+  // --- Activity Logs ---
 
-  const getElevatedOperators = () => [];
+  const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
+    try {
+      await pb.collection('activity_logs').create(log);
+    } catch (e) {
+      console.error("Add log failed", e);
+    }
+  };
 
-  const fetchParameters = useCallback(async () => { return {}; }, []);
+  const fetchActivityLogs = useCallback(async () => {
+    try {
+      const records = await pb.collection('activity_logs').getFullList({ sort: '-created' });
+      setActivityLogs(records.map((r: any) => ({
+        id: r.id,
+        timestamp: new Date(r.created),
+        user: r.user,
+        action: r.action,
+        entity: r.entity,
+        entityId: r.entityId,
+        entityName: r.entityName,
+        details: r.details,
+        press: r.press
+      })));
+    } catch (e) {
+      console.error("Fetch logs failed", e);
+    }
+  }, []);
+
+
+
+  // --- Initial Loading ---
+
+  const loadData = useCallback(async () => {
+    try {
+      const [pressesResult, categoriesResult] = await Promise.all([
+        pb.collection('persen').getFullList(),
+        pb.collection('categorieen').getFullList()
+      ]);
+
+      setPresses(pressesResult.map((p: any) => ({
+        id: p.id,
+        name: p.naam,
+        active: p.status === 'actief',
+        archived: false
+      })));
+
+      setCategories(categoriesResult.map((c: any) => ({
+        id: c.id,
+        name: c.naam,
+        pressIds: c.presses || [],
+        active: c.active !== false
+      })));
+
+      await Promise.all([
+        fetchTasks(),
+        fetchUserAccounts(),
+        fetchOperators(),
+        fetchPloegen()
+      ]);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  }, [fetchTasks, fetchUserAccounts, fetchOperators, fetchPloegen]);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+      const subscribe = async () => {
+        await pb.collection('onderhoud').subscribe('*', () => fetchTasks());
+        await pb.collection('persen').subscribe('*', () => loadData());
+        await pb.collection('categorieen').subscribe('*', () => loadData());
+        await pb.collection('operatoren').subscribe('*', () => fetchOperators());
+        await pb.collection('ploegen').subscribe('*', () => fetchPloegen());
+      };
+      subscribe();
+    }
+    return () => {
+      pb.collection('onderhoud').unsubscribe('*');
+      pb.collection('persen').unsubscribe('*');
+      pb.collection('categorieen').unsubscribe('*');
+      pb.collection('operatoren').unsubscribe('*');
+      pb.collection('ploegen').unsubscribe('*');
+    };
+  }, [user, loadData, fetchTasks, fetchOperators, fetchPloegen]);
 
   return (
     <AuthContext.Provider value={{
@@ -768,7 +943,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       fetchParameters
     }}>
       {children}
-    </AuthContext.Provider>
+    </AuthContext.Provider >
   );
 }
 

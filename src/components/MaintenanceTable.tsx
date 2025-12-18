@@ -228,7 +228,17 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   }, {} as Record<string, GroupedTask[]>);
 
   // Sort categories by the custom order
-  const orderedCategories = categoryOrder.filter(cat => groupedTasksByCategory[cat]?.length > 0);
+  const orderedCategories = useMemo(() => {
+    const categoriesWithTasks = Object.keys(groupedTasksByCategory);
+    if (!categoryOrder || categoryOrder.length === 0) {
+      return categoriesWithTasks.sort();
+    }
+    // Start with items in categoryOrder that actually have tasks
+    const ordered = categoryOrder.filter(cat => groupedTasksByCategory[cat]?.length > 0);
+    // Add any categories that have tasks but are NOT in categoryOrder
+    const remaining = categoriesWithTasks.filter(cat => !categoryOrder.includes(cat));
+    return [...ordered, ...remaining];
+  }, [categoryOrder, groupedTasksByCategory]);
 
   const handleStatusFilter = (status: string) => {
     setStatusFilter(statusFilter === status ? null : status);
@@ -549,11 +559,16 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     <span>{earliestSubtask.assignedTo}</span>
                   </div>
                 </td>
-                <td className="px-3 py-1.5">
-                  <div className="max-w-xs">
-                    <div className="line-clamp-2 text-gray-600">{earliestSubtask.comment || 'Klik om toe te voegen...'}</div>
-                    {earliestSubtask.commentDate && (
-                      <div className="text-gray-400 text-xs">{formatDateTime(earliestSubtask.commentDate)}</div>
+                <td className="px-3 py-1.5" colSpan={user?.role === 'admin' ? 2 : 1}>
+                  <div className="space-y-1">
+                    {relevantSubtasks.filter(st => st.comment).map(st => (
+                      <div key={st.id} className="text-xs">
+                        <span className="font-semibold text-gray-700">{st.subtaskName}:</span> {st.comment}
+                        <span className="text-gray-400 ml-1">({formatDateTime(st.commentDate)})</span>
+                      </div>
+                    ))}
+                    {relevantSubtasks.every(st => !st.comment) && (
+                      <div className="text-gray-400 italic">Klik om toe te voegen...</div>
                     )}
                   </div>
                 </td>
@@ -670,9 +685,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Klik om toe te voegen...'}</div>
+                  <div className="text-gray-600">
+                    <span className="font-semibold">{subtask.subtaskName}</span>
+                    {subtask.subtext && <span className="text-gray-400 text-xs ml-1">({subtask.subtext})</span>}
+                  </div>
+                  <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment || 'Klik om toe te voegen...'}</div>
                   {subtask.commentDate && (
-                    <div className="text-gray-400 text-xs">{formatDateTime(subtask.commentDate)}</div>
+                    <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
                   )}
                 </div>
               </td>
@@ -774,9 +793,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Klik om toe te voegen...'}</div>
+                  <div className="text-gray-600">
+                    <span className="font-semibold">{subtask.subtaskName}</span>
+                    {subtask.subtext && <span className="text-gray-400 text-xs ml-1">({subtask.subtext})</span>}
+                  </div>
+                  <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment || 'Klik om toe te voegen...'}</div>
                   {subtask.commentDate && (
-                    <div className="text-gray-400 text-xs">{formatDateTime(subtask.commentDate)}</div>
+                    <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
                   )}
                 </div>
               </td>
@@ -932,53 +955,53 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 {/* Tasks Table */}
                 {!isCategoryCollapsed && (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr className="bg-gray-50/50 border-b border-gray-200">
-                          <SortableColumnHeader
-                            label="Taak / Subtaak"
-                            sortKey="task"
-                            className={`px-3 py-2 text-left text-gray-700 w-[20%] ${user?.role === 'admin' ? 'pl-[60px]' : 'pl-[36px]'}`}
-                          />
-                          <SortableColumnHeader
-                            label="Laatst Onderhoud"
-                            sortKey="lastMaintenance"
-                            className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                          />
-                          <SortableColumnHeader
-                            label="Volgend Onderhoud"
-                            sortKey="nextMaintenance"
-                            className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                          />
-                          {user?.role !== 'press' && (
-                            <th className="px-3 py-2 text-left text-gray-700 w-[8%]">Interval</th>
-                          )}
-                          <SortableColumnHeader
-                            label="Status"
-                            sortKey="status"
-                            className="px-3 py-2 text-left text-gray-700 w-[8%]"
-                          />
-                          <SortableColumnHeader
-                            label="Toegewezen aan"
-                            sortKey="assignedTo"
-                            className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                          />
-                          <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Opmerkingen</th>
-                          {user?.role === 'admin' && (
-                            <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Acties</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <DndContext
-                          sensors={taskSensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={(e) => handleTaskDragEnd(e, category)}
-                        >
-                          <SortableContext
-                            items={getSortedTasks(categoryGroupedTasks).map(task => task.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
+                    <DndContext
+                      sensors={taskSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(e) => handleTaskDragEnd(e, category)}
+                    >
+                      <SortableContext
+                        items={getSortedTasks(categoryGroupedTasks).map(task => task.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <table className="w-full text-sm text-left">
+                          <thead>
+                            <tr className="bg-gray-50/50 border-b border-gray-200">
+                              <SortableColumnHeader
+                                label="Taak / Subtaak"
+                                sortKey="task"
+                                className={`px-3 py-2 text-left text-gray-700 w-[20%] ${user?.role === 'admin' ? 'pl-[60px]' : 'pl-[36px]'}`}
+                              />
+                              <SortableColumnHeader
+                                label="Laatst Onderhoud"
+                                sortKey="lastMaintenance"
+                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
+                              />
+                              <SortableColumnHeader
+                                label="Volgend Onderhoud"
+                                sortKey="nextMaintenance"
+                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
+                              />
+                              {user?.role !== 'press' && (
+                                <th className="px-3 py-2 text-left text-gray-700 w-[8%]">Interval</th>
+                              )}
+                              <SortableColumnHeader
+                                label="Status"
+                                sortKey="status"
+                                className="px-3 py-2 text-left text-gray-700 w-[8%]"
+                              />
+                              <SortableColumnHeader
+                                label="Toegewezen aan"
+                                sortKey="assignedTo"
+                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
+                              />
+                              <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Opmerkingen</th>
+                              {user?.role === 'admin' && (
+                                <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Acties</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
                             {getSortedTasks(categoryGroupedTasks).map((groupedTask) => {
                               // Filter subtasks based on status
                               const relevantSubtasks = groupedTask.subtasks.filter(subtask => {
@@ -1014,10 +1037,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                                 />
                               );
                             })}
-                          </SortableContext>
-                        </DndContext>
-                      </tbody>
-                    </table>
+                          </tbody>
+                        </table>
+                      </SortableContext>
+                    </DndContext>
                   </div>
                 )}
               </div>
