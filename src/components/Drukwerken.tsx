@@ -111,7 +111,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const defaultWerkorderData: Omit<Werkorder, 'id' | 'katernen'> = {
         orderNr: '',
-        orderName: 'New Werkorder', // Provide a default name
+        orderName: 'Nieuwe Werkorder', // Provide a default name
         orderDate: new Date().toISOString().split('T')[0],
     };
 
@@ -569,7 +569,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         ? evaluateFormula(f.formula, jobWithMaxGross)
                         : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
                 }
-                const percentage = maxGrossVal !== 0 ? ((job.green + job.red) / maxGrossVal) * 100 : 0;
+                const percentage = maxGrossVal !== 0 ? (((job.green ?? 0) + (job.red ?? 0)) / maxGrossVal) * 100 : 0;
                 return percentage;
             })()
             : job.delta_percentage || 0;
@@ -971,7 +971,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     <Table className="table-fixed w-full">
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead style={{ width: '60px' }}>Order Date</TableHead>
+                                                <TableHead style={{ width: '60px' }}>Order Datum</TableHead>
                                                 <TableHead>Versie/Katern</TableHead>
                                                 <TableHead style={{ width: '55px' }} className="text-center">Pagina's</TableHead>
                                                 <TableHead style={{ width: '100px' }} className="text-center">Ex/Omw.</TableHead>
@@ -987,14 +987,14 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 <TableHead style={{ width: '100px' }} className="text-center">Rood</TableHead>
                                                 <TableHead style={{ width: '100px' }} className="text-center">Delta</TableHead>
                                                 <TableHead style={{ width: '55px' }} className="text-center">Delta %</TableHead>
-                                                <TableHead style={{ width: '100px' }}>Actions</TableHead>
+                                                <TableHead style={{ width: '100px' }}>Acties</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {wo.katernen.map((katern) => {
                                                 const maxGrossFormula = getFormulaForColumn('maxGross');
                                                 const evaluatedMaxGrossStr = maxGrossFormula ? evaluateFormula(maxGrossFormula.formula, katern) : String(katern.maxGross);
-                                                const numericMaxGross = evaluatedMaxGrossStr ? parseFloat(evaluatedMaxGrossStr.replace(/\./g, '').replace(',', '.')) : 0;
+                                                const numericMaxGross = evaluatedMaxGrossStr ? parseFloat(String(evaluatedMaxGrossStr).replace(/\./g, '').replace(',', '.')) : 0;
                                                 const katernWithCalculatedMaxGross = { ...katern, maxGross: isNaN(numericMaxGross) ? 0 : numericMaxGross };
 
                                                 return (
@@ -1053,7 +1053,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     </Table>
                                     <div className="flex justify-between items-center mt-2">
                                         <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
-                                            <Plus className="w-4 h-4 mr-1" /> Add Katern/Versie
+                                            <Plus className="w-4 h-4 mr-1" /> Katern/Versie toevoegen
                                         </Button>
                                         <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
                                             Order Opslaan
@@ -1068,23 +1068,23 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 <TabsContent value="finished">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Finished Print Jobs</CardTitle>
+                            <CardTitle>Afgewerkte Drukwerken</CardTitle>
                             <div className="flex gap-2 items-center">
                                 <Select value={searchField} onValueChange={setSearchField}>
                                     <SelectTrigger className="w-[130px]">
-                                        <SelectValue placeholder="Filter by" />
+                                        <SelectValue placeholder="Filteren op" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Fields</SelectItem>
-                                        <SelectItem value="orderNr">Order Nr</SelectItem>
-                                        <SelectItem value="orderName">Order Name</SelectItem>
-                                        <SelectItem value="date">Date</SelectItem>
+                                        <SelectItem value="all">Alle Velden</SelectItem>
+                                        <SelectItem value="orderNr">Ordernr</SelectItem>
+                                        <SelectItem value="orderName">Ordernaam</SelectItem>
+                                        <SelectItem value="date">Datum</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <div className="relative">
                                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
                                     <Input
-                                        placeholder="Search..."
+                                        placeholder="Zoeken..."
                                         className="pl-8 w-[200px]"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}

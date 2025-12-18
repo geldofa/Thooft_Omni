@@ -390,9 +390,9 @@ export function OperatorManagement() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-gray-900">Personnel Management</h2>
+          <h2 className="text-gray-900">Personeelsbeheer</h2>
           <p className="text-gray-600 mt-1">
-            Manage operators and external entities
+            Beheer operators en externe entiteiten
           </p>
         </div>
       </div>
@@ -400,7 +400,7 @@ export function OperatorManagement() {
       <Tabs defaultValue="operators" className="w-full">
         <TabsList className="tab-pill-list">
           <TabsTrigger value="operators" className="tab-pill-trigger">Operators</TabsTrigger>
-          <TabsTrigger value="external" className="tab-pill-trigger">External Entities</TabsTrigger>
+          <TabsTrigger value="external" className="tab-pill-trigger">Externe Entiteiten</TabsTrigger>
           <TabsTrigger value="ploegen" className="tab-pill-trigger">Ploegen</TabsTrigger>
         </TabsList>
 
@@ -414,19 +414,19 @@ export function OperatorManagement() {
                 onClick={() => setShowInactive(!showInactive)}
                 className={showInactive ? 'bg-gray-200 hover:bg-gray-300 text-gray-900' : 'text-gray-500'}
               >
-                {showInactive ? 'Showing Inactive' : 'Show Inactive'}
+                {showInactive ? 'Inactieve tonen' : 'Inactieve tonen'}
               </Button>
             </div>
             <div className="flex gap-2">
               {editMode && (
-                <Button onClick={handleSaveChanges}>Save Changes</Button>
+                <Button onClick={handleSaveChanges}>Wijzigingen Opslaan</Button>
               )}
               <Button onClick={() => setEditMode(!editMode)} variant="outline">
-                {editMode ? 'Cancel' : 'Edit Mode'}
+                {editMode ? 'Annuleren' : 'Bewerkmodus'}
               </Button>
               <Button onClick={() => handleOpenDialog()} className="gap-2">
                 <Plus className="w-4 h-4" />
-                Add Operator
+                Operator Toevoegen
               </Button>
             </div>
           </div>
@@ -436,19 +436,19 @@ export function OperatorManagement() {
               <TableHeader>
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">ID</TableHead>
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                   {activePresses.map(press => (
                     <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
                   ))}
                   <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
-                  {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
+                  {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Acties</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(editMode ? editedOperators : filteredOperators).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={editMode ? activePresses.length + 3 : activePresses.length + 4} className="text-center py-12 text-gray-500">
-                      No operators found.
+                      Geen operators gevonden.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -539,12 +539,12 @@ export function OperatorManagement() {
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel>Annuleren</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => handleDelete(operator.id, operator.name)}
                                     className="bg-red-500 hover:bg-red-600"
                                   >
-                                    Delete
+                                    Verwijderen
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -570,19 +570,19 @@ export function OperatorManagement() {
                 onClick={() => setShowInactive(!showInactive)}
                 className={showInactive ? 'bg-gray-200 hover:bg-gray-300 text-gray-900' : 'text-gray-500'}
               >
-                {showInactive ? 'Showing Inactive' : 'Show Inactive'}
+                {showInactive ? 'Inactieve tonen' : 'Inactieve tonen'}
               </Button>
             </div>
             <div className="flex gap-2">
               {externalEditMode && (
-                <Button onClick={handleExternalSaveChanges}>Save Changes</Button>
+                <Button onClick={handleExternalSaveChanges}>Wijzigingen Opslaan</Button>
               )}
               <Button onClick={() => setExternalEditMode(!externalEditMode)} variant="outline">
-                {externalEditMode ? 'Cancel' : 'Edit Mode'}
+                {externalEditMode ? 'Annuleren' : 'Bewerkmodus'}
               </Button>
               <Button onClick={() => handleOpenExternalDialog()} className="gap-2">
                 <Plus className="w-4 h-4" />
-                Add External Entity
+                Externe Entiteit Toevoegen
               </Button>
             </div>
           </div>
@@ -591,7 +591,7 @@ export function OperatorManagement() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                   {activePresses.map(press => (
                     <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
                   ))}
@@ -603,7 +603,7 @@ export function OperatorManagement() {
                 {(externalEditMode ? editedExternalEntities : externalEntities.filter(e => showInactive ? true : e.active)).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={externalEditMode ? activePresses.length + 2 : activePresses.length + 3} className="text-center py-12 text-gray-500">
-                      No external entities found.
+                      Geen externe entiteiten gevonden.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -677,18 +677,18 @@ export function OperatorManagement() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Entity</AlertDialogTitle>
+                                  <AlertDialogTitle>Entiteit Verwijderen</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Are you sure you want to delete "{entity.name}"? This action cannot be undone.
+                                    Weet u zeker dat u "{entity.name}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel>Annuleren</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => handleDeleteExternal(entity.id, entity.name)}
                                     className="bg-red-500 hover:bg-red-600"
                                   >
-                                    Delete
+                                    Verwijderen
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -714,7 +714,7 @@ export function OperatorManagement() {
                   checked={ploegEditMode}
                   onCheckedChange={setPloegEditMode}
                 />
-                <Label htmlFor="ploeg-edit-mode">Edit Mode</Label>
+                <Label htmlFor="ploeg-edit-mode">Bewerkmodus</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Switch
@@ -722,12 +722,12 @@ export function OperatorManagement() {
                   checked={showInactivePloegen}
                   onCheckedChange={setShowInactivePloegen}
                 />
-                <Label htmlFor="show-inactive-ploegen">Show Inactive</Label>
+                <Label htmlFor="show-inactive-ploegen">Inactieve tonen</Label>
               </div>
             </div>
             <Button onClick={() => { setEditingPloeg(null); setIsPloegDialogOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Ploeg
+              Ploeg Toevoegen
             </Button>
           </div>
 
@@ -736,15 +736,15 @@ export function OperatorManagement() {
               <TableHeader>
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">ID</TableHead>
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Members</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
+                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Leden</TableHead>
                   {activePresses.map(press => (
                     <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">
                       {press}
                     </TableHead>
                   ))}
                   <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
-                  {!ploegEditMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
+                  {!ploegEditMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Acties</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>

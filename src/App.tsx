@@ -78,13 +78,20 @@ function MainApp() {
   useEffect(() => {
     if (activeTab === 'tasks') {
       fetchTasks();
-      // Reset press to first active press if available, or default
-      const firstPress = activePresses[0]?.name || 'Lithoman';
-      setSelectedPress(firstPress);
     }
     else if (activeTab === 'logs') fetchActivityLogs();
     else if (activeTab === 'passwords') fetchUserAccounts();
   }, [activeTab, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
+
+  // Ensure a valid press is selected when they load
+  useEffect(() => {
+    if (activePresses.length > 0 && (!selectedPress || selectedPress === 'Lithoman')) {
+      const firstPress = activePresses[0].name;
+      if (selectedPress !== firstPress) {
+        setSelectedPress(firstPress);
+      }
+    }
+  }, [activePresses, selectedPress]);
 
   // Scroll position handling
   useEffect(() => {
@@ -110,12 +117,12 @@ function MainApp() {
     addTask(newTask);
     setIsAddDialogOpen(false);
     addActivityLog({
-      user: user?.name || user?.username || 'Unknown',
+      user: user?.name || user?.username || 'Onbekend',
       action: 'Created',
       entity: 'Task',
       entityId: 'new',
       entityName: task.task,
-      details: `Created new task in ${task.category}`,
+      details: `Nieuwe taak aangemaakt in ${task.category}`,
       press: task.press
     });
   };
@@ -134,12 +141,12 @@ function MainApp() {
 
       if (changes.length > 0) {
         addActivityLog({
-          user: user?.name || user?.username || 'Unknown',
+          user: user?.name || user?.username || 'Onbekend',
           action: 'Updated',
           entity: 'Task',
           entityId: task.id,
           entityName: task.task,
-          details: `Updated ${changes.join(', ')}`,
+          details: `Heeft ${changes.join(', ')} bijgewerkt`,
           press: task.press
         });
       }
@@ -151,12 +158,12 @@ function MainApp() {
     if (task) {
       deleteTask(id);
       addActivityLog({
-        user: user?.name || user?.username || 'Unknown',
+        user: user?.name || user?.username || 'Onbekend',
         action: 'Deleted',
         entity: 'Task',
         entityId: id,
         entityName: task.task,
-        details: 'Deleted task',
+        details: 'Taak verwijderd',
         press: task.press
       });
     }
@@ -174,10 +181,10 @@ function MainApp() {
       setIsAddDialogOpen(false);
       setEditingTask(null);
       setEditingTaskGroup(null);
-      toast.success('Group updated successfully');
+      toast.success('Groep succesvol bijgewerkt');
     } catch (error) {
       console.error('Failed to update group:', error);
-      toast.error('Failed to update group');
+      toast.error('Bijwerken van groep mislukt');
     }
   };
 
@@ -204,7 +211,7 @@ function MainApp() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 
         {(user.role === 'admin' || user.role === 'meestergast') && (
-          <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading modules...</div>}>
+          <Suspense fallback={<div className="p-4 text-center text-gray-500">Modules laden...</div>}>
 
             {activeTab === 'tasks' && (
               <div className="space-y-3">
@@ -281,7 +288,7 @@ function MainApp() {
         )}
 
         {user.role === 'press' && (
-          <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading...</div>}>
+          <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
             {activeTab === 'tasks' && (
               <MaintenanceTable
                 tasks={filteredTasks}

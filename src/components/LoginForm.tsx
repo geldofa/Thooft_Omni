@@ -13,28 +13,28 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (!username || !password) {
-      setError('Please enter both username and password');
+      setError('Vul a.u.b. zowel gebruikersnaam als wachtwoord in');
       return;
     }
 
-    const success = login(username, password);
+    const success = await login(username, password);
     if (!success) {
-      setError('Invalid username or password');
+      setError('Ongeldige gebruikersnaam of wachtwoord');
     }
   };
 
-  const handleDemoLogin = (demoUsername: string, demoPassword: string) => {
+  const handleDemoLogin = async (demoUsername: string, demoPassword: string) => {
     setError('');
     setUsername(demoUsername);
     setPassword(demoPassword);
-    const success = login(demoUsername, demoPassword);
+    const success = await login(demoUsername, demoPassword);
     if (!success) {
-      setError('Failed to log in with demo credentials.');
+      setError('Inloggen met demo-gegevens mislukt.');
     }
   };
 
@@ -47,9 +47,9 @@ export function LoginForm() {
               <Lock className="w-6 h-6 text-white" />
             </div>
           </div>
-          <CardTitle className="text-center">Maintenance Planning</CardTitle>
+          <CardTitle className="text-center">Onderhoudsplanning</CardTitle>
           <CardDescription className="text-center">
-            Sign in to access the maintenance planning system
+            Log in om toegang te krijgen tot de onderhoudsplanning
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -60,27 +60,27 @@ export function LoginForm() {
               </Alert>
             )}
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Gebruikersnaam</Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Enter your username"
+                placeholder="Voer uw gebruikersnaam in"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Wachtwoord</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="Voer uw wachtwoord in"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-              <p className="text-gray-600 mb-2">Demo Credentials:</p>
+              <p className="text-gray-600 mb-2">Demo Gegevens:</p>
               <div className="grid grid-cols-2 gap-2">
                 {Object.values(DEMO_USERS).map((user) => (
                   <Button
@@ -97,7 +97,7 @@ export function LoginForm() {
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full">
-              Sign In
+              Inloggen
             </Button>
           </CardFooter>
         </form>

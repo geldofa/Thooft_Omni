@@ -37,7 +37,7 @@ export function FeedbackList() {
         if (!resolveFeedback) return;
         try {
             await resolveFeedback(id);
-            toast.success("Feedback marked as resolved");
+            toast.success("Feedback gemarkeerd als opgelost");
             loadFeedback(); // Reload list
         } catch (e) {
             toast.error("Failed to update status");
@@ -70,10 +70,10 @@ export function FeedbackList() {
 
     const formatDate = (dateStr: string) => {
         try {
-            if (!dateStr) return 'Unknown date';
+            if (!dateStr) return 'Onbekende datum';
             return format(new Date(dateStr), 'PP p');
         } catch (e) {
-            return 'Invalid date';
+            return 'Ongeldige datum';
         }
     };
 
@@ -81,7 +81,7 @@ export function FeedbackList() {
         return (
             <div className="flex flex-col items-center justify-center p-12 text-gray-500">
                 <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
-                <p>Access Restricted</p>
+                <p>Toegang Beperkt</p>
             </div>
         );
     }
@@ -91,7 +91,7 @@ export function FeedbackList() {
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg font-bold flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-gray-500" />
-                    Feedback Inbox
+                    Feedback Postvak
                 </CardTitle>
             </CardHeader>
             <CardContent>
@@ -101,7 +101,7 @@ export function FeedbackList() {
                     </div>
                 ) : feedback.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
-                        No feedback received yet.
+                        Nog geen feedback ontvangen.
                     </div>
                 ) : (
                     <div className="rounded-md border">
@@ -110,9 +110,9 @@ export function FeedbackList() {
                                 <TableRow>
                                     <TableHead className="w-[50px]"></TableHead> {/* Checkbox column */}
                                     <TableHead>Type</TableHead>
-                                    <TableHead className="w-[400px]">Message</TableHead>
-                                    <TableHead>User</TableHead>
-                                    <TableHead className="text-right">Date</TableHead>
+                                    <TableHead className="w-[400px]">Bericht</TableHead>
+                                    <TableHead>Gebruiker</TableHead>
+                                    <TableHead className="text-right">Datum</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -142,7 +142,7 @@ export function FeedbackList() {
                                             {item.message}
                                         </TableCell>
                                         <TableCell className="text-sm text-gray-500">
-                                            <div className="font-medium text-gray-900">{item.username || 'Anonymous'}</div>
+                                            <div className="font-medium text-gray-900">{item.username || 'Anoniem'}</div>
                                             {item.contact_operator && (
                                                 <div className="text-xs text-blue-600">Contact: {item.contact_operator}</div>
                                             )}

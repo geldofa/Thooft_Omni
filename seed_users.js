@@ -1,6 +1,9 @@
 import PocketBase from 'pocketbase';
 
-const pb = new PocketBase('http://127.0.0.1:8090');
+// Use environment variable for PB_URL with a fallback
+const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
+const pb = new PocketBase(PB_URL);
+
 
 const users = [
     { username: 'admin', email: 'admin_user@example.com', name: 'Admin User', password: 'admin123', passwordConfirm: 'admin123', role: 'admin' },

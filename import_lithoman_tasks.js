@@ -3,8 +3,9 @@ import path from 'path';
 import Papa from 'papaparse';
 import PocketBase from 'pocketbase';
 
-// Changed to connect to the pocketbase-dev service (port 8092)
-const pb = new PocketBase('http://127.0.0.1:8090');
+// Use environment variable for PB_URL with a fallback
+const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
+const pb = new PocketBase(PB_URL);
 
 async function importLithomanTasks() {
     try {
@@ -120,20 +121,20 @@ async function importLithomanTasks() {
 
                 // Next Maintenance (colF if no group_title, colG if group_title)
                 task.next_maintenance = formatDate(row[5 + intervalOffset]);
-                
+
                 // Assigned To (colH if no group_title, colI if group_title)
                 task.assigned_to = (row[7 + intervalOffset] || '').trim();
 
                 // Notes (colI if no group_title, colJ if group_title)
                 task.notes = (row[8 + intervalOffset] || '').trim();
-                
+
                 // Remove empty fields to avoid sending null/empty strings for non-required fields
                 Object.keys(task).forEach(key => {
                     if (task[key] === null || task[key] === '' || (Array.isArray(task[key]) && task[key].length === 0)) {
                         delete task[key];
                     }
                 });
-                
+
                 // console.log("Attempting to import task:", task); // Log the task object before import
 
                 try {

@@ -190,14 +190,14 @@ export function QuickEditDialog({
 
     const updateCount = tasksToUpdate.length;
     toast.success(updateCount > 1
-      ? `Updated ${updateCount} tasks successfully`
-      : 'Task updated successfully'
+      ? `${updateCount} taken succesvol bijgewerkt`
+      : 'Taak succesvol bijgewerkt'
     );
     onOpenChange(false);
   };
 
   const formatDate = (date: Date | null) => {
-    if (!date) return 'Pick a date';
+    if (!date) return 'Kies een datum';
     const d = new Date(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -212,12 +212,12 @@ export function QuickEditDialog({
       <DialogContent className="!max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto" style={{ maxWidth: '800px' }}>
         <DialogHeader>
           <DialogTitle>
-            {field === 'lastMaintenance' ? 'Update Last Maintenance' : 'Update Opmerkingen'}
+            {field === 'lastMaintenance' ? 'Laatste Onderhoud Bijwerken' : 'Opmerkingen Bijwerken'}
           </DialogTitle>
           <DialogDescription>
             {field === 'lastMaintenance'
-              ? 'Update the last maintenance date and who performed it.'
-              : 'Update the maintenance notes.'}
+              ? 'Werk de datum van het laatste onderhoud bij en wie het heeft uitgevoerd.'
+              : 'Werk de onderhoudsnotities bij.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -225,7 +225,7 @@ export function QuickEditDialog({
           {field === 'lastMaintenance' && (
             <>
               <div className="grid gap-2">
-                <Label>Last Maintenance Date</Label>
+                <Label>Datum Laatste Onderhoud</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -251,20 +251,20 @@ export function QuickEditDialog({
               {hasSiblings && (
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between">
-                    <Label>Apply to Child Tasks</Label>
+                    <Label>Toepassen op Subtaken</Label>
                     <div className="flex gap-2">
                       <Button type="button" variant="ghost" size="sm" onClick={selectAllSiblings}>
-                        Select All
+                        Alles Selecteren
                       </Button>
                       <Button type="button" variant="ghost" size="sm" onClick={deselectAllSiblings}>
-                        Deselect All
+                        Deselecteer Alles
                       </Button>
                     </div>
                   </div>
                   <div className="border rounded-md p-3 bg-gray-50/50">
                     <div className={`grid gap-3 ${siblingTasks.length >= 4 ? 'grid-cols-4' :
-                        siblingTasks.length === 3 ? 'grid-cols-3' :
-                          'grid-cols-2'
+                      siblingTasks.length === 3 ? 'grid-cols-3' :
+                        'grid-cols-2'
                       }`}>
                       {siblingTasks.map(sibling => (
                         <div
@@ -298,7 +298,7 @@ export function QuickEditDialog({
               )}
 
               <div className="grid gap-2">
-                <Label>Assigned To</Label>
+                <Label>Toegewezen aan</Label>
                 <div className="border rounded-md p-4 max-h-[300px] overflow-y-auto space-y-4">
 
                   {/* PLOEGEN SECTION - Full Width, 3 Columns */}
@@ -338,7 +338,7 @@ export function QuickEditDialog({
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-400 italic">No ploegen available</p>
+                      <p className="text-sm text-gray-400 italic">Geen ploegen beschikbaar</p>
                     )}
                   </div>
 
@@ -366,13 +366,13 @@ export function QuickEditDialog({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-400 italic">No operators available</p>
+                        <p className="text-sm text-gray-400 italic">Geen operators beschikbaar</p>
                       )}
                     </div>
 
                     {/* EXTERNAL ENTITIES */}
                     <div className="border rounded-md p-3 bg-gray-50/50" style={{ flex: '1 1 calc(50% - 0.5rem)', minWidth: '200px' }}>
-                      <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200">External</div>
+                      <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200">Extern</div>
                       {assignees.externalEntities.length > 0 ? (
                         <div className="space-y-1">
                           {assignees.externalEntities.map(entity => (
@@ -392,14 +392,14 @@ export function QuickEditDialog({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-400 italic">No external entities</p>
+                        <p className="text-sm text-gray-400 italic">Geen externe entiteiten</p>
                       )}
                     </div>
                   </div>
 
                   {assignees.ploegen.length === 0 && assignees.operators.length === 0 && assignees.externalEntities.length === 0 && (
                     <p className="text-sm text-gray-500 text-center py-4">
-                      No assignees available for {task.press}
+                      Geen toewijzingen beschikbaar voor {task.press}
                     </p>
                   )}
                 </div>
@@ -413,19 +413,19 @@ export function QuickEditDialog({
               value={opmerkingen}
               onChange={(e) => setOpmerkingen(e.target.value)}
               rows={4}
-              placeholder="Add maintenance notes..."
+              placeholder="Onderhoudsnotities toevoegen..."
             />
           </div>
         </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Annuleren
           </Button>
           <Button type="button" onClick={handleSave}>
             {hasSiblings && selectedSiblings.size > 1
-              ? `Save Changes (${selectedSiblings.size} tasks)`
-              : 'Save Changes'
+              ? `Wijzigingen Opslaan (${selectedSiblings.size} taken)`
+              : 'Wijzigingen Opslaan'
             }
           </Button>
         </DialogFooter>

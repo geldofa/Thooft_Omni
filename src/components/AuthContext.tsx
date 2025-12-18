@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import PocketBase from 'pocketbase';
 import { toast } from 'sonner';
 
@@ -12,8 +12,10 @@ export interface GroupedTask {
   id: string;
   taskName: string;
   taskSubtext: string;
-  category: string;
-  press: PressType;
+  category: string; // Name for display
+  categoryId: string; // ID for relations
+  press: PressType; // Name for display
+  pressId: string; // ID for relations
   subtasks: Subtask[];
 }
 
@@ -34,8 +36,10 @@ export interface MaintenanceTask {
   id: string;
   task: string;
   taskSubtext: string;
-  category: string;
-  press: PressType;
+  category: string; // Name
+  categoryId: string; // ID
+  press: PressType; // Name
+  pressId: string; // ID
   lastMaintenance: Date | null;
   nextMaintenance: Date;
   maintenanceInterval: number;
@@ -45,6 +49,7 @@ export interface MaintenanceTask {
   assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
   opmerkingen: string;
   commentDate: Date | null;
+  subtasks?: { id: string; name: string; subtext: string }[];
   created: string;
   updated: string;
 }
@@ -88,7 +93,7 @@ export interface Ploeg {
 export interface Category {
   id: string;
   name: string;
-  presses: PressType[];
+  pressIds: string[];
   active: boolean;
 }
 
@@ -203,97 +208,66 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   }, []);
 
-  // 2. Fetch Initial Data
-  const loadData = async () => {
-    try {
-      console.log('Loading Data from PocketBase...');
 
-      // Load Presses
-      const pressesResult = await pb.collection('presses').getFullList();
-      setPresses(pressesResult.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        active: p.active,
-        archived: false
-      })));
-
-      // Load Categories
-      const categoriesResult = await pb.collection('categories').getFullList();
-      setCategories(categoriesResult.map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        presses: [], // Simplify for now
-        active: c.active
-      })));
-
-      await fetchTasks();
-      await fetchUserAccounts(); // Pre-load users/operators
-
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-
-    // 3. Realtime Subscriptions
-    pb.collection('maintenance_tasks').subscribe('*', function (e) {
-      console.log('Realtime task update:', e);
-      fetchTasks();
-    });
-
-    pb.collection('presses').subscribe('*', () => { loadData() });
-    pb.collection('categories').subscribe('*', () => { loadData() });
-
-    return () => {
-      pb.collection('maintenance_tasks').unsubscribe('*');
-      pb.collection('presses').unsubscribe('*');
-      pb.collection('categories').unsubscribe('*');
-    };
-  }, []);
 
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // 1. Try Regular User Login (Collection 'users')
-      try {
-        const authData = await pb.collection('users').authWithPassword(username, password);
-        if (pb.authStore.isValid && authData.record) {
-          setUser({
-            id: authData.record.id,
-            username: authData.record.username,
-            name: authData.record.name,
-            role: authData.record.role || 'press', // Default role if missing
-            press: authData.record.press
-          });
-          return true;
-        }
-      } catch (userError) {
-        // Continue to try admin...
-      }
+      if (!username || !password) return false;
 
-      // 2. Try Admin Login (Superuser)
-      try {
-        const authData: any = await pb.admins.authWithPassword(username, password);
-        if (pb.authStore.isValid && authData.admin) {
-          setUser({
-            id: authData.admin.id,
-            username: authData.admin.email,
-            name: 'Admin',
-            role: 'admin'
-          });
-          return true;
+      const isEmail = username.includes('@');
+
+      // 1. Identity is an email -> Try Admin (Superuser) first, then User collection
+      if (isEmail) {
+        try {
+          const authData: any = await pb.admins.authWithPassword(username, password);
+          if (pb.authStore.isValid && authData.admin) {
+            setUser({
+              id: authData.admin.id,
+              username: authData.admin.email,
+              name: 'Admin',
+              role: 'admin'
+            });
+            return true;
+          }
+        } catch (e) {
+          // Admin failed, try user collection as fallback for email-based login
+          try {
+            const authData = await pb.collection('users').authWithPassword(username, password);
+            if (pb.authStore.isValid && authData.record) {
+              setUser({
+                id: authData.record.id,
+                username: authData.record.username,
+                name: authData.record.name,
+                role: authData.record.role || 'press',
+                press: authData.record.press
+              });
+              return true;
+            }
+          } catch (e2) { /* both failed */ }
         }
-      } catch (adminError) {
-        console.warn("Login failed for both User and Admin");
+      } else {
+        // 2. Identity is a username -> ONLY try User collection
+        // (PocketBase Admins MUST use email, so we skip trying them to avoid console noise)
+        try {
+          const authData = await pb.collection('users').authWithPassword(username, password);
+          if (pb.authStore.isValid && authData.record) {
+            setUser({
+              id: authData.record.id,
+              username: authData.record.username,
+              name: authData.record.name,
+              role: authData.record.role || 'press',
+              press: authData.record.press
+            });
+            return true;
+          }
+        } catch (e) { /* failed */ }
       }
 
       return false;
     } catch (e) {
-      console.error("Login failed:", e);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
@@ -303,9 +277,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   // --- Data Mapping Logic ---
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
-      const records = await pb.collection('maintenance_tasks').getFullList();
+      const records = await pb.collection('onderhoud').getFullList({
+        expand: 'category,pers'
+      });
 
       // Client-side sort
       records.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
@@ -313,29 +289,33 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       const groups: Record<string, GroupedTask> = {};
 
       records.forEach((record: any) => {
-        const groupKey = `${record.category}-${record.press}-${record.title}`; // Unique group key
+        const groupKey = `${record.category}-${record.pers}-${record.task}`; // Unique group key
 
         if (!groups[groupKey]) {
           groups[groupKey] = {
             id: record.id + '_group',
-            taskName: record.title,
-            taskSubtext: record.subtext || '',
-            category: record.category,
-            press: record.press,
+            taskName: record.task,
+            taskSubtext: record.task_subtext || '',
+            category: record.expand?.category?.naam || record.category,
+            categoryId: record.category,
+            press: record.expand?.pers?.naam || record.pers,
+            pressId: record.pers,
             subtasks: []
           };
         }
 
         groups[groupKey].subtasks.push({
           id: record.id,
-          subtaskName: record.title,
-          subtext: record.subtext || '',
-          lastMaintenance: record.last_maintenance ? new Date(record.last_maintenance) : null,
-          nextMaintenance: record.next_maintenance ? new Date(record.next_maintenance) : new Date(),
+          subtaskName: record.subtask || record.task,
+          subtext: record.subtask_subtext || record.task_subtext || '',
+          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
+          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
           maintenanceInterval: record.interval || 0,
-          maintenanceIntervalUnit: record.interval_unit || 'days',
-          assignedTo: record.assigned_to || '',
-          comment: record.notes || '',
+          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
+            record.interval_unit === 'Weken' ? 'weeks' :
+              record.interval_unit === 'Maanden' ? 'months' : 'days',
+          assignedTo: record.assigned_operator || '',
+          comment: record.comment || record.notes || '',
           commentDate: record.updated ? new Date(record.updated) : null
         });
       });
@@ -345,22 +325,49 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     } catch (e) {
       console.error("Fetch tasks failed:", e);
     }
-  };
+  }, []);
 
   const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
     try {
-      await pb.collection('maintenance_tasks').create({
-        title: task.task,
-        subtext: task.taskSubtext,
-        category: task.category,
-        press: task.press,
-        last_maintenance: task.lastMaintenance,
-        next_maintenance: task.nextMaintenance,
-        interval: task.maintenanceInterval,
-        interval_unit: task.maintenanceIntervalUnit,
-        assigned_to: task.assignedTo,
-        notes: task.opmerkingen
-      });
+      if (task.subtasks && task.subtasks.length > 0) {
+        // Handle Grouped Task: Create a record for each subtask
+        const promises = task.subtasks.map(subtask =>
+          pb.collection('onderhoud').create({
+            task: task.task,
+            task_subtext: task.taskSubtext,
+            subtask: subtask.name,
+            subtask_subtext: subtask.subtext,
+            category: task.categoryId,
+            pers: task.pressId,
+            last_date: task.lastMaintenance,
+            next_date: task.nextMaintenance,
+            interval: task.maintenanceInterval,
+            interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+              task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+                task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+            assigned_operator: task.assignedTo,
+            comment: task.opmerkingen
+          })
+        );
+        await Promise.all(promises);
+      } else {
+        // Handle Single Task
+        await pb.collection('onderhoud').create({
+          task: task.task,
+          task_subtext: task.taskSubtext,
+          category: task.categoryId,
+          pers: task.pressId,
+          last_date: task.lastMaintenance,
+          next_date: task.nextMaintenance,
+          interval: task.maintenanceInterval,
+          interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+            task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+              task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+          assigned_operator: task.assignedTo,
+          comment: task.opmerkingen
+        });
+      }
+      await fetchTasks(); // Refresh list after adding
     } catch (e) {
       console.error("Add task failed:", e);
       alert("Failed to save to server");
@@ -369,17 +376,19 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updateTask = async (task: MaintenanceTask) => {
     try {
-      await pb.collection('maintenance_tasks').update(task.id, {
-        title: task.task,
-        subtext: task.taskSubtext,
-        category: task.category,
-        press: task.press,
-        last_maintenance: task.lastMaintenance,
-        next_maintenance: task.nextMaintenance,
+      await pb.collection('onderhoud').update(task.id, {
+        task: task.task,
+        task_subtext: task.taskSubtext,
+        category: task.categoryId,
+        pers: task.pressId,
+        last_date: task.lastMaintenance,
+        next_date: task.nextMaintenance,
         interval: task.maintenanceInterval,
-        interval_unit: task.maintenanceIntervalUnit,
-        assigned_to: task.assignedTo,
-        notes: task.opmerkingen
+        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+        assigned_operator: task.assignedTo,
+        comment: task.opmerkingen
       });
     } catch (e) {
       console.error("Update task failed:", e);
@@ -388,7 +397,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const deleteTask = async (id: string) => {
     try {
-      await pb.collection('maintenance_tasks').delete(id);
+      await pb.collection('onderhoud').delete(id);
     } catch (e) {
       console.error("Delete task failed:", e);
     }
@@ -422,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   };
 
-  const fetchFeedback = async (): Promise<any[]> => {
+  const fetchFeedback = useCallback(async (): Promise<any[]> => {
     try {
       const records = await pb.collection('feedback').getList(1, 100);
 
@@ -445,24 +454,50 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       console.error("Failed to fetch feedback:", e);
       return [];
     }
-  };
+  }, []);
 
   // --- Stubs for other entities ---
   const addOperator = async () => { };
   const updateOperator = async () => { };
   const deleteOperator = async () => { };
 
-  const addCategory = async (category: Omit<Category, 'id' | 'presses'>) => {
+  const addCategory = async (category: Omit<Category, 'id'>) => {
     try {
-      await pb.collection('categories').create({
-        name: category.name,
+      await pb.collection('categorieen').create({
+        naam: category.name,
+        presses: category.pressIds,
         active: category.active
       });
-    } catch (e) { console.error("Add category failed", e); }
+      await loadData();
+    } catch (e: any) {
+      console.error("Add category failed", e);
+      toast.error(`Failed to add category: ${e.message || e}`);
+    }
   };
 
-  const updateCategory = async () => { };
-  const deleteCategory = async () => { };
+  const updateCategory = async (category: Category) => {
+    try {
+      await pb.collection('categorieen').update(category.id, {
+        naam: category.name,
+        presses: category.pressIds,
+        active: category.active
+      });
+      await loadData();
+    } catch (e: any) {
+      console.error("Update category failed", e);
+      toast.error(`Failed to update category: ${e.message || e}`);
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    try {
+      await pb.collection('categorieen').delete(id);
+      await loadData();
+    } catch (e: any) {
+      console.error("Delete category failed", e);
+      toast.error(`Failed to delete category: ${e.message || e}`);
+    }
+  };
   const updateCategoryOrder = async () => { };
 
   const addActivityLog = async (log: any) => {
@@ -478,9 +513,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addPress = async (press: Omit<Press, 'id'>) => {
     try {
-      await pb.collection('presses').create({
-        name: press.name,
-        active: press.active
+      await pb.collection('persen').create({
+        naam: press.name,
+        status: press.active ? 'actief' : 'niet actief'
       });
     } catch (e: any) {
       console.error("Add press failed", e);
@@ -491,25 +526,44 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updatePress = async (press: Press) => {
     try {
-      await pb.collection('presses').update(press.id, {
-        name: press.name,
-        active: press.active
+      await pb.collection('persen').update(press.id, {
+        naam: press.name,
+        status: press.active ? 'actief' : 'niet actief'
       });
     } catch (e) {
       console.error("Update press failed", e);
     }
   };
   const deletePress = async () => { };
-  const fetchActivityLogs = async () => { };
+  const fetchActivityLogs = useCallback(async () => { }, []);
 
-  const fetchUserAccounts = async () => {
+  // Role mapping helpers
+  const mapDbRoleToUi = (dbRole: string): UserRole => {
+    const roleMap: Record<string, UserRole> = {
+      'Admin': 'admin',
+      'Meestergast': 'meestergast',
+      'Operator': 'press'
+    };
+    return roleMap[dbRole] || 'press';
+  };
+
+  const mapUiRoleToDb = (uiRole: UserRole): string => {
+    const roleMap: Record<string, string> = {
+      'admin': 'Admin',
+      'meestergast': 'Meestergast',
+      'press': 'Operator'
+    };
+    return roleMap[uiRole || 'press'] || 'Operator';
+  };
+
+  const fetchUserAccounts = useCallback(async () => {
     try {
       const records = await pb.collection('users').getFullList({ sort: 'username' });
       const accounts = records.map((r: any) => ({
         id: r.id,
         username: r.username,
         name: r.name,
-        role: r.role,
+        role: mapDbRoleToUi(r.role),
         press: r.press,
         operatorId: r.operatorId
       }));
@@ -528,7 +582,65 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     } catch (e: any) {
       console.error("Fetch users failed", e);
     }
-  };
+  }, []);
+
+  // 2. Fetch Initial Data
+  const loadData = useCallback(async () => {
+    try {
+      console.log('Loading Data from PocketBase...');
+
+      // Load Presses
+      const pressesResult = await pb.collection('persen').getFullList();
+      setPresses(pressesResult.map((p: any) => ({
+        id: p.id,
+        name: p.naam,
+        active: p.status === 'actief',
+        archived: false
+      })));
+
+      // Load Categories
+      const categoriesResult = await pb.collection('categorieen').getFullList();
+      setCategories(categoriesResult.map((c: any) => ({
+        id: c.id,
+        name: c.naam,
+        pressIds: c.presses || [],
+        active: c.active !== false // Default to true if not specified
+      })));
+
+      await fetchTasks();
+      await fetchUserAccounts(); // Pre-load users/operators
+
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+    }
+  }, [fetchTasks, fetchUserAccounts]);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+
+    // 3. Realtime Subscriptions
+    const subscribe = async () => {
+      await pb.collection('onderhoud').subscribe('*', function (e) {
+        console.log('Realtime task update:', e);
+        fetchTasks();
+      });
+
+      await pb.collection('persen').subscribe('*', () => { loadData() });
+      await pb.collection('categorieen').subscribe('*', () => { loadData() });
+    };
+
+    if (user) {
+      subscribe();
+    }
+
+    return () => {
+      pb.collection('onderhoud').unsubscribe('*');
+      pb.collection('persen').unsubscribe('*');
+      pb.collection('categorieen').unsubscribe('*');
+    };
+  }, [user, loadData, fetchTasks]);
 
   const addUserAccount = async (account: UserAccount) => {
     try {
@@ -538,7 +650,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         name: account.name,
         password: account.password,
         passwordConfirm: account.password,
-        role: account.role,
+        role: mapUiRoleToDb(account.role),
         press: account.press
       });
       await fetchUserAccounts();
@@ -556,7 +668,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
       await pb.collection('users').update(user.id, {
         name: updates.name,
-        role: updates.role,
+        role: mapUiRoleToDb(updates.role || user.role),
         press: updates.press
       });
       await fetchUserAccounts();
@@ -606,7 +718,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const getElevatedOperators = () => [];
 
-  const fetchParameters = async () => { return {}; };
+  const fetchParameters = useCallback(async () => { return {}; }, []);
 
   return (
     <AuthContext.Provider value={{

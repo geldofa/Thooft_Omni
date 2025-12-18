@@ -14,7 +14,6 @@ import {
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { startTransition, useState } from 'react';
 import { FeedbackDialog } from './FeedbackDialog';
-import { Button } from './ui/button';
 
 interface HeaderProps {
   activeTab: string;
@@ -130,7 +129,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
             <div className="text-right sm:block">
               <div className="text-sm font-bold text-[#1A1A1A] leading-tight">
-                {user.name || 'Admin'}
+                {user.name || 'Beheerder'}
               </div>
               <div className="text-xs text-gray-500 capitalize leading-tight">
                 {user.role}
@@ -144,15 +143,15 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                 logout();
               }}
               className="group flex items-center gap-2 text-sm font-medium text-[#1A1A1A] hover:text-black active:scale-95 transition-all"
-              title="Logout"
+              title="Uitloggen"
             >
-              <span className="hidden sm:inline">admin</span>
+              <span className="hidden sm:inline">Uitloggen</span>
               <MoveRight className="w-4 h-4 text-gray-400 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
 
         </div>
-      </header>
+      </header >
 
       <FeedbackDialog open={isFeedbackOpen} onOpenChange={setIsFeedbackOpen} />
     </>

@@ -78,7 +78,7 @@ export function PressManagement() {
     e.preventDefault();
 
     if (!formData.name.trim()) {
-      toast.error('Please enter press name');
+      toast.error('Voer a.u.b. de naam van de pers in');
       return;
     }
 
@@ -88,8 +88,8 @@ export function PressManagement() {
         ...formData
       };
       updatePress(updatedPress);
-      toast.success('Press updated successfully');
-      
+      toast.success('Pers succesvol bijgewerkt');
+
       addActivityLog({
         user: user?.username || 'Unknown',
         action: 'Updated',
@@ -100,8 +100,8 @@ export function PressManagement() {
       });
     } else {
       addPress(formData);
-      toast.success('Press added successfully');
-      
+      toast.success('Pers succesvol toegevoegd');
+
       addActivityLog({
         user: user?.username || 'Unknown',
         action: 'Created',
@@ -117,8 +117,8 @@ export function PressManagement() {
 
   const handleDelete = (id: string, name: string) => {
     deletePress(id);
-    toast.success(`Press "${name}" deleted successfully`);
-    
+    toast.success(`Pers "${name}" succesvol verwijderd`);
+
     addActivityLog({
       user: user?.username || 'Unknown',
       action: 'Deleted',
@@ -136,7 +136,7 @@ export function PressManagement() {
     };
     updatePress(updatedPress);
     toast.success(`Press "${press.name}" ${updatedPress.archived ? 'archived' : 'unarchived'}`);
-    
+
     addActivityLog({
       user: user?.username || 'Unknown',
       action: 'Updated',
@@ -151,14 +151,14 @@ export function PressManagement() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-gray-900">Press Management</h2>
+          <h2 className="text-gray-900">Pers Beheer</h2>
           <p className="text-gray-600 mt-1">
-            Manage printing presses in the system
+            Beheer drukpersen in het systeem
           </p>
         </div>
         <Button onClick={() => handleOpenDialog()} className="gap-2">
           <Plus className="w-4 h-4" />
-          Add Press
+          Pers Toevoegen
         </Button>
       </div>
 
@@ -166,17 +166,17 @@ export function PressManagement() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead>Naam</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Archived</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>Gearchiveerd</TableHead>
+              <TableHead className="text-right">Acties</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {presses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8 text-gray-500">
-                  No presses found. Add your first press to get started.
+                  Geen persen gevonden. Voeg uw eerste pers toe om te beginnen.
                 </TableCell>
               </TableRow>
             ) : (
@@ -185,14 +185,14 @@ export function PressManagement() {
                   <TableCell>{press.name}</TableCell>
                   <TableCell>
                     {press.active ? (
-                      <Badge variant="default">Active</Badge>
+                      <Badge variant="default">Actief</Badge>
                     ) : (
-                      <Badge variant="secondary">Inactive</Badge>
+                      <Badge variant="secondary">Inactief</Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     {press.archived ? (
-                      <Badge variant="outline">Archived</Badge>
+                      <Badge variant="outline">Gearchiveerd</Badge>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
@@ -203,7 +203,7 @@ export function PressManagement() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleArchive(press)}
-                        title={press.archived ? 'Unarchive' : 'Archive'}
+                        title={press.archived ? 'Dearchiveren' : 'Archiveren'}
                       >
                         <Archive className="w-4 h-4" />
                       </Button>
@@ -222,18 +222,18 @@ export function PressManagement() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Press</AlertDialogTitle>
+                            <AlertDialogTitle>Pers Verwijderen</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete "{press.name}"? This will also affect all tasks associated with this press.
+                              Weet u zeker dat u "{press.name}" wilt verwijderen? Dit heeft ook invloed op alle taken die aan deze pers zijn gekoppeld.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>Annuleren</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDelete(press.id, press.name)}
                               className="bg-red-500 hover:bg-red-600"
                             >
-                              Delete
+                              Verwijderen
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -250,21 +250,21 @@ export function PressManagement() {
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingPress ? 'Edit Press' : 'Add New Press'}</DialogTitle>
+            <DialogTitle>{editingPress ? 'Pers Bewerken' : 'Nieuwe Pers Toevoegen'}</DialogTitle>
             <DialogDescription>
               {editingPress
-                ? 'Update the press details below.'
-                : 'Fill in the details for the new press.'}
+                ? 'Werk de details van de pers hieronder bij.'
+                : 'Vul de details in voor de nieuwe pers.'}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="name">Press Name *</Label>
+                <Label htmlFor="name">Pers Naam *</Label>
                 <Input
                   id="name"
-                  placeholder="e.g., Heidelberg"
+                  placeholder="bijv., Heidelberg"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -272,9 +272,9 @@ export function PressManagement() {
 
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="active">Active Status</Label>
+                  <Label htmlFor="active">Actieve Status</Label>
                   <p className="text-gray-500">
-                    Inactive presses won't appear in task creation
+                    Inactieve persen verschijnen niet bij het aanmaken van taken
                   </p>
                 </div>
                 <Switch
@@ -287,10 +287,10 @@ export function PressManagement() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                Cancel
+                Annuleren
               </Button>
               <Button type="submit">
-                {editingPress ? 'Update Press' : 'Add Press'}
+                {editingPress ? 'Pers Bijwerken' : 'Pers Toevoegen'}
               </Button>
             </DialogFooter>
           </form>

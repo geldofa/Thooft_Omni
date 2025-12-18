@@ -1,6 +1,9 @@
 import PocketBase from 'pocketbase';
 
-const pb = new PocketBase('http://127.0.0.1:8090');
+// Use environment variable for PB_URL with a fallback
+const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
+const pb = new PocketBase(PB_URL);
+
 
 async function debugApiV2() {
     try {

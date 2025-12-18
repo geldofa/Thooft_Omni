@@ -27,7 +27,7 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
   }, []);
 
   const formatDate = (date: Date | null): string => {
-    if (!date) return 'N/A';
+    if (!date) return 'N.v.t.';
     const d = new Date(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -101,9 +101,9 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between no-print">
         <div>
-          <h2 className="text-gray-900">Maintenance Checklist</h2>
+          <h2 className="text-gray-900">Onderhoud Checklist</h2>
           <p className="text-gray-600 mt-1">
-            Create a printable checklist for press operators
+            Maak een printbare checklist voor de operators
           </p>
         </div>
         <Button
@@ -112,20 +112,20 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
           disabled={!selectedPress || selectedTasks.length === 0}
         >
           <Printer className="w-4 h-4" />
-          Print Checklist ({selectedTasks.length})
+          Checklist Printen ({selectedTasks.length})
         </Button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 no-print">
         <div className="grid gap-4 max-w-lg">
           <div className="grid gap-2 max-w-xs">
-            <Label>Select Press</Label>
+            <Label>Pers Selecteren</Label>
             <Select value={selectedPress} onValueChange={(value) => {
               setSelectedPress(value as PressType);
               setSelectedTasks([]); // Clear selection when press changes
             }}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a press" />
+                <SelectValue placeholder="Selecteer een pers" />
               </SelectTrigger>
               <SelectContent>
                 {activePresses.map((press) => (
@@ -137,10 +137,10 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
             </Select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="supervisor-guidance">Guidance/Comments for Operator</Label>
+            <Label htmlFor="supervisor-guidance">Instructies/Opmerkingen voor Operator</Label>
             <Textarea
               id="supervisor-guidance"
-              placeholder="Add any specific instructions, warnings, or guidance for the operator completing this checklist..."
+              placeholder="Voeg specifieke instructies, waarschuwingen of begeleiding toe voor de operator..."
               value={supervisorGuidance}
               onChange={(e) => setSupervisorGuidance(e.target.value)}
               rows={3}
@@ -153,15 +153,15 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
       {selectedPress && (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 no-print">
           <div className="flex justify-between items-center mb-4 border-b pb-3">
-            <h3 className="text-lg font-semibold">Select Tasks for Checklist</h3>
+            <h3 className="text-lg font-semibold">Selecteer Taken voor Checklist</h3>
             <Button
               variant="outline"
               onClick={handleAddAllOverdue}
               className="gap-2 text-sm"
-              title="Add all tasks whose Next Due date is in the past."
+              title="Voeg alle taken toe waarvan de volgende datum in het verleden ligt."
             >
               <Clock className="w-4 h-4" />
-              Add All Overdue
+              Alle Achterstallige Toevoegen
             </Button>
           </div>
 
@@ -174,9 +174,9 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                 <AccordionItem key={category} value={category} className="border-b">
                   <AccordionTrigger className="font-bold py-3 hover:no-underline">
                     <div className="flex justify-between w-full pr-4">
-                      <span>{category} ({categoryTasks.length} tasks)</span>
+                      <span>{category} ({categoryTasks.length} taken)</span>
                       {overdueCount > 0 && (
-                        <span className="text-red-500 font-normal text-sm ml-4">({overdueCount} Overdue)</span>
+                        <span className="text-red-500 font-normal text-sm ml-4">({overdueCount} Te laat)</span>
                       )}
                     </div>
                   </AccordionTrigger>
@@ -197,8 +197,8 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                             </Label>
                           </div>
                           <div className={`text-right text-sm font-medium shrink-0 ${isTaskOverdue(task) ? 'text-red-500' : 'text-gray-500'}`}>
-                            {isTaskOverdue(task) && <span className="text-xs font-bold mr-1">OVERDUE</span>}
-                            Due: {formatDate(task.nextMaintenance)}
+                            {isTaskOverdue(task) && <span className="text-xs font-bold mr-1">TE LAAT</span>}
+                            Gepland: {formatDate(task.nextMaintenance)}
                           </div>
                         </div>
                       ))}
@@ -210,7 +210,7 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
           </Accordion>
 
           <div className="mt-4 text-sm text-gray-600 border-t pt-3">
-            <ListChecks className="w-4 h-4 inline mr-1" /> {selectedTasks.length} tasks selected for print.
+            <ListChecks className="w-4 h-4 inline mr-1" /> {selectedTasks.length} taken geselecteerd voor print.
           </div>
         </div>
       )}
@@ -252,19 +252,19 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
 
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <div className="border-b border-gray-300 pb-4 mb-6">
-              <h1 className="text-gray-900 mb-2">Maintenance Checklist</h1>
+              <h1 className="text-gray-900 mb-2">Onderhoud Checklist</h1>
               {/* Removed Operator and Shift */}
               <div className="grid grid-cols-2 gap-4 text-gray-600">
                 <div>
-                  <strong>Press:</strong> {selectedPress}
+                  <strong>Pers:</strong> {selectedPress}
                 </div>
                 <div>
-                  <strong>Date:</strong> {formatDate(new Date())}
+                  <strong>Datum:</strong> {formatDate(new Date())}
                 </div>
               </div>
               {supervisorGuidance && (
                 <div className="mt-4 p-3 border border-blue-300 bg-blue-50 text-blue-800 break-inside-avoid">
-                  <strong>Guidance/Comments:</strong>
+                  <strong>Begeleiding/Opmerkingen:</strong>
                   {/* Use whitespace-pre-wrap to preserve line breaks from Textarea */}
                   <p className="mt-1 whitespace-pre-wrap">{supervisorGuidance}</p>
                 </div>
@@ -284,11 +284,11 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                     <thead>
                       <tr className="border-b-2 border-gray-300">
                         <th className="text-left py-2 px-2 w-12">☐</th>
-                        <th className="text-left py-2 px-2">Task</th>
-                        <th className="text-left py-2 px-2 w-48">Opmerkingen</th> {/* Existing Remarks Column */}
-                        <th className="text-left py-2 px-2 w-[100px]">Last Done</th> {/* Width 100px */}
-                        <th className="text-left py-2 px-2 w-[100px]">Next Due</th> {/* Width 100px */}
-                        <th className="text-left py-2 px-2">Notes</th> {/* Operator Input Column (Remaining width) */}
+                        <th className="text-left py-2 px-2">Taak</th>
+                        <th className="text-left py-2 px-2 w-48">Opmerkingen</th>
+                        <th className="text-left py-2 px-2 w-[100px]">Laatst Gedaan</th>
+                        <th className="text-left py-2 px-2 w-[100px]">Gepland</th>
+                        <th className="text-left py-2 px-2">Notities Operator</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -330,11 +330,11 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
               {/* Retained signature boxes for manual sign-off */}
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <p className="mb-2"><strong>Operator Signature:</strong></p>
+                  <p className="mb-2"><strong>Handtekening Operator:</strong></p>
                   <div className="border-b-2 border-gray-400 h-8"></div>
                 </div>
                 <div>
-                  <p className="mb-2"><strong>Supervisor Signature:</strong></p>
+                  <p className="mb-2"><strong>Handtekening Supervisor:</strong></p>
                   <div className="border-b-2 border-gray-400 h-8"></div>
                 </div>
               </div>
@@ -346,13 +346,13 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
       {/* Empty States */}
       {!selectedPress && (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500">
-          Please select a press to generate the checklist
+          Selecteer a.u.b. een pers om de checklist te genereren
         </div>
       )}
 
       {(selectedPress && selectedTasks.length === 0) && (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500">
-          Select at least one task for printing using the list above.
+          Selecteer ten minste één taak om te printen met de lijst hierboven.
         </div>
       )}
     </div>

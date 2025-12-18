@@ -111,7 +111,7 @@ export function AddKaternDialog({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!katernFormData.version.trim()) {
-            toast.error('Please fill out Version/Katern');
+            toast.error('Vul a.u.b. de Versie/Katern in');
             return;
         }
 
@@ -119,9 +119,9 @@ export function AddKaternDialog({
         onOpenChange(false);
 
         if (editKatern) {
-            toast.success('Katern updated successfully');
+            toast.success('Katern succesvol bijgewerkt');
         } else {
-            toast.success('Katern added successfully');
+            toast.success('Katern succesvol toegevoegd');
         }
     };
 
@@ -129,20 +129,20 @@ export function AddKaternDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{editKatern ? 'Edit Katern' : 'Add Katern/Versie'}</DialogTitle>
+                    <DialogTitle>{editKatern ? 'Katern Bewerken' : 'Katern/Versie Toevoegen'}</DialogTitle>
                     <DialogDescription>
-                        {editKatern ? 'Update the katern details below.' : 'Fill in the details for the new katern.'}
+                        {editKatern ? 'Pas de katerngegevens hieronder aan.' : 'Vul de gegevens voor de nieuwe katern in.'}
                     </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit}>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="version" className="text-right">Version/Katern</Label>
+                            <Label htmlFor="version" className="text-right">Versie/Katern</Label>
                             <Input id="version" value={katernFormData.version} onChange={e => setKaternFormData({ ...katernFormData, version: e.target.value })} className="col-span-3" />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="pages" className="text-right">Pages</Label>
+                            <Label htmlFor="pages" className="text-right">Pagina's</Label>
                             <Input id="pages" type="number" value={katernFormData.pages || ''} onChange={e => setKaternFormData({ ...katernFormData, pages: Number(e.target.value) })} className="col-span-3" />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -156,47 +156,47 @@ export function AddKaternDialog({
 
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="startup" className="text-right">Opstart</Label>
-                             <div className="col-span-3 flex items-center">
+                            <div className="col-span-3 flex items-center">
                                 <Checkbox id="startup" checked={katernFormData.startup} onCheckedChange={c => setKaternFormData({ ...katernFormData, startup: !!c })} />
                             </div>
                         </div>
-                        
+
                         <h3 className="font-semibold col-span-4 pt-4">Wissels</h3>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_4" className="text-right">4/4</Label>
                             <Input id="c4_4" type="number" value={katernFormData.c4_4 || ''} onChange={e => setKaternFormData({ ...katernFormData, c4_4: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_0" className="text-right">4/0</Label>
                             <Input id="c4_0" type="number" value={katernFormData.c4_0 || ''} onChange={e => setKaternFormData({ ...katernFormData, c4_0: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c1_0" className="text-right">1/0</Label>
                             <Input id="c1_0" type="number" value={katernFormData.c1_0 || ''} onChange={e => setKaternFormData({ ...katernFormData, c1_0: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c1_1" className="text-right">1/1</Label>
                             <Input id="c1_1" type="number" value={katernFormData.c1_1 || ''} onChange={e => setKaternFormData({ ...katernFormData, c1_1: Number(e.target.value) })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="c4_1" className="text-right">4/1</Label>
                             <Input id="c4_1" type="number" value={katernFormData.c4_1 || ''} onChange={e => setKaternFormData({ ...katernFormData, c4_1: Number(e.target.value) })} className="col-span-3" />
                         </div>
 
                         <h3 className="font-semibold col-span-4 pt-4">Resultaten</h3>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="green" className="text-right">Groen</Label>
                             <FormattedNumberInput value={katernFormData.green || ''} onChange={val => setKaternFormData({ ...katernFormData, green: val })} className="col-span-3" />
                         </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="red" className="text-right">Rood</Label>
                             <FormattedNumberInput value={katernFormData.red || ''} onChange={val => setKaternFormData({ ...katernFormData, red: val })} className="col-span-3" />
                         </div>
 
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit">{editKatern ? 'Update Katern' : 'Add Katern'}</Button>
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuleren</Button>
+                        <Button type="submit">{editKatern ? 'Katern Bijwerken' : 'Katern Toevoegen'}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

@@ -68,41 +68,51 @@ export function PasswordManagement() {
   });
 
   // --- HELPERS ---
-  const resetForm = () => {
-    setFormData({
-      username: '',
-      name: '',
-      role: 'press',
-      press: presses[0]?.name || 'Lithoman',
-      password: ''
-    });
-    setEditingUser(null);
-  };
 
   const activePresses = presses.filter(p => !p.archived && p.active);
 
   // --- HANDLERS ---
 
-  const handleAddUser = () => {
-    resetForm();
+  const handleOpenUserDialog = (account?: UserAccount) => {
+    if (account) {
+      setEditingUser(account.username);
+      setFormData({
+        username: account.username,
+        name: account.name || '',
+        role: account.role,
+        press: account.press || activePresses[0]?.name || 'Lithoman',
+      });
+    } else {
+      setFormData({
+        username: '',
+        name: '',
+        role: 'press',
+        press: activePresses[0]?.name || 'Lithoman',
+        password: ''
+      });
+      setEditingUser(null);
+    }
     setIsUserDialogOpen(true);
   };
 
-  const handleEditUser = (account: UserAccount) => {
-    setEditingUser(account.username);
-    setFormData({
-      username: account.username,
-      name: account.name || '',
-      role: account.role,
-      press: account.press || activePresses[0]?.name || 'Lithoman',
-    });
-    setIsUserDialogOpen(true);
+  const handleCloseUserDialog = () => {
+    setIsUserDialogOpen(false);
+    setTimeout(() => {
+      setEditingUser(null);
+      setFormData({
+        username: '',
+        name: '',
+        role: 'press',
+        press: activePresses[0]?.name || 'Lithoman',
+        password: ''
+      });
+    }, 200); // Small delay to prevent title/field flash during close animation
   };
 
   const handleSaveUser = () => {
     // Validation
     if (!formData.username) {
-      toast.error('Username is required');
+      toast.error('Gebruikersnaam is verplicht');
       return;
     }
 
@@ -113,7 +123,7 @@ export function PasswordManagement() {
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined
       });
-      toast.success(`User ${editingUser} updated`);
+      toast.success(`Gebruiker ${editingUser} bijgewerkt`);
       addActivityLog({
         user: user?.username || 'Unknown',
         action: 'Updated',
@@ -125,23 +135,24 @@ export function PasswordManagement() {
     } else {
       // Create new
       if (!formData.password || formData.password.length < 6) {
-        toast.error('Password is required and must be at least 6 characters');
+        toast.error('Wachtwoord is verplicht en moet minimaal 6 tekens bevatten');
         return;
       }
       // Check if username exists
       if (userAccounts.some(u => u.username === formData.username)) {
-        toast.error('Username already exists');
+        toast.error('Gebruikersnaam bestaat al');
         return;
       }
 
       addUserAccount({
+        id: Math.random().toString(36).substr(2, 9),
         username: formData.username,
         name: formData.name,
         password: formData.password,
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined
       });
-      toast.success(`User ${formData.username} created`);
+      toast.success(`Gebruiker ${formData.username} aangemaakt`);
       addActivityLog({
         user: user?.username || 'Unknown',
         action: 'Created',
@@ -157,7 +168,7 @@ export function PasswordManagement() {
   const handleDeleteUser = () => {
     if (!deletingUser) return;
     deleteUserAccount(deletingUser);
-    toast.success(`User ${deletingUser} deleted`);
+    toast.success(`Gebruiker ${deletingUser} verwijderd`);
     addActivityLog({
       user: user?.username || 'Unknown',
       action: 'Deleted',
@@ -173,17 +184,17 @@ export function PasswordManagement() {
     if (!passwordUser) return;
 
     if (newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      toast.error('Wachtwoord moet minimaal 6 tekens bevatten');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error('Wachtwoorden komen niet overeen');
       return;
     }
 
     changePassword(passwordUser, newPassword);
-    toast.success('Password changed successfully');
+    toast.success('Wachtwoord succesvol gewijzigd');
 
     addActivityLog({
       user: user?.username || 'Unknown',
@@ -203,15 +214,15 @@ export function PasswordManagement() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-gray-900 font-bold text-xl">Account Management</h2>
+          <h2 className="text-gray-900 font-bold text-xl">Accountbeheer</h2>
           <p className="text-gray-600 mt-1">
-            Manage users, roles, and passwords
+            Beheer gebruikers, rollen en wachtwoorden
           </p>
         </div>
         {user?.role === 'admin' && (
-          <Button onClick={handleAddUser} className="gap-2">
+          <Button onClick={() => handleOpenUserDialog()} className="gap-2">
             <Plus className="w-4 h-4" />
-            Add Account
+            Account Toevoegen
           </Button>
         )}
       </div>
@@ -220,11 +231,11 @@ export function PasswordManagement() {
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50/50">
-              <TableHead>Username</TableHead>
-              <TableHead>Display Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Press</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>Gebruikersnaam</TableHead>
+              <TableHead>Naam</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Pers</TableHead>
+              <TableHead className="text-right">Acties</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -234,7 +245,7 @@ export function PasswordManagement() {
                 <TableCell>{account.name || '-'}</TableCell>
                 <TableCell>
                   <Badge variant={account.role === 'admin' ? 'default' : account.role === 'meestergast' ? 'secondary' : 'outline'}>
-                    {account.role}
+                    {account.role === 'admin' ? 'Admin' : account.role === 'meestergast' ? 'Meestergast' : 'Pers'}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -247,8 +258,8 @@ export function PasswordManagement() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleEditUser(account)}
-                        title="Edit Details"
+                        onClick={() => handleOpenUserDialog(account)}
+                        title="Gegevens Bewerken"
                       >
                         <Pencil className="w-4 h-4 text-gray-500" />
                       </Button>
@@ -260,7 +271,7 @@ export function PasswordManagement() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setPasswordUser(account.username)}
-                        title="Change Password"
+                        title="Wachtwoord Wijzigen"
                       >
                         <Key className="w-4 h-4 text-gray-500" />
                       </Button>
@@ -273,7 +284,7 @@ export function PasswordManagement() {
                         size="icon"
                         onClick={() => setDeletingUser(account.username)}
                         className="hover:text-red-600 hover:bg-red-50"
-                        title="Delete User"
+                        title="Account Verwijderen"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -287,48 +298,48 @@ export function PasswordManagement() {
       </div>
 
       {/* --- ADD / EDIT USER DIALOG --- */}
-      <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
+      <Dialog open={isUserDialogOpen} onOpenChange={(open) => !open && handleCloseUserDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingUser ? 'Edit Account' : 'Create Account'}</DialogTitle>
+            <DialogTitle>{editingUser ? 'Account Bewerken' : 'Account Aanmaken'}</DialogTitle>
             <DialogDescription>
-              {editingUser ? `Updating details for ${editingUser}` : 'Add a new user to the system'}
+              {editingUser ? `Details bijwerken voor ${editingUser}` : 'Een nieuwe gebruiker toevoegen aan het systeem'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             {/* Username (Locked if editing) */}
             <div className="grid gap-2">
-              <Label htmlFor="username">Username *</Label>
+              <Label htmlFor="username">Gebruikersnaam *</Label>
               <Input
                 id="username"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                 disabled={!!editingUser}
-                placeholder="jdoe"
+                placeholder="gebruikersnaam"
               />
             </div>
 
             {/* Display Name */}
             <div className="grid gap-2">
-              <Label htmlFor="displayName">Display Name</Label>
+              <Label htmlFor="displayName">Naam</Label>
               <Input
                 id="displayName"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="John Doe"
+                placeholder="Jan Janssen"
               />
             </div>
 
             {/* Role Selection */}
             <div className="grid gap-2">
-              <Label>Role *</Label>
+              <Label>Rol *</Label>
               <Select
                 value={formData.role || 'press'}
                 onValueChange={(val: string) => setFormData({ ...formData, role: val as UserRole })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
+                  <SelectValue placeholder="Selecteer rol" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -341,13 +352,13 @@ export function PasswordManagement() {
             {/* Press Selection (Only if role is 'press') */}
             {formData.role === 'press' && (
               <div className="grid gap-2">
-                <Label>Assigned Press *</Label>
+                <Label>Toegewezen Pers *</Label>
                 <Select
                   value={formData.press || activePresses[0]?.name}
                   onValueChange={(val) => setFormData({ ...formData, press: val })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select press" />
+                    <SelectValue placeholder="Selecteer pers" />
                   </SelectTrigger>
                   <SelectContent>
                     {activePresses.map(p => (
@@ -361,21 +372,21 @@ export function PasswordManagement() {
             {/* Password (Only if creating) */}
             {!editingUser && (
               <div className="grid gap-2">
-                <Label htmlFor="initialPassword">Password *</Label>
+                <Label htmlFor="initialPassword">Wachtwoord *</Label>
                 <Input
                   id="initialPassword"
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Minimum 6 characters"
+                  placeholder="Minimaal 6 tekens"
                 />
               </div>
             )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveUser}>{editingUser ? 'Save Changes' : 'Create Account'}</Button>
+            <Button variant="outline" onClick={handleCloseUserDialog}>Annuleren</Button>
+            <Button onClick={handleSaveUser}>{editingUser ? 'Wijzigingen Opslaan' : 'Account Aanmaken'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -384,29 +395,29 @@ export function PasswordManagement() {
       <Dialog open={!!passwordUser} onOpenChange={(open) => !open && setPasswordUser(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Change Password</DialogTitle>
+            <DialogTitle>Wachtwoord Wijzigen</DialogTitle>
             <DialogDescription>
-              Set a new password for {passwordUser}
+              Stel een nieuw wachtwoord in voor {passwordUser}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="newPassword">New Password *</Label>
+              <Label htmlFor="newPassword">Nieuw Wachtwoord *</Label>
               <Input
                 id="newPassword"
                 type="password"
-                placeholder="Enter new password"
+                placeholder="Voer nieuw wachtwoord in"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="confirmPassword">Confirm Password *</Label>
+              <Label htmlFor="confirmPassword">Bevestig Wachtwoord *</Label>
               <Input
                 id="confirmPassword"
                 type="password"
-                placeholder="Confirm new password"
+                placeholder="Bevestig nieuw wachtwoord"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
@@ -414,8 +425,8 @@ export function PasswordManagement() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPasswordUser(null)}>Cancel</Button>
-            <Button onClick={handleChangePassword}>Update Password</Button>
+            <Button variant="outline" onClick={() => setPasswordUser(null)}>Annuleren</Button>
+            <Button onClick={handleChangePassword}>Wachtwoord Bijwerken</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -424,14 +435,14 @@ export function PasswordManagement() {
       <Dialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Account</DialogTitle>
+            <DialogTitle>Account Verwijderen</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{deletingUser}</strong>? This action cannot be undone.
+              Weet u zeker dat u <strong>{deletingUser}</strong> wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingUser(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteUser}>Delete Account</Button>
+            <Button variant="outline" onClick={() => setDeletingUser(null)}>Annuleren</Button>
+            <Button variant="destructive" onClick={handleDeleteUser}>Account Verwijderen</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

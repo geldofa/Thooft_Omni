@@ -84,14 +84,14 @@ function SortableSubtask({ subtask, onUpdate, onRemove }: SortableSubtaskProps) 
         </button>
         <span className="self-center">└─</span>
         <Input
-          placeholder="e.g., Filter Replacement"
+          placeholder="bijv., Filter Vervangen"
           value={subtask.name}
           onChange={(e) => onUpdate(subtask.id, 'name', e.target.value)}
         />
       </div>
       <div className="flex items-center gap-2">
         <Input
-          placeholder="e.g., All air handling units"
+          placeholder="bijv., Alle luchtbehandelingsunits"
           value={subtask.subtext}
           onChange={(e) => onUpdate(subtask.id, 'subtext', e.target.value)}
         />
@@ -117,15 +117,14 @@ export function AddMaintenanceDialog({
   initialGroup,
   onUpdateGroup
 }: AddMaintenanceDialogProps) {
-  const auth = useAuth();
-  const user = auth.user;
+  const { user, presses, categories } = useAuth();
   const isOperator = user?.role === 'press';
 
   const initialTaskData = {
     task: '',
     taskSubtext: '',
-    category: '',
-    press: 'Lithoman' as PressType,
+    category: '', // This will be an ID
+    press: '' as PressType, // This will be an ID
     lastMaintenance: null as Date | null,
     nextMaintenance: new Date(),
     maintenanceInterval: 1,
@@ -141,14 +140,25 @@ export function AddMaintenanceDialog({
   const [taskFormData, setTaskFormData] = useState(initialTaskData);
   const [previousComment, setPreviousComment] = useState('');
 
+  // Set default press/category when they load or when dialog opens
+  useEffect(() => {
+    if (open && !editTask && !initialGroup) {
+      setTaskFormData(prev => ({
+        ...prev,
+        press: prev.press || presses[0]?.id || '',
+        category: prev.category || categories[0]?.id || ''
+      }));
+    }
+  }, [open, presses, categories, editTask, initialGroup]);
+
   useEffect(() => {
     if (open) {
       if (editTask) {
         setTaskFormData({
           task: editTask.task,
           taskSubtext: editTask.taskSubtext,
-          category: editTask.category,
-          press: editTask.press,
+          category: editTask.categoryId || editTask.category, // Use ID preferring categoryId
+          press: editTask.pressId || editTask.press,
           lastMaintenance: editTask.lastMaintenance,
           nextMaintenance: editTask.nextMaintenance,
           maintenanceInterval: editTask.maintenanceInterval,
@@ -165,8 +175,8 @@ export function AddMaintenanceDialog({
         setTaskFormData({
           task: firstTask.task,
           taskSubtext: firstTask.taskSubtext,
-          category: firstTask.category,
-          press: firstTask.press,
+          category: firstTask.categoryId || firstTask.category,
+          press: firstTask.pressId || firstTask.press,
           lastMaintenance: firstTask.lastMaintenance,
           nextMaintenance: firstTask.nextMaintenance,
           maintenanceInterval: firstTask.maintenanceInterval,
@@ -228,16 +238,16 @@ export function AddMaintenanceDialog({
     e.preventDefault();
 
     if (isOperator) {
-      toast.error('Operators cannot create new tasks');
+      toast.error('Operators kunnen geen nieuwe taken aanmaken');
       return;
     }
 
     if (!taskFormData.task.trim()) {
-      toast.error('Please enter a task name');
+      toast.error('Vul a.u.b. een taaknaam in');
       return;
     }
-    if (!taskFormData.category.trim()) {
-      toast.error('Please select a category');
+    if (!taskFormData.category) {
+      toast.error('Selecteer a.u.b. een categorie');
       return;
     }
 
@@ -246,8 +256,15 @@ export function AddMaintenanceDialog({
       ? new Date()
       : taskFormData.commentDate;
 
+    const selectedPress = presses.find(p => p.id === taskFormData.press);
+    const selectedCategory = categories.find(c => c.id === taskFormData.category);
+
     const taskToSubmit = {
       ...taskFormData,
+      category: selectedCategory?.name || '',
+      categoryId: taskFormData.category,
+      press: selectedPress?.name || '',
+      pressId: taskFormData.press,
       assignedTo: '', // Assignments are handled in QuickEditDialog
       assignedToIds: [],
       assignedToTypes: [],
@@ -267,22 +284,25 @@ export function AddMaintenanceDialog({
     onOpenChange(false);
 
     if (editTask) {
-      toast.success('Task updated successfully');
+      toast.success('Taak succesvol bijgewerkt');
     } else {
-      toast.success('Task added successfully');
+      toast.success('Taak succesvol toegevoegd');
     }
   };
 
   const formatDate = (date: Date | null) => {
-    if (!date) return 'Pick a date';
-    return new Date(date).toLocaleDateString('en-US', {
+    if (!date) return 'Kies een datum';
+    return new Date(date).toLocaleDateString('nl-NL', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
 
-  const categories = ['HVAC', 'Safety', 'Mechanical', 'Electrical', 'Plumbing', 'Building', 'IT', 'Other'];
+  const filteredCategories = categories.filter(cat =>
+    !taskFormData.press || cat.pressIds.includes(taskFormData.press)
+  );
+
 
 
   // Drag and drop sensors
@@ -326,18 +346,18 @@ export function AddMaintenanceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto px-4 py-2" style={{ maxWidth: '800px' }}>
         <DialogHeader>
-          <DialogTitle>{editTask ? 'Edit Task' : initialGroup ? 'Edit Group' : 'Add New Task'}</DialogTitle>
+          <DialogTitle>{editTask ? 'Taak bewerken' : initialGroup ? 'Groep bewerken' : 'Nieuwe taak toevoegen'}</DialogTitle>
           <DialogDescription>
-            {editTask ? 'Update the maintenance task details below.' :
-              initialGroup ? 'Update the group of maintenance tasks.' :
-                'Fill in the details for the new maintenance task.'}
+            {editTask ? 'Werk de onderhoudstaak details hieronder bij.' :
+              initialGroup ? 'Werk de groep onderhoudstaken bij.' :
+                'Vul de details in voor de nieuwe onderhoudstaak.'}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-6 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="isGroupTask">Task Type</Label>
+              <Label htmlFor="isGroupTask">Taak type</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -347,28 +367,28 @@ export function AddMaintenanceDialog({
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <Label htmlFor="isGroupTask" className="text-sm font-medium leading-none">
-                  Group Task
+                  Groepstaak
                 </Label>
-                <span className="text-sm text-gray-500">(Check if this is a group of related tasks)</span>
+                <span className="text-sm text-gray-500">(Aanvinken als dit een groep gerelateerde taken is)</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="task">Task Name *</Label>
+                <Label htmlFor="task">Taak naam *</Label>
                 <Input
                   id="task"
-                  placeholder="e.g., HVAC System Maintenance"
+                  placeholder="bijv., HVAC Systeem Onderhoud"
                   value={taskFormData.task}
                   onChange={(e) => setTaskFormData({ ...taskFormData, task: e.target.value })}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="taskSubtext">Task Description</Label>
+                <Label htmlFor="taskSubtext">Taak omschrijving</Label>
                 <Input
                   id="taskSubtext"
-                  placeholder="e.g., Comprehensive maintenance for all HVAC units"
+                  placeholder="bijv., Uitgebreid onderhoud voor alle HVAC units"
                   value={taskFormData.taskSubtext}
                   onChange={(e) => setTaskFormData({ ...taskFormData, taskSubtext: e.target.value })}
                 />
@@ -378,14 +398,14 @@ export function AddMaintenanceDialog({
             {taskFormData.isGroupTask && (
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
-                  <Label>Subtasks</Label>
+                  <Label>Subtaken</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addSubtask}>
-                    Add Subtask
+                    Subtaak toevoegen
                   </Button>
                 </div>
 
                 {subtasks.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No subtasks added yet</p>
+                  <p className="text-gray-500 text-sm">Nog geen subtaken toegevoegd</p>
                 ) : (
                   <DndContext
                     sensors={sensors}
@@ -412,20 +432,20 @@ export function AddMaintenanceDialog({
               </div>
             )}
 
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, minmax(150px, 1fr))' }}>
+            <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="category">Category *</Label>
+                <Label htmlFor="press">Machine (Pers) *</Label>
                 <Select
-                  value={taskFormData.category}
-                  onValueChange={(value) => setTaskFormData({ ...taskFormData, category: value })}
+                  value={taskFormData.press}
+                  onValueChange={(value) => setTaskFormData({ ...taskFormData, press: value as PressType, category: '' })}
                 >
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Select a category" />
+                  <SelectTrigger id="press">
+                    <SelectValue placeholder="Selecteer een machine" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
+                    {presses.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -433,7 +453,30 @@ export function AddMaintenanceDialog({
               </div>
 
               <div className="grid gap-2">
-                <Label>Last Maintenance *</Label>
+                <Label htmlFor="category">Categorie *</Label>
+                <Select
+                  value={taskFormData.category}
+                  onValueChange={(value) => setTaskFormData({ ...taskFormData, category: value })}
+                  disabled={!taskFormData.press}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder={taskFormData.press ? "Selecteer een categorie" : "Selecteer eerst een machine"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredCategories.map((cat: any) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))' }}>
+
+              <div className="grid gap-2">
+                <Label>Laatste onderhoud *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -456,7 +499,7 @@ export function AddMaintenanceDialog({
               </div>
 
               <div className="grid gap-2">
-                <Label>Next Maintenance *</Label>
+                <Label>Volgende onderhoud *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -478,10 +521,10 @@ export function AddMaintenanceDialog({
                   </PopoverContent>
                 </Popover>
                 {taskFormData.lastMaintenance && (
-                  <p className="text-xs text-gray-500">Auto-calculated based on interval</p>
+                  <p className="text-xs text-gray-500">Automatisch berekend op basis van interval</p>
                 )}
                 {isOperator && (
-                  <p className="text-xs text-gray-500">Read-only for operators</p>
+                  <p className="text-xs text-gray-500">Alleen lezen voor operators</p>
                 )}
               </div>
             </div>
@@ -489,7 +532,7 @@ export function AddMaintenanceDialog({
             {!isOperator && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="interval">Maintenance Interval *</Label>
+                  <Label htmlFor="interval">Onderhoudsinterval *</Label>
                   <Input
                     id="interval"
                     type="number"
@@ -500,7 +543,7 @@ export function AddMaintenanceDialog({
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="intervalUnit">Interval Unit *</Label>
+                  <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
                   <Select
                     value={taskFormData.maintenanceIntervalUnit}
                     onValueChange={(value: 'days' | 'weeks' | 'months') =>
@@ -511,9 +554,9 @@ export function AddMaintenanceDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="days">Days</SelectItem>
-                      <SelectItem value="weeks">Weeks</SelectItem>
-                      <SelectItem value="months">Months</SelectItem>
+                      <SelectItem value="days">Dagen</SelectItem>
+                      <SelectItem value="weeks">Weken</SelectItem>
+                      <SelectItem value="months">Maanden</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -523,10 +566,10 @@ export function AddMaintenanceDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              Annuleren
             </Button>
             <Button type="submit">
-              {editTask ? 'Update' : initialGroup ? 'Update Group' : 'Add'}
+              {editTask ? 'Bijwerken' : initialGroup ? 'Groep bijwerken' : 'Toevoegen'}
             </Button>
           </DialogFooter>
         </form >

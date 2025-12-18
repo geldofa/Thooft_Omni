@@ -72,7 +72,9 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     task: subtask.subtaskName,
     taskSubtext: subtask.subtext,
     category: group.category,
+    categoryId: group.categoryId,
     press: group.press,
+    pressId: group.pressId,
     lastMaintenance: subtask.lastMaintenance,
     nextMaintenance: subtask.nextMaintenance,
     maintenanceInterval: subtask.maintenanceInterval,
@@ -85,7 +87,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   });
 
   const formatDate = (date: Date | null) => {
-    if (!date) return 'N/A';
+    if (!date) return 'N.v.t.';
     const d = new Date(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -94,7 +96,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   };
 
   const formatDateTime = (date: Date | null) => {
-    if (!date) return 'N/A';
+    if (!date) return 'N.v.t.';
     const d = new Date(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -105,7 +107,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   };
 
   const formatInterval = (interval: number, unit: 'days' | 'weeks' | 'months') => {
-    return `${interval} ${unit}`;
+    const unitLabel = unit === 'days' ? 'dagen' : unit === 'weeks' ? 'weken' : 'maanden';
+    return `${interval} ${unitLabel}`;
   };
 
   const getStatusInfo = (nextMaintenance: Date) => {
@@ -114,13 +117,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     const daysUntil = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntil < 0) {
-      return { label: 'Overdue', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
+      return { label: 'Te laat', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
     } else if (daysUntil <= 7) {
-      return { label: 'Due Soon', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
+      return { label: 'Binnenkort', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
     } else if (daysUntil <= 30) {
-      return { label: 'Upcoming', color: 'bg-yellow-50', textColor: 'text-yellow-700', badgeClass: 'bg-yellow-500 hover:bg-yellow-600' };
+      return { label: 'Op komst', color: 'bg-yellow-50', textColor: 'text-yellow-700', badgeClass: 'bg-yellow-500 hover:bg-yellow-600' };
     } else {
-      return { label: 'Scheduled', color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
+      return { label: 'Gepland', color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
     }
   };
 
@@ -153,7 +156,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   const handleDelete = (id: string, name: string) => {
     onDelete(id);
-    toast.success(`${name} deleted successfully`);
+    toast.success(`${name} succesvol verwijderd`);
   };
 
   const handleDragStart = (category: string) => {
@@ -193,9 +196,9 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
       if (onUpdateTaskOrder) {
         try {
           await onUpdateTaskOrder(category, taskIds);
-          toast.success('Task order updated');
+          toast.success('Taakvolgorde bijgewerkt');
         } catch (error) {
-          toast.error('Failed to update task order');
+          toast.error('Bijwerken van taakvolgorde mislukt');
         }
       }
     }
@@ -209,7 +212,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   // Count subtasks by status
   const statusCounts = allSubtasks.reduce((acc, subtask) => {
     const status = getStatusInfo(subtask.nextMaintenance).label;
-    if (status !== 'Scheduled') {
+    if (status !== 'Gepland') {
       acc[status] = (acc[status] || 0) + 1;
     }
     return acc;
@@ -421,7 +424,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     }, [relevantSubtasks]);
 
     const summaryStatusInfo = earliestSubtask ? getStatusInfo(earliestSubtask.nextMaintenance) : null;
-    const summaryRowBgClass = summaryStatusInfo && summaryStatusInfo.label !== 'Scheduled' ? summaryStatusInfo.color : '';
+    const summaryRowBgClass = summaryStatusInfo && summaryStatusInfo.label !== 'Gepland' ? summaryStatusInfo.color : '';
 
     return (
       <>
@@ -469,7 +472,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-gray-900">{groupedTask.taskName}</span>
                       <Badge variant="secondary" className="ml-2">
-                        {relevantSubtasks.length} subtasks
+                        {relevantSubtasks.length} subtaken
                       </Badge>
                     </div>
                     {groupedTask.taskSubtext && (
@@ -494,18 +497,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Grouped Task</AlertDialogTitle>
+                          <AlertDialogTitle>Groep verwijderen</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete "{groupedTask.taskName}" and all its subtasks?
+                            Weet je zeker dat je "{groupedTask.taskName}" en alle subtaken wilt verwijderen?
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>Annuleren</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDelete(groupedTask.id, groupedTask.taskName)}
                             className="bg-red-500 hover:bg-red-600"
                           >
-                            Delete
+                            Verwijderen
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -548,7 +551,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 </td>
                 <td className="px-3 py-1.5">
                   <div className="max-w-xs">
-                    <div className="line-clamp-2 text-gray-600">{earliestSubtask.comment}</div>
+                    <div className="line-clamp-2 text-gray-600">{earliestSubtask.comment || 'Klik om toe te voegen...'}</div>
                     {earliestSubtask.commentDate && (
                       <div className="text-gray-400 text-xs">{formatDateTime(earliestSubtask.commentDate)}</div>
                     )}
@@ -572,18 +575,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Grouped Task</AlertDialogTitle>
+                            <AlertDialogTitle>Groep verwijderen</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete "{groupedTask.taskName}" and all its subtasks?
+                              Weet je zeker dat je "{groupedTask.taskName}" en alle subtaken wilt verwijderen?
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>Annuleren</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDelete(groupedTask.id, groupedTask.taskName)}
                               className="bg-red-500 hover:bg-red-600"
                             >
-                              Delete
+                              Verwijderen
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -667,7 +670,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Click to add...'}</div>
+                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Klik om toe te voegen...'}</div>
                   {subtask.commentDate && (
                     <div className="text-gray-400 text-xs">{formatDateTime(subtask.commentDate)}</div>
                   )}
@@ -691,18 +694,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Subtask</AlertDialogTitle>
+                          <AlertDialogTitle>Subtaak verwijderen</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete "{subtask.subtaskName}"? This action cannot be undone.
+                            Weet je zeker dat je "{subtask.subtaskName}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>Annuleren</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDelete(subtask.id, subtask.subtaskName)}
                             className="bg-red-500 hover:bg-red-600"
                           >
-                            Delete
+                            Verwijderen
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -771,7 +774,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Click to add...'}</div>
+                  <div className="line-clamp-2 text-gray-600">{subtask.comment || 'Klik om toe te voegen...'}</div>
                   {subtask.commentDate && (
                     <div className="text-gray-400 text-xs">{formatDateTime(subtask.commentDate)}</div>
                   )}
@@ -795,18 +798,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Subtask</AlertDialogTitle>
+                          <AlertDialogTitle>Subtaak verwijderen</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete "{subtask.subtaskName}"? This action cannot be undone.
+                            Weet je zeker dat je "{subtask.subtaskName}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>Annuleren</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDelete(subtask.id, subtask.subtaskName)}
                             className="bg-red-500 hover:bg-red-600"
                           >
-                            Delete
+                            Verwijderen
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -825,51 +828,51 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Maintenance Tasks</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Onderhoudstaken</h2>
         <div className="flex items-center gap-2">
           {/* Status Filter Buttons */}
-          {statusCounts.Overdue > 0 && (
+          {statusCounts['Te laat'] > 0 && (
             <Button
-              variant={statusFilter === 'Overdue' ? 'default' : 'outline'}
+              variant={statusFilter === 'Te laat' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => handleStatusFilter('Overdue')}
+              onClick={() => handleStatusFilter('Te laat')}
               className="gap-2"
             >
-              <span className={statusFilter === 'Overdue' ? 'text-white' : 'text-red-600'}>
-                Overdue
+              <span className={statusFilter === 'Te laat' ? 'text-white' : 'text-red-600'}>
+                Te laat
               </span>
-              <Badge variant={statusFilter === 'Overdue' ? 'secondary' : 'default'} className="bg-red-500">
-                {statusCounts.Overdue}
+              <Badge variant={statusFilter === 'Te laat' ? 'secondary' : 'default'} className="bg-red-500">
+                {statusCounts['Te laat']}
               </Badge>
             </Button>
           )}
-          {statusCounts['Due Soon'] > 0 && (
+          {statusCounts['Binnenkort'] > 0 && (
             <Button
-              variant={statusFilter === 'Due Soon' ? 'default' : 'outline'}
+              variant={statusFilter === 'Binnenkort' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => handleStatusFilter('Due Soon')}
+              onClick={() => handleStatusFilter('Binnenkort')}
               className="gap-2"
             >
-              <span className={statusFilter === 'Due Soon' ? 'text-white' : 'text-orange-600'}>
-                Due Soon
+              <span className={statusFilter === 'Binnenkort' ? 'text-white' : 'text-orange-600'}>
+                Binnenkort
               </span>
-              <Badge variant={statusFilter === 'Due Soon' ? 'secondary' : 'default'} className="bg-orange-500">
-                {statusCounts['Due Soon']}
+              <Badge variant={statusFilter === 'Binnenkort' ? 'secondary' : 'default'} className="bg-orange-500">
+                {statusCounts['Binnenkort']}
               </Badge>
             </Button>
           )}
-          {statusCounts.Upcoming > 0 && (
+          {statusCounts['Op komst'] > 0 && (
             <Button
-              variant={statusFilter === 'Upcoming' ? 'default' : 'outline'}
+              variant={statusFilter === 'Op komst' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => handleStatusFilter('Upcoming')}
+              onClick={() => handleStatusFilter('Op komst')}
               className="gap-2"
             >
-              <span className={statusFilter === 'Upcoming' ? 'text-white' : 'text-yellow-600'}>
-                Upcoming
+              <span className={statusFilter === 'Op komst' ? 'text-white' : 'text-yellow-600'}>
+                Op komst
               </span>
-              <Badge variant={statusFilter === 'Upcoming' ? 'secondary' : 'default'} className="bg-yellow-500">
-                {statusCounts.Upcoming}
+              <Badge variant={statusFilter === 'Op komst' ? 'secondary' : 'default'} className="bg-yellow-500">
+                {statusCounts['Op komst']}
               </Badge>
             </Button>
           )}
@@ -877,17 +880,15 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
         {onAddTask && (
           <Button onClick={onAddTask} size="sm" className="gap-2">
             <Plus className="w-4 h-4" />
-            Add Task
+            Taak Toevoegen
           </Button>
         )}
-
-
       </div>
 
       <div className="space-y-3">
         {orderedCategories.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500">
-            No maintenance tasks found. Add your first task to get started.
+            Geen onderhoudstaken gevonden. Voeg uw eerste taak toe om aan de slag te gaan.
           </div>
         ) : (
           orderedCategories.map((category) => {
@@ -935,17 +936,17 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       <thead>
                         <tr className="bg-gray-50/50 border-b border-gray-200">
                           <SortableColumnHeader
-                            label="Task / Subtask"
+                            label="Taak / Subtaak"
                             sortKey="task"
                             className={`px-3 py-2 text-left text-gray-700 w-[20%] ${user?.role === 'admin' ? 'pl-[60px]' : 'pl-[36px]'}`}
                           />
                           <SortableColumnHeader
-                            label="Last Maintenance"
+                            label="Laatst Onderhoud"
                             sortKey="lastMaintenance"
                             className="px-3 py-2 text-left text-gray-700 w-[12%]"
                           />
                           <SortableColumnHeader
-                            label="Next Maintenance"
+                            label="Volgend Onderhoud"
                             sortKey="nextMaintenance"
                             className="px-3 py-2 text-left text-gray-700 w-[12%]"
                           />
@@ -958,13 +959,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                             className="px-3 py-2 text-left text-gray-700 w-[8%]"
                           />
                           <SortableColumnHeader
-                            label="Assigned To"
+                            label="Toegewezen aan"
                             sortKey="assignedTo"
                             className="px-3 py-2 text-left text-gray-700 w-[12%]"
                           />
-                          <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Comment</th>
+                          <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Opmerkingen</th>
                           {user?.role === 'admin' && (
-                            <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Actions</th>
+                            <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Acties</th>
                           )}
                         </tr>
                       </thead>

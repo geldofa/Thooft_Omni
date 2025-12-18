@@ -36,11 +36,11 @@ export function ActivityLog() {
   const getActionBadge = (action: string) => {
     switch (action) {
       case 'Created':
-        return <Badge className="bg-green-500">Created</Badge>;
+        return <Badge className="bg-green-500">Aangemaakt</Badge>;
       case 'Updated':
-        return <Badge className="bg-blue-500">Updated</Badge>;
+        return <Badge className="bg-blue-500">Bijgewerkt</Badge>;
       case 'Deleted':
-        return <Badge className="bg-red-500">Deleted</Badge>;
+        return <Badge className="bg-red-500">Verwijderd</Badge>;
       default:
         return <Badge variant="secondary">{action}</Badge>;
     }
@@ -82,9 +82,9 @@ export function ActivityLog() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-gray-900">Activity Log</h2>
+        <h2 className="text-gray-900">Activiteitenlogboek</h2>
         <p className="text-gray-600 mt-1">
-          Track all changes and activities in the system
+          Volg alle wijzigingen en activiteiten in het systeem
         </p>
       </div>
 
@@ -92,12 +92,12 @@ export function ActivityLog() {
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="md:col-span-2">
-            <Label htmlFor="search" className="mb-2 block">Search</Label>
+            <Label htmlFor="search" className="mb-2 block">Zoeken</Label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 id="search"
-                placeholder="Search by user, task, or details..."
+                placeholder="Zoeken op gebruiker, taak of details..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -106,16 +106,16 @@ export function ActivityLog() {
           </div>
 
           <div>
-            <Label htmlFor="filterAction" className="mb-2 block">Action</Label>
+            <Label htmlFor="filterAction" className="mb-2 block">Actie</Label>
             <Select value={filterAction} onValueChange={setFilterAction}>
               <SelectTrigger id="filterAction">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="Created">Created</SelectItem>
-                <SelectItem value="Updated">Updated</SelectItem>
-                <SelectItem value="Deleted">Deleted</SelectItem>
+                <SelectItem value="all">Alle Acties</SelectItem>
+                <SelectItem value="Created">Aangemaakt</SelectItem>
+                <SelectItem value="Updated">Bijgewerkt</SelectItem>
+                <SelectItem value="Deleted">Verwijderd</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -123,13 +123,13 @@ export function ActivityLog() {
           {/* Hide Press Filter for Press Role */}
           {user?.role !== 'press' && (
             <div>
-              <Label htmlFor="filterPress" className="mb-2 block">Press</Label>
+              <Label htmlFor="filterPress" className="mb-2 block">Pers</Label>
               <Select value={filterPress} onValueChange={setFilterPress}>
                 <SelectTrigger id="filterPress">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Presses</SelectItem>
+                  <SelectItem value="all">Alle Persen</SelectItem>
                   <SelectItem value="Lithoman">Lithoman</SelectItem>
                   <SelectItem value="C80">C80</SelectItem>
                   <SelectItem value="C818">C818</SelectItem>
@@ -139,16 +139,16 @@ export function ActivityLog() {
           )}
 
           <div>
-            <Label htmlFor="filterEntity" className="mb-2 block">Entity</Label>
+            <Label htmlFor="filterEntity" className="mb-2 block">Entiteit</Label>
             <Select value={filterEntity} onValueChange={setFilterEntity}>
               <SelectTrigger id="filterEntity">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Entities</SelectItem>
-                <SelectItem value="Task">Task</SelectItem>
+                <SelectItem value="all">Alle Entiteiten</SelectItem>
+                <SelectItem value="Task">Taak</SelectItem>
                 <SelectItem value="Operator">Operator</SelectItem>
-                <SelectItem value="Role">Role</SelectItem>
+                <SelectItem value="Role">Rol</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -157,10 +157,10 @@ export function ActivityLog() {
         {(searchQuery || filterAction !== 'all' || filterPress !== 'all' || filterEntity !== 'all') && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-gray-600">
-              Showing {filteredLogs.length} of {activityLogs.length} activities
+              Toont {filteredLogs.length} van {activityLogs.length} activiteiten
             </p>
             <Button variant="outline" size="sm" onClick={handleClearFilters}>
-              Clear Filters
+              Filters Wissen
             </Button>
           </div>
         )}
@@ -171,12 +171,12 @@ export function ActivityLog() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[180px]">Timestamp</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Entity</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Press</TableHead>
+              <TableHead className="w-[180px]">Tijdstip</TableHead>
+              <TableHead>Gebruiker</TableHead>
+              <TableHead>Actie</TableHead>
+              <TableHead>Entiteit</TableHead>
+              <TableHead>Naam</TableHead>
+              <TableHead>Pers</TableHead>
               <TableHead>Details</TableHead>
             </TableRow>
           </TableHeader>
@@ -185,8 +185,8 @@ export function ActivityLog() {
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                   {activityLogs.length === 0
-                    ? 'No activity logs yet. Start making changes to see them here.'
-                    : 'No logs match your filters.'}
+                    ? 'Nog geen activiteitenlogs. Begin met het aanbrengen van wijzigingen om ze hier te zien.'
+                    : 'Geen logs die overeenkomen met uw filters.'}
                 </TableCell>
               </TableRow>
             ) : (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth, Category, PressType } from './AuthContext';
+import { useAuth, Category } from './AuthContext';
 import {
     Table,
     TableBody,
@@ -39,15 +39,13 @@ import { toast } from 'sonner';
 export function CategoryManagement() {
     const { categories, addCategory, updateCategory, deleteCategory, addActivityLog, user, presses } = useAuth();
 
-    // Get active presses for columns
-    const activePresses = presses
-        .filter(p => p.active && !p.archived)
-        .map(p => p.name);
+    // Get active presses for columns and selectors
+    const activePressRecords = presses.filter(p => p.active && !p.archived);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
     const [formData, setFormData] = useState({
         name: '',
-        presses: [] as PressType[],
+        pressIds: [] as string[],
         active: true
     });
     const [showInactive, setShowInactive] = useState(false);
@@ -73,7 +71,7 @@ export function CategoryManagement() {
                 updateCategory(editedCategory);
             }
         });
-        toast.success('Changes saved successfully');
+        toast.success('Wijzigingen succesvol opgeslagen');
         setEditMode(false);
     };
 
@@ -82,14 +80,14 @@ export function CategoryManagement() {
             setEditingCategory(category);
             setFormData({
                 name: category.name,
-                presses: category.presses,
+                pressIds: category.pressIds,
                 active: category.active
             });
         } else {
             setEditingCategory(null);
             setFormData({
                 name: '',
-                presses: [],
+                pressIds: [],
                 active: true
             });
             setIsAddDialogOpen(true);
@@ -101,17 +99,17 @@ export function CategoryManagement() {
         setEditingCategory(null);
         setFormData({
             name: '',
-            presses: [],
+            pressIds: [],
             active: true
         });
     };
 
-    const handlePressToggle = (press: PressType) => {
+    const handlePressToggle = (pressId: string) => {
         setFormData(prev => ({
             ...prev,
-            presses: prev.presses.includes(press)
-                ? prev.presses.filter(p => p !== press)
-                : [...prev.presses, press]
+            pressIds: prev.pressIds.includes(pressId)
+                ? prev.pressIds.filter(id => id !== pressId)
+                : [...prev.pressIds, pressId]
         }));
     };
 
@@ -119,22 +117,24 @@ export function CategoryManagement() {
         e.preventDefault();
 
         if (!formData.name.trim()) {
-            toast.error('Please enter category name');
+            toast.error('Voer a.u.b. de categorienaam in');
             return;
         }
 
-        if (formData.presses.length === 0) {
-            toast.error('Please select at least one press');
+        if (formData.pressIds.length === 0) {
+            toast.error('Selecteer a.u.b. ten minste één pers');
             return;
         }
 
         if (editingCategory) {
-            const updatedCategory = {
+            const updatedCategory: Category = {
                 ...editingCategory,
-                ...formData
+                name: formData.name,
+                pressIds: formData.pressIds,
+                active: formData.active
             };
             updateCategory(updatedCategory);
-            toast.success('Category updated successfully');
+            toast.success('Categorie succesvol bijgewerkt');
 
             addActivityLog({
                 user: user?.username || 'Unknown',
@@ -142,11 +142,11 @@ export function CategoryManagement() {
                 entity: 'Category',
                 entityId: editingCategory.id,
                 entityName: formData.name,
-                details: `Updated category presses: ${formData.presses.join(', ')}`
+                details: `Updated category presses count: ${formData.pressIds.length}`
             });
         } else {
             addCategory(formData);
-            toast.success('Category added successfully');
+            toast.success('Categorie succesvol toegevoegd');
 
             addActivityLog({
                 user: user?.username || 'Unknown',
@@ -154,7 +154,7 @@ export function CategoryManagement() {
                 entity: 'Category',
                 entityId: 'new',
                 entityName: formData.name,
-                details: `Added new category with presses: ${formData.presses.join(', ')}`
+                details: `Added new category with ${formData.pressIds.length} presses`
             });
         }
 
@@ -163,7 +163,7 @@ export function CategoryManagement() {
 
     const handleDelete = (id: string, name: string) => {
         deleteCategory(id);
-        toast.success(`Category "${name}" deleted successfully`);
+        toast.success(`Categorie "${name}" succesvol verwijderd`);
 
         addActivityLog({
             user: user?.username || 'Unknown',
@@ -181,9 +181,9 @@ export function CategoryManagement() {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-gray-900">Category Management</h2>
+                    <h2 className="text-gray-900">Categorie Beheer</h2>
                     <p className="text-gray-600 mt-1">
-                        Manage maintenance task categories
+                        Beheer categorieën voor onderhoudstaken
                     </p>
                 </div>
             </div>
@@ -196,19 +196,19 @@ export function CategoryManagement() {
                         onClick={() => setShowInactive(!showInactive)}
                         className={showInactive ? 'bg-gray-200 hover:bg-gray-300 text-gray-900' : 'text-gray-500'}
                     >
-                        {showInactive ? 'Showing Inactive' : 'Show Inactive'}
+                        {showInactive ? 'Inactieve tonen' : 'Inactieve tonen'}
                     </Button>
                 </div>
                 <div className="flex gap-2">
                     {editMode && (
-                        <Button onClick={handleSaveChanges}>Save Changes</Button>
+                        <Button onClick={handleSaveChanges}>Wijzigingen Opslaan</Button>
                     )}
                     <Button onClick={() => setEditMode(!editMode)} variant="outline">
-                        {editMode ? 'Cancel' : 'Edit Mode'}
+                        {editMode ? 'Annuleren' : 'Bewerkmodus'}
                     </Button>
                     <Button onClick={() => handleOpenDialog()} className="gap-2">
                         <Plus className="w-4 h-4" />
-                        Add Category
+                        Categorie Toevoegen
                     </Button>
                 </div>
             </div>
@@ -217,9 +217,9 @@ export function CategoryManagement() {
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-gray-50 hover:bg-gray-50">
-                            <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Name</TableHead>
-                            {activePresses.map(press => (
-                                <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
+                            <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
+                            {activePressRecords.map(press => (
+                                <TableHead key={press.id} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press.name}</TableHead>
                             ))}
                             <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
                             {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
@@ -229,7 +229,7 @@ export function CategoryManagement() {
                         {(editMode ? editedCategories : filteredCategories).length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={editMode ? 5 : 6} className="text-center py-12 text-gray-500">
-                                    No categories found.
+                                    Geen categorieën gevonden.
                                 </TableCell>
                             </TableRow>
                         ) : (
@@ -246,21 +246,21 @@ export function CategoryManagement() {
                                             category.name
                                         )}
                                     </TableCell>
-                                    {activePresses.map(press => (
-                                        <TableCell key={press} className="border-r border-gray-200 p-0">
+                                    {activePressRecords.map(press => (
+                                        <TableCell key={press.id} className="border-r border-gray-200 p-0">
                                             <div className="flex justify-center items-center h-full py-2">
                                                 {editMode ? (
                                                     <Checkbox
-                                                        checked={category.presses.includes(press)}
+                                                        checked={category.pressIds.includes(press.id)}
                                                         onCheckedChange={(checked) => {
-                                                            const newPresses = checked
-                                                                ? [...category.presses, press]
-                                                                : category.presses.filter(p => p !== press);
-                                                            handleEditChange(category.id, 'presses', newPresses);
+                                                            const newPressIds = checked
+                                                                ? [...category.pressIds, press.id]
+                                                                : category.pressIds.filter(id => id !== press.id);
+                                                            handleEditChange(category.id, 'pressIds', newPressIds);
                                                         }}
                                                     />
                                                 ) : (
-                                                    category.presses.includes(press) ? (
+                                                    category.pressIds.includes(press.id) ? (
                                                         <Check className="w-5 h-5 text-green-600" />
                                                     ) : (
                                                         <span className="text-gray-300">-</span>
@@ -279,9 +279,9 @@ export function CategoryManagement() {
                                             </div>
                                         ) : (
                                             category.active ? (
-                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Active</Badge>
+                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Actief</Badge>
                                             ) : (
-                                                <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">Inactive</Badge>
+                                                <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">Inactief</Badge>
                                             )
                                         )}
                                     </TableCell>
@@ -303,9 +303,9 @@ export function CategoryManagement() {
                                                     </AlertDialogTrigger>
                                                     <AlertDialogContent>
                                                         <AlertDialogHeader>
-                                                            <AlertDialogTitle>Delete Category</AlertDialogTitle>
+                                                            <AlertDialogTitle>Categorie Verwijderen</AlertDialogTitle>
                                                             <AlertDialogDescription>
-                                                                Are you sure you want to delete "{category.name}"? This action cannot be undone.
+                                                                Weet u zeker dat u "{category.name}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter>
@@ -332,41 +332,41 @@ export function CategoryManagement() {
             <Dialog open={isAddDialogOpen || !!editingCategory} onOpenChange={handleCloseDialog}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{editingCategory ? 'Edit Category' : 'Add New Category'}</DialogTitle>
+                        <DialogTitle>{editingCategory ? 'Categorie Bewerken' : 'Nieuwe Categorie Toevoegen'}</DialogTitle>
                         <DialogDescription>
                             {editingCategory
-                                ? 'Update the category details below.'
-                                : 'Fill in the details for the new category.'}
+                                ? 'Werk de details van de categorie hieronder bij.'
+                                : 'Vul de details in voor de nieuwe categorie.'}
                         </DialogDescription>
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-4 py-4">
                             <div className="grid gap-2">
-                                <Label htmlFor="categoryName">Name *</Label>
+                                <Label htmlFor="categoryName">Naam *</Label>
                                 <Input
                                     id="categoryName"
-                                    placeholder="e.g., Smering"
+                                    placeholder="bijv., Smering"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
 
                             <div className="grid gap-3">
-                                <Label>Available Presses *</Label>
+                                <Label>Beschikbare Persen *</Label>
                                 <div className="space-y-2 border rounded-md p-3">
-                                    {activePresses.map((press) => (
-                                        <div key={press} className="flex items-center space-x-2">
+                                    {activePressRecords.map((press) => (
+                                        <div key={press.id} className="flex items-center space-x-2">
                                             <Checkbox
-                                                id={`category-${press}`}
-                                                checked={formData.presses.includes(press)}
-                                                onCheckedChange={() => handlePressToggle(press)}
+                                                id={`category-${press.id}`}
+                                                checked={formData.pressIds.includes(press.id)}
+                                                onCheckedChange={() => handlePressToggle(press.id)}
                                             />
                                             <label
-                                                htmlFor={`category-${press}`}
+                                                htmlFor={`category-${press.id}`}
                                                 className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                                             >
-                                                {press}
+                                                {press.name}
                                             </label>
                                         </div>
                                     ))}
@@ -375,9 +375,9 @@ export function CategoryManagement() {
 
                             <div className="flex items-center justify-between border rounded-md p-3">
                                 <div className="space-y-0.5">
-                                    <Label htmlFor="categoryActive">Active Status</Label>
+                                    <Label htmlFor="categoryActive">Actieve Status</Label>
                                     <p className="text-xs text-gray-500">
-                                        Inactive categories won't appear in task lists
+                                        Inactieve categorieën verschijnen niet in de takenlijsten
                                     </p>
                                 </div>
                                 <Switch
@@ -390,10 +390,10 @@ export function CategoryManagement() {
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                                Cancel
+                                Annuleren
                             </Button>
                             <Button type="submit">
-                                {editingCategory ? 'Update Category' : 'Add Category'}
+                                {editingCategory ? 'Categorie Bijwerken' : 'Categorie Toevoegen'}
                             </Button>
                         </DialogFooter>
                     </form>

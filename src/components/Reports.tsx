@@ -21,10 +21,10 @@ export function Reports({ tasks }: ReportsProps) {
   // --- COLUMN DEFINITION CONSTANT ---
   const REPORT_HEADERS = [
     // REQUESTED WIDTHS: 40 + 10 + 10 + 10 + 30 = 100%
-    { label: 'Task', w: 'w-[40%]', key: 'task' },
-    { label: 'Due', w: 'w-[10%]', key: 'due' },
+    { label: 'Taak', w: 'w-[40%]', key: 'task' },
+    { label: 'Gepland', w: 'w-[10%]', key: 'due' },
     { label: 'Status', w: 'w-[10%]', key: 'status' },
-    { label: 'Assigned', w: 'w-[10%]', key: 'assigned' },
+    { label: 'Toegewezen', w: 'w-[10%]', key: 'assigned' },
     { label: 'Opmerkingen', w: 'w-[30%]', key: 'opmerkingen' },
   ];
 
@@ -147,7 +147,7 @@ export function Reports({ tasks }: ReportsProps) {
         <td className="py-2 text-gray-600 whitespace-nowrap">{formatDate(task.nextMaintenance)}</td>
         {/* Status (w-[10%]) */}
         <td className={`py-2 font-medium whitespace-nowrap ${isOverdue ? 'text-red-600' : 'text-orange-600'}`}>
-          {daysDiff} days {isOverdue ? 'overdue' : 'left'}
+          {daysDiff} {daysDiff === 1 ? 'dag' : 'dagen'} {isOverdue ? 'te laat' : 'resterend'}
         </td>
         {/* Assigned (w-[10%]) */}
         <td className="py-2 text-gray-600">{task.assignedTo || '-'}</td>
@@ -166,16 +166,16 @@ export function Reports({ tasks }: ReportsProps) {
 
         {/* Title on the left */}
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Maintenance Reports</h2>
+          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Onderhoudsrapportages</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Overview of maintenance status
+            Overzicht van de onderhoudsstatus
           </p>
         </div>
 
         {/* Print Button on the right */}
         <Button onClick={handlePrint} className="gap-2 shadow-sm">
           <Printer className="w-4 h-4" />
-          Print
+          Printen
         </Button>
       </div>
 
@@ -186,7 +186,7 @@ export function Reports({ tasks }: ReportsProps) {
         <div className="flex-1 overflow-x-auto no-scrollbar py-2">
           <Tabs value={selectedPress} onValueChange={(value) => setSelectedPress(value as PressType | 'all')}>
             <TabsList className="tab-pill-list">
-              <TabsTrigger value="all" className="tab-pill-trigger">All</TabsTrigger>
+              <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
               {activePresses.map((press) => (
                 <TabsTrigger key={press.id} value={press.name} className="tab-pill-trigger">
                   {press.name}
@@ -200,10 +200,10 @@ export function Reports({ tasks }: ReportsProps) {
         <div>
           <Tabs value={overdueFilter} onValueChange={(value) => setOverdueFilter(value as OverdueFilter)}>
             <TabsList className="tab-pill-list">
-              <TabsTrigger value="all" className="tab-pill-trigger">All</TabsTrigger>
-              <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Month</TabsTrigger>
-              <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Months</TabsTrigger>
-              <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Year</TabsTrigger>
+              <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
+              <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Maand</TabsTrigger>
+              <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Maanden</TabsTrigger>
+              <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Jaar</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -245,14 +245,14 @@ export function Reports({ tasks }: ReportsProps) {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 min-h-screen">
           {/* PRINTABLE REPORT TITLE BLOCK */}
           <div className="mb-8 border-b pb-4 text-center">
-            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Maintenance Report</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Onderhoudsrapport</h1>
             <div className="text-sm text-gray-500 mt-1">
-              Generated on {formatDate(new Date())}
+              Gegenereerd op {formatDate(new Date())}
             </div>
             {overdueFilter !== 'all' && (
               <div className="mt-4 inline-block">
                 <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">
-                  Filter: Overdue &gt; {overdueFilter === '1y' ? '1 Year' : overdueFilter === '3m' ? '3 Months' : '1 Month'}
+                  Filter: Achterstallig &gt; {overdueFilter === '1y' ? '1 Jaar' : overdueFilter === '3m' ? '3 Maanden' : '1 Maand'}
                 </Badge>
               </div>
             )}
@@ -277,12 +277,12 @@ export function Reports({ tasks }: ReportsProps) {
                   <div className="flex gap-2">
                     {overdueTasks.length > 0 && (
                       <Badge variant="destructive" className="font-mono">
-                        {overdueTasks.length} Overdue
+                        {overdueTasks.length} Te laat
                       </Badge>
                     )}
                     {dueSoonTasks.length > 0 && (
                       <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 font-mono">
-                        {dueSoonTasks.length} Due Soon
+                        {dueSoonTasks.length} Binnenkort
                       </Badge>
                     )}
                   </div>
@@ -292,7 +292,7 @@ export function Reports({ tasks }: ReportsProps) {
                 {overdueTasks.length > 0 && (
                   <div className="mb-6">
                     <h3 className="text-red-700 font-semibold mb-3 border-b border-red-100 pb-1 text-sm uppercase tracking-wide">
-                      Overdue Tasks
+                      Achterstallige Taken
                     </h3>
 
                     {overdueCategories.map(category => (
@@ -315,7 +315,7 @@ export function Reports({ tasks }: ReportsProps) {
                 {dueSoonTasks.length > 0 && (
                   <div className="mb-6">
                     <h3 className="text-orange-700 font-semibold mb-3 border-b border-orange-100 pb-1 text-sm uppercase tracking-wide">
-                      Due This Week
+                      Gepland voor deze week
                     </h3>
 
                     {dueSoonCategories.map(category => (

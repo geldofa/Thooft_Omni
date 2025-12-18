@@ -122,7 +122,7 @@ export function AddFinishedJobDialog({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!jobFormData.orderNr.trim() || !jobFormData.orderName.trim()) {
-            toast.error('Please fill out Order Nr and Order Name');
+            toast.error('Vul a.u.b. het Ordernr en de Ordernaam in');
             return;
         }
 
@@ -130,14 +130,14 @@ export function AddFinishedJobDialog({
         onOpenChange(false);
 
         if (editJob) {
-            toast.success('Job updated successfully');
+            toast.success('Drukwerk succesvol bijgewerkt');
         } else {
-            toast.success('Job added successfully');
+            toast.success('Drukwerk succesvol toegevoegd');
         }
     };
 
     const formatDate = (date: string | null) => {
-        if (!date) return 'Pick a date';
+        if (!date) return 'Kies een datum';
         return new Date(date).toLocaleDateString('nl-BE', {
             year: 'numeric',
             month: 'short',
@@ -153,9 +153,9 @@ export function AddFinishedJobDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{editJob ? 'Edit Finished Job' : 'Add Finished Job'}</DialogTitle>
+                    <DialogTitle>{editJob ? 'Afgewerkt Drukwerk Bewerken' : 'Afgewerkt Drukwerk Toevoegen'}</DialogTitle>
                     <DialogDescription>
-                        {editJob ? 'Update the job details below.' : 'Fill in the details for the new finished job.'}
+                        {editJob ? 'Werk de details van het drukwerk hieronder bij.' : 'Vul de details in voor het nieuwe afgewerkte drukwerk.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -165,7 +165,7 @@ export function AddFinishedJobDialog({
                         <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Order Details</h3>
                         <div className="flex flex-wrap gap-4">
                             <div className="w-[23%] space-y-2">
-                                <Label htmlFor="date">Date</Label>
+                                <Label htmlFor="date">Datum</Label>
                                 <Popover>
                                     <PopoverTrigger asChild>
                                         <Button
@@ -187,15 +187,15 @@ export function AddFinishedJobDialog({
                                 </Popover>
                             </div>
                             <div className="w-[23%] space-y-2">
-                                <Label htmlFor="orderNr">Order Nr.</Label>
+                                <Label htmlFor="orderNr">Ordernr.</Label>
                                 <Input id="orderNr" value={jobFormData.orderNr} onChange={e => setJobFormData({ ...jobFormData, orderNr: e.target.value })} className="h-9" />
                             </div>
                             <div className="w-[30%] space-y-2">
-                                <Label htmlFor="orderName">Order Name</Label>
+                                <Label htmlFor="orderName">Ordernaam</Label>
                                 <Input id="orderName" value={jobFormData.orderName} onChange={e => setJobFormData({ ...jobFormData, orderName: e.target.value })} className="h-9" />
                             </div>
                             <div className="flex-1 space-y-2">
-                                <Label htmlFor="version">Version</Label>
+                                <Label htmlFor="version">Versie</Label>
                                 <Input id="version" value={jobFormData.version} onChange={e => setJobFormData({ ...jobFormData, version: e.target.value })} className="h-9" />
                             </div>
                         </div>
@@ -203,7 +203,7 @@ export function AddFinishedJobDialog({
 
                     {/* Section 2: Production Specs */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Production Specs</h3>
+                        <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wider">Productie Specs</h3>
                         <div className="flex flex-wrap gap-4">
                             <div className="flex-1 space-y-2">
                                 <Label htmlFor="pages">Pagina's</Label>
@@ -275,8 +275,8 @@ export function AddFinishedJobDialog({
                     </div>
 
                     <DialogFooter className="pt-4 border-t">
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit">{editJob ? 'Update Job' : 'Add Job'}</Button>
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuleren</Button>
+                        <Button type="submit">{editJob ? 'Drukwerk Bijwerken' : 'Drukwerk Toevoegen'}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

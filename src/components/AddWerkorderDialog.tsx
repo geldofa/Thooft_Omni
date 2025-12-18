@@ -53,7 +53,7 @@ export function AddWerkorderDialog({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!werkorderFormData.orderNr.trim() || !werkorderFormData.orderName.trim()) {
-            toast.error('Please fill out Order Nr and Order Name');
+            toast.error('Vul a.u.b. het Ordernr. en de Ordernaam in');
             return;
         }
 
@@ -61,14 +61,14 @@ export function AddWerkorderDialog({
         onOpenChange(false);
 
         if (editWerkorder) {
-            toast.success('Werkorder updated successfully');
+            toast.success('Werkorder succesvol bijgewerkt');
         } else {
-            toast.success('Werkorder added successfully');
+            toast.success('Werkorder succesvol toegevoegd');
         }
     };
 
     const formatDate = (date: string | null) => {
-        if (!date) return 'Pick a date';
+        if (!date) return 'Kies een datum';
         return new Date(date).toLocaleDateString('nl-BE', {
             year: 'numeric',
             month: 'short',
@@ -80,24 +80,24 @@ export function AddWerkorderDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{editWerkorder ? 'Edit Werkorder' : 'Add Werkorder'}</DialogTitle>
+                    <DialogTitle>{editWerkorder ? 'Werkorder Bewerken' : 'Werkorder Toevoegen'}</DialogTitle>
                     <DialogDescription>
-                        {editWerkorder ? 'Update the werkorder details below.' : 'Fill in the details for the new werkorder.'}
+                        {editWerkorder ? 'Pas de werkordergegevens hieronder aan.' : 'Vul de gegevens voor de nieuwe werkorder in.'}
                     </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit}>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="orderNr">Order Nr.</Label>
+                            <Label htmlFor="orderNr">Ordernr.</Label>
                             <Input id="orderNr" value={werkorderFormData.orderNr} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderNr: e.target.value })} className="col-span-full" />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="orderName">Order Name</Label>
+                            <Label htmlFor="orderName">Ordernaam</Label>
                             <Input id="orderName" value={werkorderFormData.orderName} onChange={e => setWerkorderFormData({ ...werkorderFormData, orderName: e.target.value })} className="col-span-full" />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="orderDate">Order Date</Label>
+                            <Label htmlFor="orderDate">Orderdatum</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
@@ -120,8 +120,8 @@ export function AddWerkorderDialog({
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit">{editWerkorder ? 'Update Werkorder' : 'Add Werkorder'}</Button>
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuleren</Button>
+                        <Button type="submit">{editWerkorder ? 'Werkorder Bijwerken' : 'Werkorder Toevoegen'}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
