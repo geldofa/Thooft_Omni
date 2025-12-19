@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 
 // Initialize PocketBase Client
 const PB_URL = import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
-export const client = new PocketBase(PB_URL); // Export and rename to 'client' if needed, or just `pb`
-const pb = client;
+export const client = new PocketBase(PB_URL);
+export const pb = client;
 pb.autoCancellation(false);
 
 export interface GroupedTask {
@@ -331,6 +331,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
     try {
+      console.log('addTask called with:', task);
+      console.log('categoryId:', task.categoryId, 'pressId:', task.pressId);
+
       if (task.subtasks && task.subtasks.length > 0) {
         // Handle Grouped Task: Create a record for each subtask
         const promises = task.subtasks.map(subtask =>
@@ -354,7 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         await Promise.all(promises);
       } else {
         // Handle Single Task
-        await pb.collection('onderhoud').create({
+        const data = {
           task: task.task,
           task_subtext: task.taskSubtext,
           category: task.categoryId,
@@ -367,7 +370,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
               task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
           assigned_operator: task.assignedTo,
           comment: task.opmerkingen
-        });
+        };
+        console.log('Creating task with data:', data);
+        await pb.collection('onderhoud').create(data);
       }
       await fetchTasks(); // Refresh list after adding
     } catch (e) {
@@ -461,12 +466,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   // --- Stubs for other entities ---
   const addOperator = async (operator: Omit<Operator, 'id'>) => {
     try {
-      const pressIds = presses.filter(p => operator.presses.includes(p.name)).map(p => p.id);
+      // Store press names directly as JSON array
       await pb.collection('operatoren').create({
         naam: operator.name,
         interne_id: operator.employeeId,
         dienstverband: 'Intern',
-        presses: pressIds,
+        presses: operator.presses, // Direct names array
         active: operator.active,
         can_edit_tasks: operator.canEditTasks,
         can_access_management: operator.canAccessOperatorManagement
@@ -479,17 +484,20 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updateOperator = async (operator: Operator) => {
     try {
-      const pressIds = presses.filter(p => operator.presses.includes(p.name)).map(p => p.id);
+      console.log('Updating operator:', operator.name, 'with presses:', operator.presses);
+
+      // Store press names directly as JSON array
       await pb.collection('operatoren').update(operator.id, {
         naam: operator.name,
         interne_id: operator.employeeId,
-        presses: pressIds,
+        presses: operator.presses, // Direct names array
         active: operator.active,
         can_edit_tasks: operator.canEditTasks,
         can_access_management: operator.canAccessOperatorManagement
       });
       await fetchOperators();
     } catch (e: any) {
+      console.error('Failed to update operator:', e);
       toast.error(`Failed to update operator: ${e.message}`);
     }
   };
@@ -505,11 +513,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addExternalEntity = async (entity: Omit<ExternalEntity, 'id'>) => {
     try {
-      const pressIds = presses.filter(p => entity.presses.includes(p.name)).map(p => p.id);
+      // Store press names directly as JSON array
       await pb.collection('operatoren').create({
         naam: entity.name,
         dienstverband: 'Extern',
-        presses: pressIds,
+        presses: entity.presses, // Direct names array
         active: entity.active
       });
       await fetchOperators();
@@ -520,10 +528,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updateExternalEntity = async (entity: ExternalEntity) => {
     try {
-      const pressIds = presses.filter(p => entity.presses.includes(p.name)).map(p => p.id);
+      // Store press names directly as JSON array
       await pb.collection('operatoren').update(entity.id, {
         naam: entity.name,
-        presses: pressIds,
+        presses: entity.presses, // Direct names array
         active: entity.active
       });
       await fetchOperators();
@@ -628,12 +636,26 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addPress = async (press: Omit<Press, 'id'>) => {
     try {
-      await pb.collection('persen').create({
-        naam: press.name,
+      if (!press.name || !press.name.trim()) {
+        toast.error('Voer a.u.b. de naam van de pers in');
+        return;
+      }
+
+      // Debug: Check auth status
+      console.log('Auth valid?', pb.authStore.isValid);
+      console.log('Auth token?', pb.authStore.token ? 'Yes' : 'No');
+
+      const data = {
+        naam: press.name.trim(),
         status: press.active ? 'actief' : 'niet actief'
-      });
+      };
+      console.log('Creating press with data:', data);
+      await pb.collection('persen').create(data);
       await loadData();
+      toast.success('Pers succesvol toegevoegd');
     } catch (e: any) {
+      console.error('Failed to add press - Full error:', e);
+      console.error('Error data:', JSON.stringify(e.data || e.response?.data));
       toast.error(`Failed to add press: ${e.message}`);
     }
   };
@@ -643,6 +665,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       await pb.collection('persen').update(press.id, {
         naam: press.name,
         status: press.active ? 'actief' : 'niet actief'
+        // archived: press.archived // Uncomment after migration 1700000019 is applied
       });
       await loadData();
     } catch (e: any) {
@@ -681,7 +704,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const fetchUserAccounts = useCallback(async () => {
     try {
-      const records = await pb.collection('users').getFullList({ sort: 'username' });
+      const records = await pb.collection('users').getFullList();
+      records.sort((a: any, b: any) => (a.username || '').localeCompare(b.username || ''));
       setUserAccounts(records.map((r: any) => ({
         id: r.id,
         username: r.username,
@@ -697,19 +721,22 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const fetchOperators = useCallback(async () => {
     try {
-      const records = await pb.collection('operatoren').getFullList({
-        expand: 'presses'
-      });
+      // No expand needed - presses are stored as names directly
+      const records = await pb.collection('operatoren').getFullList();
 
       const ops: Operator[] = [];
       const externals: ExternalEntity[] = [];
 
       records.forEach((r: any) => {
+        // presses is now a JSON array of names directly
+        const pressNames = Array.isArray(r.presses) ? r.presses : [];
+        console.log('Operator:', r.naam, 'presses:', pressNames);
+
         const entity = {
           id: r.id,
           name: r.naam,
           employeeId: r.interne_id?.toString() || '',
-          presses: (r.expand?.presses || []).map((p: any) => p.naam as string),
+          presses: pressNames as string[],
           active: r.active !== false,
           canEditTasks: !!r.can_edit_tasks,
           canAccessOperatorManagement: !!r.can_access_management
@@ -813,15 +840,24 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
     try {
-      await pb.collection('activity_logs').create(log);
-    } catch (e) {
-      console.error("Add log failed", e);
+      const data = {
+        user: log.user || 'Unknown',
+        action: log.action || '',
+        entity: log.entity || '',
+        details: log.details || `${log.action} ${log.entityName || ''}`
+      };
+      console.log('Creating activity log with data:', data);
+      await pb.collection('activity_logs').create(data);
+    } catch (e: any) {
+      console.error('Add log failed:', e.response || e);
     }
   };
 
   const fetchActivityLogs = useCallback(async () => {
     try {
-      const records = await pb.collection('activity_logs').getFullList({ sort: '-created' });
+      const records = await pb.collection('activity_logs').getFullList();
+      // Client-side sort
+      records.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
       setActivityLogs(records.map((r: any) => ({
         id: r.id,
         timestamp: new Date(r.created),
@@ -852,8 +888,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       setPresses(pressesResult.map((p: any) => ({
         id: p.id,
         name: p.naam,
-        active: p.status === 'actief',
-        archived: false
+        active: p.status !== 'niet actief', // Default to active if status is missing or not 'niet actief'
+        archived: p.archived || false
       })));
 
       setCategories(categoriesResult.map((c: any) => ({

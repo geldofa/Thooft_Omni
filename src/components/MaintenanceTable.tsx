@@ -568,7 +568,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       </div>
                     ))}
                     {relevantSubtasks.every(st => !st.comment) && (
-                      <div className="text-gray-400 italic">Klik om toe te voegen...</div>
+                      <div className="text-gray-400 italic">-</div>
                     )}
                   </div>
                 </td>
@@ -685,13 +685,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="text-gray-600">
-                    <span className="font-semibold">{subtask.subtaskName}</span>
-                    {subtask.subtext && <span className="text-gray-400 text-xs ml-1">({subtask.subtext})</span>}
-                  </div>
-                  <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment || 'Klik om toe te voegen...'}</div>
-                  {subtask.commentDate && (
-                    <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
+                  {subtask.comment ? (
+                    <>
+                      <div className="line-clamp-2 text-gray-700">{subtask.comment}</div>
+                      <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
+                    </>
+                  ) : (
+                    <div className="text-gray-400">-</div>
                   )}
                 </div>
               </td>
@@ -797,9 +797,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     <span className="font-semibold">{subtask.subtaskName}</span>
                     {subtask.subtext && <span className="text-gray-400 text-xs ml-1">({subtask.subtext})</span>}
                   </div>
-                  <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment || 'Klik om toe te voegen...'}</div>
-                  {subtask.commentDate && (
-                    <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
+                  {subtask.comment ? (
+                    <>
+                      <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment}</div>
+                      <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
+                    </>
+                  ) : (
+                    <div className="text-gray-400 mt-0.5">-</div>
                   )}
                 </div>
               </td>

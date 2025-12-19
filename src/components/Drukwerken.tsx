@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { PressType, useAuth } from './AuthContext';
+import { PressType, useAuth, pb } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'; // Added useEffect
+import { useEffect } from 'react';
+import { toast } from 'sonner';
 // import { pillListClass, pillTriggerClass } from '../styles/TabStyles';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -97,10 +99,15 @@ interface CalculatedField {
 }
 
 export function Drukwerken({ presses }: { presses: Press[] }) {
-    // Get active presses for columns
     const activePresses = presses
         .filter(p => p.active && !p.archived)
         .map(p => p.name);
+
+    // Map press names to IDs for relation linking
+    const pressMap = presses.reduce((acc, press) => {
+        acc[press.name] = press.id;
+        return acc;
+    }, {} as Record<string, string>);
 
     const { user } = useAuth();
 
@@ -136,12 +143,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const [werkorders, setWerkorders] = useState<Werkorder[]>([
         {
             id: '1',
-            orderNr: '0001',
-            orderName: 'Spar 2025-01', // Added default orderName
-            orderDate: '2025-01-01',
+            orderNr: '',
+            orderName: '',
+            orderDate: new Date().toISOString().split('T')[0],
             katernen: [
-                { id: '1-1', version: 'Nederlands - Katern 1', pages: 40, exOmw: '2', netRun: 100000, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 101000, red: 3000, delta: 0, deltaPercentage: 0 },
-                { id: '1-2', version: 'Frans - Katern 1', pages: 40, exOmw: '2', netRun: 50000, startup: false, c4_4: 1, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: 50500, red: 1500, delta: 0, deltaPercentage: 0 },
+                { id: '1-1', version: '', pages: null, exOmw: '', netRun: 0, startup: false, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
             ]
         }
     ]);
@@ -222,89 +228,144 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         );
     };
 
-    const handleSaveOrderToFinished = (werkorder: Werkorder) => {
-        const newFinishedJobs: FinishedPrintJob[] = werkorder.katernen.map(katern => {
-            const today = new Date();
-            const formattedDate = format(today, 'yyyy-MM-dd');
-            const formattedDatum = format(today, 'dd-MM');
-
-            const jobWithKaternData = {
-                ...katern,
-                orderNr: werkorder.orderNr,
-                orderName: werkorder.orderName,
-                date: formattedDate,
-                datum: formattedDatum,
-            };
-
-            const calculatedMaxGross = getFormulaForColumn('maxGross')
-                ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)
-                    : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)).replace(/\./g, '').replace(',', '.')))
-                : katern.maxGross;
-            const maxGrossVal = Number(calculatedMaxGross) || 0;
-
-            const jobWithMaxGross = { ...jobWithKaternData, maxGross: maxGrossVal };
-
-            const calculatedGreen = getFormulaForColumn('green')
-                ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : katern.green;
-
-            const calculatedRed = getFormulaForColumn('red')
-                ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : katern.red;
-
-            const calculatedDeltaNumber = getFormulaForColumn('delta_number')
-                ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
-                    ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
-                    : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
-                : katern.delta;
-
-            const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
-                ? (() => {
-                    const f = getFormulaForColumn('delta_percentage')!;
-                    if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
-                        return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
-                            ? evaluateFormula(f.formula, jobWithMaxGross)
-                            : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+    const handleWerkorderChange = (werkorderId: string, field: 'orderNr' | 'orderName', value: string) => {
+        setWerkorders(prevWerkorders =>
+            prevWerkorders.map(wo => {
+                if (wo.id === werkorderId) {
+                    if (field === 'orderNr') {
+                        // Remove "DT " prefix if present and keep only digits
+                        const orderNumber = value.startsWith('DT ') ? value.substring(3) : value;
+                        const numericValue = orderNumber.replace(/[^0-9]/g, '');
+                        return { ...wo, orderNr: numericValue };
                     }
-                    const percentage = maxGrossVal !== 0 ? ((Number(calculatedGreen) + Number(calculatedRed)) / maxGrossVal) * 100 : 0;
-                    return percentage;
-                })()
-                : katern.deltaPercentage;
+                    return { ...wo, [field]: value };
+                }
+                return wo;
+            })
+        );
+    };
 
-            return {
-                id: Date.now().toString() + '-' + katern.id, // Unique ID
-                date: formattedDate,
-                datum: formattedDatum,
-                orderNr: werkorder.orderNr,
-                orderName: werkorder.orderName,
-                version: katern.version,
-                pages: katern.pages,
-                exOmw: katern.exOmw,
-                netRun: katern.netRun,
-                startup: katern.startup,
-                c4_4: katern.c4_4,
-                c4_0: katern.c4_0,
-                c1_0: katern.c1_0,
-                c1_1: katern.c1_1,
-                c4_1: katern.c4_1,
-                maxGross: maxGrossVal,
-                green: Number(calculatedGreen) || 0,
-                red: Number(calculatedRed) || 0,
-                delta_number: Number(calculatedDeltaNumber) || 0,
-                delta_percentage: Number(calculatedDeltaPercentage) || 0,
-                delta: Number(calculatedDeltaNumber) || 0, // Assuming delta is delta_number
-                performance: '100%' // Placeholder
-            };
-        });
+    const handleSaveOrderToFinished = async (werkorder: Werkorder) => {
+        try {
+            const promises = werkorder.katernen.map(async (katern) => {
+                const today = new Date();
+                const formattedDate = format(today, 'yyyy-MM-dd');
+                const formattedDatum = format(today, 'dd-MM');
 
-        setFinishedJobs(prevJobs => [...newFinishedJobs, ...prevJobs]);
-        // Optionally, remove the werkorder from the current list after saving
-        // setWerkorders(prevWerkorders => prevWerkorders.filter(wo => wo.id !== werkorder.id));
+                const jobWithKaternData = {
+                    ...katern,
+                    orderNr: werkorder.orderNr,
+                    orderName: werkorder.orderName,
+                    date: formattedDate,
+                    datum: formattedDatum,
+                };
+
+                const calculatedMaxGross = getFormulaForColumn('maxGross')
+                    ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)
+                        : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData)).replace(/\./g, '').replace(',', '.')))
+                    : katern.maxGross;
+                const maxGrossVal = Number(calculatedMaxGross) || 0;
+
+                const jobWithMaxGross = { ...jobWithKaternData, maxGross: maxGrossVal };
+
+                const calculatedGreen = getFormulaForColumn('green')
+                    ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)
+                        : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                    : katern.green;
+
+                const calculatedRed = getFormulaForColumn('red')
+                    ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)
+                        : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                    : katern.red;
+
+                const calculatedDeltaNumber = getFormulaForColumn('delta_number')
+                    ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)
+                        : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.')))
+                    : katern.delta;
+
+                const calculatedDeltaPercentage = getFormulaForColumn('delta_percentage')
+                    ? (() => {
+                        const f = getFormulaForColumn('delta_percentage')!;
+                        if (f.formula && f.formula.trim() !== '(green + red) / maxGross') {
+                            return typeof evaluateFormula(f.formula, jobWithMaxGross) === 'number'
+                                ? evaluateFormula(f.formula, jobWithMaxGross)
+                                : Number(String(evaluateFormula(f.formula, jobWithMaxGross)).replace(/\./g, '').replace(',', '.'));
+                        }
+                        const percentage = maxGrossVal !== 0 ? ((Number(calculatedGreen) + Number(calculatedRed)) / maxGrossVal) * 100 : 0;
+                        return percentage;
+                    })()
+                    : katern.deltaPercentage;
+
+
+                // Prepare data for PocketBase
+                const pbData = {
+                    order_nummer: parseInt(werkorder.orderNr),
+                    klant_order_beschrijving: werkorder.orderName,
+                    versie: katern.version,
+                    blz: katern.pages,
+                    ex_omw: katern.exOmw, // Assuming string like "2", check collection type if number
+                    netto_oplage: katern.netRun,
+                    opstart: katern.startup,
+                    k_4_4: katern.c4_4,
+                    k_4_0: katern.c4_0,
+                    k_1_0: katern.c1_0,
+                    k_1_1: katern.c1_1,
+                    k_4_1: katern.c4_1,
+                    max_bruto: maxGrossVal,
+                    groen: Number(calculatedGreen) || 0,
+                    rood: Number(calculatedRed) || 0,
+                    delta: Number(calculatedDeltaNumber) || 0,
+                    delta_percent: Number(calculatedDeltaPercentage) || 0,
+                    opmerking: '', // No field in UI yet
+                };
+
+                // Save to PocketBase
+                const record = await pb.collection('drukwerken').create(pbData);
+
+                return {
+                    ...jobWithMaxGross,
+                    id: record.id,
+                    green: Number(calculatedGreen) || 0,
+                    red: Number(calculatedRed) || 0,
+                    delta_number: Number(calculatedDeltaNumber) || 0,
+                    delta_percentage: Number(calculatedDeltaPercentage) || 0,
+                    delta: Number(calculatedDeltaNumber) || 0,
+                    performance: '100%'
+                };
+            });
+
+            const newFinishedJobs = await Promise.all(promises);
+
+            setFinishedJobs(prevJobs => [...newFinishedJobs, ...prevJobs]);
+
+            // Clear the Werkorder form by resetting to a new blank state
+            setWerkorders(prev => prev.map(wo => {
+                if (wo.id === werkorder.id) {
+                    return {
+                        id: Date.now().toString(), // New ID
+                        orderNr: '',
+                        orderName: '',
+                        orderDate: new Date().toISOString().split('T')[0],
+                        katernen: [
+                            { id: Date.now().toString() + '-1', version: '', pages: null, exOmw: '', netRun: 0, startup: false, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                        ]
+                    };
+                }
+                return wo;
+            }));
+
+            // Switch to Finished tab to show result
+            setActiveTab('finished');
+            toast.success("Order succesvol opgeslagen en formulier gewist.");
+
+        } catch (error) {
+            console.error("Error saving order:", error);
+            toast.error("Fout bij opslaan order. Controleer console.");
+        }
     };
 
 
@@ -315,6 +376,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         const initial: Record<string, Record<string, any>> = {};
         activePresses.forEach(press => {
             initial[press] = {
+                id: '', // PocketBase Record ID
                 marge: 0,
                 margePercentage: '4,2',
                 opstart: 6000,
@@ -327,6 +389,48 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         });
         return initial;
     });
+
+    // Fetch parameters from PocketBase on mount
+    useEffect(() => {
+        const fetchParameters = async () => {
+            try {
+                // Fetch all press parameters (expand press relation if needed, but we rely on linking by press ID)
+                const records = await pb.collection('press_parameters').getFullList();
+
+                setParameters(prev => {
+                    const updated = { ...prev };
+
+                    activePresses.forEach(pressName => {
+                        const pressId = pressMap[pressName];
+                        // Find parameter record for this press
+                        const record = records.find((r: any) => r.press === pressId);
+
+                        if (record) {
+                            updated[pressName] = {
+                                id: record.id,
+                                marge: parseFloat(record.margePercentage?.replace(',', '.') || '0') / 100 || 0, // derived logic might need adjustment if storing both
+                                margePercentage: record.marge || '4,2', // Mapping 'marge' from DB to 'margePercentage' text in UI based on schema
+                                opstart: record.opstart || 6000,
+                                param_4_4: record.param_4_4 || 4000,
+                                param_4_0: record.param_4_0 || 3000,
+                                param_1_0: record.param_1_0 || 1500,
+                                param_1_1: record.param_1_1 || 2000,
+                                param_4_1: record.param_4_1 || 3500
+                            };
+                        }
+                    });
+
+                    return updated;
+                });
+            } catch (error) {
+                console.error("Error fetching parameters:", error);
+            }
+        };
+
+        if (activePresses.length > 0) {
+            fetchParameters();
+        }
+    }, [activePresses.join(',')]); // Dependency on active presses list
 
     // Helper to get formula for a specific column
     const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage') => calculatedFields.find(f => f.targetColumn === col);
@@ -343,23 +447,77 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         param_4_1: false
     });
 
-    const handleParameterChange = (press: string, param: string, value: any) => {
+    const handleParameterChange = async (press: string, param: string, value: any) => {
+        // Optimistic UI update
+        const newParameters = { ...parameters };
+
+        // Prepare function to update DB
+        const updateDb = async (pressName: string, field: string, val: any) => {
+            const pressId = pressMap[pressName];
+            if (!pressId) return;
+
+            const currentParams = newParameters[pressName];
+            // Optimistically use current ID if we have it
+            let recordId = currentParams.id;
+
+            // Map UI fields to DB fields
+            const dbData: any = {};
+            if (field === 'margePercentage') dbData.marge = val;
+            else dbData[field] = val;
+
+            try {
+                if (recordId) {
+                    await pb.collection('press_parameters').update(recordId, dbData);
+                } else {
+                    // If we don't have an ID, check if record exists in DB first (race condition / fetch failure safety)
+                    try {
+                        const existing = await pb.collection('press_parameters').getFirstListItem(`press="${pressId}"`);
+                        recordId = existing.id;
+                        // Found existing, update it
+                        await pb.collection('press_parameters').update(recordId, dbData);
+
+                        // Update local state with the ID we found
+                        setParameters(curr => ({
+                            ...curr,
+                            [pressName]: { ...curr[pressName], id: recordId }
+                        }));
+                    } catch (err: any) {
+                        // If 404, it really doesn't exist, so create it
+                        if (err.status === 404) {
+                            dbData.press = pressId;
+                            const created = await pb.collection('press_parameters').create(dbData);
+                            setParameters(curr => ({
+                                ...curr,
+                                [pressName]: { ...curr[pressName], id: created.id }
+                            }));
+                        } else {
+                            throw err; // Re-throw other errors
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`Failed to save parameter ${field} for ${pressName}:`, err);
+                toast.error(`Kon parameter niet opslaan: ${field}`);
+            }
+        };
+
         if (linkedParams[param]) {
             // Update all presses
-            const updated = { ...parameters };
             activePresses.forEach(p => {
-                updated[p] = { ...updated[p], [param]: value };
+                newParameters[p] = { ...newParameters[p], [param]: value };
+                updateDb(p, param, value);
             });
-            setParameters(updated);
+            setParameters(newParameters);
         } else {
             // Update only this press
-            setParameters({
-                ...parameters,
+            setParameters(prev => ({
+                ...prev,
                 [press]: {
-                    ...parameters[press],
+                    ...prev[press],
                     [param]: value
                 }
-            });
+            }));
+            updateDb(press, param, value);
         }
     };
 
@@ -378,104 +536,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         }
     };
 
-    const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([
-        {
-            id: '1',
-            date: '2025-01-01',
-            datum: '01-01',
-            orderNr: '0001',
-            orderName: 'Spar 2025-01',
-            version: 'Nederlands - Katern 1',
-            pages: 40,
-            exOmw: '2',
-            netRun: 100000,
-            startup: true,
-            c4_4: 0,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 101000, // 101% of 100000
-            red: 3000,     // 3% of 100000
-            delta_number: 0,
-            delta_percentage: 0,
-            delta: 0,
-            performance: '100%'
-        },
-        {
-            id: '2',
-            date: '2025-01-01',
-            datum: '01-01',
-            orderNr: '0001',
-            orderName: 'Spar 2025-01',
-            version: 'Frans - Katern 1',
-            pages: 40,
-            exOmw: '2',
-            netRun: 50000,
-            startup: false,
-            c4_4: 1,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 50500, // 101% of 50000
-            red: 1500,    // 3% of 50000
-            delta_number: 0,
-            delta_percentage: 0,
-            delta: 0,
-            performance: '100%'
-        },
-        {
-            id: '3',
-            date: '2025-01-01',
-            datum: '01-01',
-            orderNr: '0001',
-            orderName: 'Spar 2025-01',
-            version: 'Nederlands - Katern 2',
-            pages: 32,
-            exOmw: '2',
-            netRun: 100000,
-            startup: false,
-            c4_4: 1,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 101000, // 101% of 100000
-            red: 3000,     // 3% of 100000
-            delta_number: 0,
-            delta_percentage: 0,
-            delta: 0,
-            performance: '100%'
-        },
-        {
-            id: '4',
-            date: '2025-01-01',
-            datum: '01-01',
-            orderNr: '0001',
-            orderName: 'Spar 2025-01',
-            version: 'Frans - Katern 2',
-            pages: 32,
-            exOmw: '2',
-            netRun: 50000,
-            startup: false,
-            c4_4: 1,
-            c4_0: 0,
-            c1_0: 0,
-            c1_1: 0,
-            c4_1: 0,
-            maxGross: 0,
-            green: 50500, // 101% of 50000
-            red: 1500,    // 3% of 50000
-            delta_number: 0,
-            delta_percentage: 0,
-            delta: 0,
-            performance: '100%'
-        }
-    ]);
+    const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -960,11 +1021,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <div className="flex gap-4 w-full items-end">
                                             <div className="flex flex-col items-center">
                                                 <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} readOnly style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Input value={`DT ${wo.orderNr}`} onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)} style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
                                             </div>
                                             <div className="flex-1">
                                                 <Label className="pl-3">Order</Label>
-                                                <Input value={wo.orderName} readOnly className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Input value={wo.orderName} onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)} className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
                                             </div>
                                         </div>
                                     </div>

@@ -25,11 +25,4 @@ dist-ssr
 build
 pb_data_dev
 pb_data_prod
-auxiliary.db
-auxiliary.db-shm
-auxiliary.db-wal
-data.db
-data.db-shm
-data.db-wal
-.DS_Store
 types.d.ts

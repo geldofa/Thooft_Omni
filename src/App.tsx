@@ -321,6 +321,7 @@ function MainApp() {
           editTask={editingTask}
           initialGroup={editingGroup || undefined}
           onUpdateGroup={handleUpdateGroup}
+          activePress={selectedPress}
         />
       </main>
     </div>

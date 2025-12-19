@@ -8,7 +8,7 @@ migrate((app) => {
         }
     });
 
-    const records = app.findRecordsByFilter("operatoren", "id != ''", "-created", 1);
+    const records = app.findRecordsByFilter("operatoren", "id != ''", "", 1);
     if (records.length > 0) {
         console.log("DIAGNOSTIC - Sample record 'presses' raw value:", records[0].get("presses"));
     } else {

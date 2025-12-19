@@ -47,8 +47,12 @@ migrate((app) => {
       "type": "base",
       "fields": [
         { "name": "naam", "type": "text", "required": true },
-        { "name": "interne_id", "type": "number", "required": true, "min": 1, "max": 99 },
+        { "name": "interne_id", "type": "number", "required": false, "min": 1, "max": 99 },
         { "name": "dienstverband", "type": "select", "values": ["Intern", "Extern"] },
+        { "name": "presses", "type": "json" },
+        { "name": "active", "type": "bool" },
+        { "name": "can_edit_tasks", "type": "bool" },
+        { "name": "can_access_management", "type": "bool" },
         { "name": "linked_user", "type": "relation", "collectionId": "users000000000001", "maxSelect": 1 }
       ]
     },

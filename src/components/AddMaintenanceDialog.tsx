@@ -42,6 +42,7 @@ interface AddMaintenanceDialogProps {
   editTask?: MaintenanceTask | null;
   initialGroup?: MaintenanceTask[] | null;
   onUpdateGroup?: (tasks: MaintenanceTask[]) => void;
+  activePress?: string; // The currently active press tab (ID or name)
 }
 
 // Sortable Subtask Component
@@ -115,7 +116,8 @@ export function AddMaintenanceDialog({
   onSubmit,
   editTask,
   initialGroup,
-  onUpdateGroup
+  onUpdateGroup,
+  activePress
 }: AddMaintenanceDialogProps) {
   const { user, presses, categories } = useAuth();
   const isOperator = user?.role === 'press';
@@ -140,16 +142,8 @@ export function AddMaintenanceDialog({
   const [taskFormData, setTaskFormData] = useState(initialTaskData);
   const [previousComment, setPreviousComment] = useState('');
 
-  // Set default press/category when they load or when dialog opens
-  useEffect(() => {
-    if (open && !editTask && !initialGroup) {
-      setTaskFormData(prev => ({
-        ...prev,
-        press: prev.press || presses[0]?.id || '',
-        category: prev.category || categories[0]?.id || ''
-      }));
-    }
-  }, [open, presses, categories, editTask, initialGroup]);
+  // Determine if this is a new task (not editing)
+  const isNewTask = !editTask && !initialGroup;
 
   useEffect(() => {
     if (open) {
@@ -188,8 +182,12 @@ export function AddMaintenanceDialog({
         });
         setPreviousComment(firstTask.opmerkingen);
       } else {
-        // Reset for new task
-        setTaskFormData(initialTaskData);
+        // Reset for new task - use activePress if provided
+        const activePressId = presses.find(p => p.name === activePress || p.id === activePress)?.id || presses[0]?.id || '';
+        setTaskFormData({
+          ...initialTaskData,
+          press: activePressId as PressType
+        });
         setPreviousComment('');
       }
     } else {
@@ -198,7 +196,7 @@ export function AddMaintenanceDialog({
       setPreviousComment('');
       setSubtasks([]);
     }
-  }, [editTask, initialGroup, open]);
+  }, [editTask, initialGroup, open, presses, activePress]);
 
   // Auto-calculate next maintenance date when last maintenance or interval changes
   useEffect(() => {
@@ -463,6 +461,7 @@ export function AddMaintenanceDialog({
                 <Select
                   value={taskFormData.press}
                   onValueChange={(value) => setTaskFormData({ ...taskFormData, press: value as PressType, category: '' })}
+                  disabled={isNewTask} // Lock press selection for new tasks
                 >
                   <SelectTrigger id="press">
                     <SelectValue placeholder="Selecteer een machine" />
@@ -475,6 +474,9 @@ export function AddMaintenanceDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                {isNewTask && (
+                  <p className="text-xs text-gray-500">Pers is bepaald door de actieve tab</p>
+                )}
               </div>
 
               <div className="grid gap-2">
