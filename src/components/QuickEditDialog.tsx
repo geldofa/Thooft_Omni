@@ -24,7 +24,7 @@ interface QuickEditDialogProps {
   task: MaintenanceTask | null;
   siblingTasks?: MaintenanceTask[]; // Other tasks in the same group
   field: 'lastMaintenance' | 'opmerkingen';
-  onSave: (task: MaintenanceTask) => void;
+  onSave: (task: MaintenanceTask) => Promise<void>;
 }
 
 export function QuickEditDialog({
@@ -50,7 +50,11 @@ export function QuickEditDialog({
 
   useEffect(() => {
     if (task) {
-      setLastMaintenance(task.lastMaintenance);
+      if (field === 'lastMaintenance') {
+        setLastMaintenance(new Date());
+      } else {
+        setLastMaintenance(task.lastMaintenance);
+      }
       setOpmerkingen(task.opmerkingen);
 
       // Initialize selected assignments from task data
@@ -134,8 +138,13 @@ export function QuickEditDialog({
 
   const assignees = getAssigneesForPress();
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!task) return;
+
+    if (field === 'lastMaintenance' && selectedAssignments.length === 0) {
+      toast.error('Selecteer a.u.b. ten minste één operator');
+      return;
+    }
 
     // Construct assignment data
     const assignedToIds = selectedAssignments.map(a => a.id);
@@ -155,45 +164,50 @@ export function QuickEditDialog({
       : [task];
 
     // Update all selected tasks
-    for (const taskToUpdate of tasksToUpdate) {
-      const updatedTask: MaintenanceTask = {
-        ...taskToUpdate,
-        lastMaintenance,
-        assignedTo: assignedNames,
-        assignedToIds,
-        assignedToTypes,
-        opmerkingen,
-        commentDate: opmerkingen !== taskToUpdate.opmerkingen
-          ? new Date()
-          : taskToUpdate.commentDate,
-        nextMaintenance: field === 'lastMaintenance' && lastMaintenance
-          ? (() => {
-            const next = new Date(lastMaintenance);
-            switch (taskToUpdate.maintenanceIntervalUnit) {
-              case 'days':
-                next.setDate(next.getDate() + taskToUpdate.maintenanceInterval);
-                break;
-              case 'weeks':
-                next.setDate(next.getDate() + (taskToUpdate.maintenanceInterval * 7));
-                break;
-              case 'months':
-                next.setMonth(next.getMonth() + taskToUpdate.maintenanceInterval);
-                break;
-            }
-            return next;
-          })()
-          : taskToUpdate.nextMaintenance
-      };
+    try {
+      for (const taskToUpdate of tasksToUpdate) {
+        const updatedTask: MaintenanceTask = {
+          ...taskToUpdate,
+          lastMaintenance,
+          assignedTo: assignedNames,
+          assignedToIds,
+          assignedToTypes,
+          opmerkingen,
+          commentDate: opmerkingen !== taskToUpdate.opmerkingen
+            ? new Date()
+            : taskToUpdate.commentDate,
+          nextMaintenance: field === 'lastMaintenance' && lastMaintenance
+            ? (() => {
+              const next = new Date(lastMaintenance);
+              switch (taskToUpdate.maintenanceIntervalUnit) {
+                case 'days':
+                  next.setDate(next.getDate() + taskToUpdate.maintenanceInterval);
+                  break;
+                case 'weeks':
+                  next.setDate(next.getDate() + (taskToUpdate.maintenanceInterval * 7));
+                  break;
+                case 'months':
+                  next.setMonth(next.getMonth() + taskToUpdate.maintenanceInterval);
+                  break;
+              }
+              return next;
+            })()
+            : taskToUpdate.nextMaintenance
+        };
 
-      onSave(updatedTask);
+        await onSave(updatedTask);
+      }
+
+      const updateCount = tasksToUpdate.length;
+      toast.success(updateCount > 1
+        ? `${updateCount} taken succesvol bijgewerkt`
+        : 'Taak succesvol bijgewerkt'
+      );
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to save tasks:', error);
+      toast.error('Bijwerken van taken mislukt');
     }
-
-    const updateCount = tasksToUpdate.length;
-    toast.success(updateCount > 1
-      ? `${updateCount} taken succesvol bijgewerkt`
-      : 'Taak succesvol bijgewerkt'
-    );
-    onOpenChange(false);
   };
 
   const formatDate = (date: Date | null) => {
@@ -285,9 +299,9 @@ export function QuickEditDialog({
                             htmlFor={`sibling-${sibling.id}`}
                             className="cursor-pointer select-none"
                           >
-                            <div className="text-sm font-medium">{sibling.task}</div>
-                            {sibling.taskSubtext && (
-                              <div className="text-xs text-gray-500">{sibling.taskSubtext}</div>
+                            <div className="text-sm font-medium">{sibling.subtaskName || sibling.task}</div>
+                            {sibling.subtaskSubtext && (
+                              <div className="text-xs text-gray-500">{sibling.subtaskSubtext}</div>
                             )}
                           </label>
                         </div>

@@ -172,10 +172,10 @@ export function ActivityLog() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-[180px]">Tijdstip</TableHead>
-              <TableHead>Gebruiker</TableHead>
+              <TableHead>Naam</TableHead>
               <TableHead>Actie</TableHead>
               <TableHead>Entiteit</TableHead>
-              <TableHead>Naam</TableHead>
+              <TableHead>Taak</TableHead>
               <TableHead>Pers</TableHead>
               <TableHead>Details</TableHead>
             </TableRow>
@@ -208,12 +208,22 @@ export function ActivityLog() {
                     {log.press && <Badge variant="secondary">{log.press}</Badge>}
                   </TableCell>
                   <TableCell className="max-w-md">
-                    <div className="text-gray-600">{log.details}</div>
+                    <div className="text-gray-900 font-medium">{log.details}</div>
                     {(log.oldValue || log.newValue) && (
-                      <div className="text-gray-500 mt-1">
-                        {log.oldValue && <span className="line-through">{log.oldValue}</span>}
-                        {log.oldValue && log.newValue && <span className="mx-2">→</span>}
-                        {log.newValue && <span className="text-gray-700">{log.newValue}</span>}
+                      <div className="text-sm mt-1 flex items-center gap-2 flex-wrap">
+                        {log.oldValue && (
+                          <span className="text-gray-400 line-through decoration-gray-400">
+                            {log.oldValue}
+                          </span>
+                        )}
+                        {log.oldValue && log.newValue && (
+                          <span className="text-gray-400">→</span>
+                        )}
+                        {log.newValue && (
+                          <span className="text-gray-700 font-medium bg-blue-50 px-1 rounded">
+                            {log.newValue}
+                          </span>
+                        )}
                       </div>
                     )}
                   </TableCell>

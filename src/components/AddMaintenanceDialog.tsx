@@ -134,10 +134,12 @@ export function AddMaintenanceDialog({
     assignedTo: '',
     opmerkingen: '',
     commentDate: null as Date | null,
-    isGroupTask: false
+    isGroupTask: false,
+    subtaskName: '',
+    subtaskSubtext: ''
   };
 
-  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string }[]>([]);
+  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null }[]>([]);
 
   const [taskFormData, setTaskFormData] = useState(initialTaskData);
   const [previousComment, setPreviousComment] = useState('');
@@ -151,6 +153,8 @@ export function AddMaintenanceDialog({
         setTaskFormData({
           task: editTask.task,
           taskSubtext: editTask.taskSubtext,
+          subtaskName: editTask.subtaskName || editTask.task,
+          subtaskSubtext: editTask.subtaskSubtext || editTask.taskSubtext,
           category: editTask.categoryId || editTask.category, // Use ID preferring categoryId
           press: editTask.pressId || editTask.press,
           lastMaintenance: editTask.lastMaintenance,
@@ -178,9 +182,18 @@ export function AddMaintenanceDialog({
           assignedTo: firstTask.assignedTo,
           opmerkingen: firstTask.opmerkingen,
           commentDate: firstTask.commentDate,
-          isGroupTask: true
+          isGroupTask: true,
+          subtaskName: '', // Multiple subtasks are in the subtasks state
+          subtaskSubtext: ''
         });
         setPreviousComment(firstTask.opmerkingen);
+        setSubtasks(initialGroup.map(t => ({
+          id: t.id,
+          name: t.task,
+          subtext: t.taskSubtext,
+          opmerkingen: t.opmerkingen,
+          commentDate: t.commentDate
+        })));
       } else {
         // Reset for new task - use activePress if provided
         const activePressId = presses.find(p => p.name === activePress || p.id === activePress)?.id || presses[0]?.id || '';
@@ -268,6 +281,8 @@ export function AddMaintenanceDialog({
       assignedToTypes: [],
       opmerkingen: taskFormData.opmerkingen,
       commentDate,
+      subtaskName: taskFormData.subtaskName || taskFormData.task,
+      subtaskSubtext: taskFormData.subtaskSubtext || taskFormData.taskSubtext,
       subtasks: taskFormData.isGroupTask ? subtasks : []
     };
 
@@ -280,8 +295,8 @@ export function AddMaintenanceDialog({
         return {
           ...st,
           id: st.id, // This is either an existing ID or a temp one if new
-          task: taskFormData.task,
-          taskSubtext: taskFormData.taskSubtext,
+          task: taskFormData.isGroupTask ? st.name : taskFormData.task, // Use specific name if subtask
+          taskSubtext: taskFormData.isGroupTask ? st.subtext : taskFormData.taskSubtext,
           categoryId: taskFormData.category,
           category: selectedCategory?.name || '',
           pressId: taskFormData.press,
@@ -292,8 +307,8 @@ export function AddMaintenanceDialog({
           maintenanceInterval: taskFormData.maintenanceInterval,
           maintenanceIntervalUnit: taskFormData.maintenanceIntervalUnit,
           assignedTo: initialTask?.assignedTo || '',
-          opmerkingen: taskFormData.opmerkingen,
-          commentDate: taskFormData.commentDate,
+          opmerkingen: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
+          commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
           created: initialTask?.created || new Date().toISOString(),
           updated: new Date().toISOString()
         } as MaintenanceTask;
@@ -398,22 +413,34 @@ export function AddMaintenanceDialog({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="task">Taak naam *</Label>
+                <Label htmlFor="task">{taskFormData.isGroupTask ? 'Groep naam *' : 'Taak naam *'}</Label>
                 <Input
                   id="task"
-                  placeholder="bijv., HVAC Systeem Onderhoud"
-                  value={taskFormData.task}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, task: e.target.value })}
+                  placeholder={taskFormData.isGroupTask ? "bijv., HVAC Systeem Onderhoud" : "bijv., Filter Vervangen"}
+                  value={taskFormData.isGroupTask ? taskFormData.task : taskFormData.subtaskName}
+                  onChange={(e) => {
+                    if (taskFormData.isGroupTask) {
+                      setTaskFormData({ ...taskFormData, task: e.target.value });
+                    } else {
+                      setTaskFormData({ ...taskFormData, subtaskName: e.target.value });
+                    }
+                  }}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="taskSubtext">Taak omschrijving</Label>
+                <Label htmlFor="taskSubtext">{taskFormData.isGroupTask ? 'Groep omschrijving' : 'Taak omschrijving'}</Label>
                 <Input
                   id="taskSubtext"
-                  placeholder="bijv., Uitgebreid onderhoud voor alle HVAC units"
-                  value={taskFormData.taskSubtext}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, taskSubtext: e.target.value })}
+                  placeholder={taskFormData.isGroupTask ? "bijv., Uitgebreid onderhoud..." : "bijv., Alle units..."}
+                  value={taskFormData.isGroupTask ? taskFormData.taskSubtext : taskFormData.subtaskSubtext}
+                  onChange={(e) => {
+                    if (taskFormData.isGroupTask) {
+                      setTaskFormData({ ...taskFormData, taskSubtext: e.target.value });
+                    } else {
+                      setTaskFormData({ ...taskFormData, subtaskSubtext: e.target.value });
+                    }
+                  }}
                 />
               </div>
             </div>

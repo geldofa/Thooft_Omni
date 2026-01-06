@@ -28,14 +28,19 @@ export interface Subtask {
   maintenanceInterval: number;
   maintenanceIntervalUnit: 'days' | 'weeks' | 'months';
   assignedTo: string;
+  assignedToIds?: string[];
+  assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
   comment: string;
   commentDate: Date | null;
+  opmerkingen?: string;
 }
 
 export interface MaintenanceTask {
   id: string;
-  task: string;
+  task: string; // Group Name
+  subtaskName?: string; // Specific item name
   taskSubtext: string;
+  subtaskSubtext?: string; // Specific item subtext
   category: string; // Name
   categoryId: string; // ID
   press: PressType; // Name
@@ -49,7 +54,7 @@ export interface MaintenanceTask {
   assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
   opmerkingen: string;
   commentDate: Date | null;
-  subtasks?: { id: string; name: string; subtext: string }[];
+  subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null }[];
   created: string;
   updated: string;
 }
@@ -103,7 +108,7 @@ export interface ActivityLog {
   user: string;
   action: string;
   entity: string;
-  entityId: string;
+  entityId?: string;
   entityName: string;
   details: string;
   oldValue?: string;
@@ -280,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const fetchTasks = useCallback(async () => {
     try {
       const records = await pb.collection('onderhoud').getFullList({
-        expand: 'category,pers'
+        expand: 'category,pers,assigned_operator,assigned_team'
       });
 
       // Client-side sort
@@ -306,6 +311,31 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           };
         }
 
+        // Helper to get names from expanded relations
+        const getAssignedNames = () => {
+          const names: string[] = [];
+
+          // Operators & Externals
+          if (record.expand?.assigned_operator) {
+            const ops = Array.isArray(record.expand.assigned_operator)
+              ? record.expand.assigned_operator
+              : [record.expand.assigned_operator];
+            names.push(...ops.map((o: any) => o.naam));
+          }
+
+          // Teams
+          if (record.expand?.assigned_team) {
+            const teams = Array.isArray(record.expand.assigned_team)
+              ? record.expand.assigned_team
+              : [record.expand.assigned_team];
+            names.push(...teams.map((t: any) => t.naam));
+          }
+
+          return names.filter(Boolean).join(', ');
+        };
+
+        const assignedNamesCombined = getAssignedNames();
+
         groups[groupKey].subtasks.push({
           id: record.id,
           subtaskName: record.subtask || record.task,
@@ -316,9 +346,17 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
             record.interval_unit === 'Weken' ? 'weeks' :
               record.interval_unit === 'Maanden' ? 'months' : 'days',
-          assignedTo: record.assigned_operator || '',
-          comment: record.comment || record.notes || '',
-          commentDate: record.updated ? new Date(record.updated) : null
+          assignedTo: assignedNamesCombined,
+          assignedToIds: [
+            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])),
+            ...(Array.isArray(record.assigned_team) ? record.assigned_team : (record.assigned_team ? [record.assigned_team] : []))
+          ],
+          assignedToTypes: [
+            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator.map(() => 'operator') : (record.assigned_operator ? ['operator'] : [])),
+            ...(Array.isArray(record.assigned_team) ? record.assigned_team.map(() => 'ploeg') : (record.assigned_team ? ['ploeg'] : []))
+          ],
+          comment: record.opmerkingen || record.comment || record.notes || '',
+          commentDate: record.commentDate ? new Date(record.commentDate) : (record.updated ? new Date(record.updated) : null)
         });
       });
 
@@ -350,16 +388,28 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
             interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
               task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
                 task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
-            assigned_operator: task.assignedTo,
-            comment: task.opmerkingen
+            assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
+            assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
+            opmerkingen: subtask.opmerkingen || task.opmerkingen,
+            commentDate: subtask.commentDate || task.commentDate
           })
         );
         await Promise.all(promises);
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'Task',
+          entityName: task.task,
+          press: task.press || '',
+          details: `Created grouped task with ${task.subtasks?.length} subtasks`
+        });
       } else {
         // Handle Single Task
         const data = {
           task: task.task,
           task_subtext: task.taskSubtext,
+          subtask: task.subtaskName || task.task,
+          subtask_subtext: task.subtaskSubtext || task.taskSubtext,
           category: task.categoryId,
           pers: task.pressId,
           last_date: task.lastMaintenance,
@@ -368,11 +418,22 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
             task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
               task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
-          assigned_operator: task.assignedTo,
-          comment: task.opmerkingen
+          assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
+          assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
+          opmerkingen: task.opmerkingen,
+          commentDate: task.commentDate
         };
         console.log('Creating task with data:', data);
-        await pb.collection('onderhoud').create(data);
+        const record = await pb.collection('onderhoud').create(data);
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'Task',
+          entityId: record.id,
+          entityName: task.task !== task.subtaskName ? `${task.task} > ${task.subtaskName}` : task.task,
+          press: task.press || '',
+          details: `Created task: ${task.subtaskName || task.task}`
+        });
       }
       await fetchTasks(); // Refresh list after adding
     } catch (e) {
@@ -383,19 +444,64 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updateTask = async (task: MaintenanceTask) => {
     try {
+      // 1. Fetch old record for diffing
+      const oldRecord = await pb.collection('onderhoud').getOne(task.id);
+
+      // Split assignments by type for PocketBase relations
+      const operatorIds = task.assignedToIds?.filter((_, i) =>
+        task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external'
+      ) || [];
+
+      const teamIds = task.assignedToIds?.filter((_, i) =>
+        task.assignedToTypes?.[i] === 'ploeg'
+      ) || [];
+
       await pb.collection('onderhoud').update(task.id, {
         task: task.task,
+        subtask: task.subtaskName || task.task,
         task_subtext: task.taskSubtext,
-        category: task.categoryId,
-        pers: task.pressId,
+        subtask_subtext: task.subtaskSubtext || task.taskSubtext,
+        category: task.categoryId || null,
+        pers: task.pressId || null,
         last_date: task.lastMaintenance,
         next_date: task.nextMaintenance,
         interval: task.maintenanceInterval,
         interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
           task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
             task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
-        assigned_operator: task.assignedTo,
-        comment: task.opmerkingen
+        assigned_operator: operatorIds,
+        assigned_team: teamIds,
+        opmerkingen: task.opmerkingen,
+        commentDate: task.commentDate
+      });
+
+      // 2. Calculate what changed for the log
+      let changedField = '';
+      let oldValue = '';
+      let newValue = '';
+
+      if (oldRecord.last_date !== (task.lastMaintenance?.toISOString() || null)) {
+        changedField = 'Last Date';
+        oldValue = oldRecord.last_date ? new Date(oldRecord.last_date).toLocaleDateString() : 'None';
+        newValue = task.lastMaintenance ? task.lastMaintenance.toLocaleDateString() : 'None';
+      } else if (oldRecord.opmerkingen !== task.opmerkingen) {
+        changedField = 'Notes';
+        oldValue = oldRecord.opmerkingen || 'None';
+        newValue = task.opmerkingen || 'None';
+      } else {
+        changedField = 'Task Details';
+      }
+
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Updated',
+        entity: 'Task',
+        entityId: task.id,
+        entityName: task.task !== task.subtaskName ? `${task.task} > ${task.subtaskName}` : task.task,
+        press: task.press || '',
+        details: `Updated ${changedField}`,
+        oldValue,
+        newValue
       });
     } catch (e) {
       console.error("Update task failed:", e);
@@ -404,7 +510,18 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const deleteTask = async (id: string) => {
     try {
+      const record = await pb.collection('onderhoud').getOne(id);
       await pb.collection('onderhoud').delete(id);
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Deleted',
+        entity: 'Task',
+        entityId: id,
+        entityName: record.task !== record.subtask ? `${record.task} > ${record.subtask}` : record.task,
+        press: (record.pers && presses.find(p => p.id === record.pers)?.name) || '',
+        details: `Deleted task: ${record.subtask || record.task}`
+      });
+      await fetchTasks();
     } catch (e) {
       console.error("Delete task failed:", e);
     }
@@ -844,7 +961,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         user: log.user || 'Unknown',
         action: log.action || '',
         entity: log.entity || '',
-        details: log.details || `${log.action} ${log.entityName || ''}`
+        entityId: log.entityId || '',
+        entityName: log.entityName || '',
+        press: log.press || '',
+        details: log.details || `${log.action} ${log.entityName || ''}`,
+        oldValue: log.oldValue || '',
+        newValue: log.newValue || ''
       };
       console.log('Creating activity log with data:', data);
       await pb.collection('activity_logs').create(data);

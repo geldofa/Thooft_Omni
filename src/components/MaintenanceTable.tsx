@@ -69,8 +69,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   const toMaintenanceTask = (subtask: Subtask, group: GroupedTask): MaintenanceTask => ({
     id: subtask.id,
-    task: subtask.subtaskName,
-    taskSubtext: subtask.subtext,
+    task: group.taskName,
+    subtaskName: subtask.subtaskName,
+    taskSubtext: group.taskSubtext,
+    subtaskSubtext: subtask.subtext,
     category: group.category,
     categoryId: group.categoryId,
     press: group.press,
@@ -103,7 +105,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     const day = String(d.getDate()).padStart(2, '0');
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
   };
 
   const formatInterval = (interval: number, unit: 'days' | 'weeks' | 'months') => {
@@ -563,7 +565,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   <div className="space-y-1">
                     {relevantSubtasks.filter(st => st.comment).map(st => (
                       <div key={st.id} className="text-xs">
-                        <span className="font-semibold text-gray-700">{st.subtaskName}:</span> {st.comment}
+                        <span className="text-gray-700">{st.comment}</span>
                         <span className="text-gray-400 ml-1">({formatDateTime(st.commentDate)})</span>
                       </div>
                     ))}
@@ -793,15 +795,11 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
               >
                 <div className="max-w-xs">
-                  <div className="text-gray-600">
-                    <span className="font-semibold">{subtask.subtaskName}</span>
-                    {subtask.subtext && <span className="text-gray-400 text-xs ml-1">({subtask.subtext})</span>}
-                  </div>
                   {subtask.comment ? (
-                    <>
-                      <div className="line-clamp-2 text-gray-700 mt-0.5">{subtask.comment}</div>
-                      <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
-                    </>
+                    <div className="text-gray-700 mt-0.5">
+                      <span className="line-clamp-2">{subtask.comment}</span>
+                      <span className="text-gray-400 text-xs ml-1">({formatDateTime(subtask.commentDate)})</span>
+                    </div>
                   ) : (
                     <div className="text-gray-400 mt-0.5">-</div>
                   )}

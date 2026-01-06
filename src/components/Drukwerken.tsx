@@ -233,8 +233,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             prevWerkorders.map(wo => {
                 if (wo.id === werkorderId) {
                     if (field === 'orderNr') {
-                        // Remove "DT " prefix if present and keep only digits
-                        const orderNumber = value.startsWith('DT ') ? value.substring(3) : value;
+                        // Remove "DT" prefix if present and keep only digits
+                        let orderNumber = value;
+                        if (value.startsWith('DT')) {
+                            orderNumber = value.substring(2);
+                        }
                         const numericValue = orderNumber.replace(/[^0-9]/g, '');
                         return { ...wo, orderNr: numericValue };
                     }
@@ -1021,7 +1024,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <div className="flex gap-4 w-full items-end">
                                             <div className="flex flex-col items-center">
                                                 <Label>Order Nr</Label>
-                                                <Input value={`DT ${wo.orderNr}`} onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)} style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                <Input value={`DT${wo.orderNr}`} onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)} style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
                                             </div>
                                             <div className="flex-1">
                                                 <Label className="pl-3">Order</Label>
@@ -1245,7 +1248,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableRow key={job.id} className="h-8 hover:bg-gray-100 [&>td]:hover:bg-gray-100 transition-colors">
                                                 <TableCell className="py-1 px-2">{job.date}</TableCell>
                                                 {/* Datum removed */}
-                                                <TableCell className="py-1 px-2">DT {job.orderNr}</TableCell>
+                                                <TableCell className="py-1 px-2">DT{job.orderNr}</TableCell>
                                                 <TableCell className="py-1 px-2">
                                                     <span className="font-medium mr-2">{job.orderName}</span>
                                                     <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
