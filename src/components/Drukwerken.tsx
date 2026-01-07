@@ -88,6 +88,8 @@ export interface FinishedPrintJob {
     opmerkingen?: string;
     delta: number;
     performance: string;
+    pressId?: string;
+    pressName?: string;
 }
 
 interface CalculatedField {
@@ -210,7 +212,14 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             if (k.id === katernId) {
                                 // For number inputs, handle empty string and convert to number
                                 if (['pages', 'netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red'].includes(field)) {
-                                    const numValue = value === '' ? null : Number(value);
+                                    const parsedValue = parseFloat(value);
+                                    let numValue: number | null = isNaN(parsedValue) ? null : parsedValue;
+
+                                    if (['netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1'].includes(field as string)) {
+                                        if (numValue === null) {
+                                            numValue = 0;
+                                        }
+                                    }
                                     return { ...k, [field]: numValue };
                                 }
                                 // For boolean (checkbox)
@@ -342,7 +351,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     delta_number: Number(calculatedDeltaNumber) || 0,
                     delta_percentage: Number(calculatedDeltaPercentage) || 0,
                     delta: Number(calculatedDeltaNumber) || 0,
-                    performance: '100%'
+                    performance: '100%',
+                    pressId: user?.pressId,
+                    pressName: user?.press
                 };
             });
 
@@ -444,86 +455,84 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage') => calculatedFields.find(f => f.targetColumn === col);
 
     // Track which parameters are linked across presses
-    const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>({
-        marge: false,
-        margePercentage: false,
-        opstart: false,
-        param_4_4: false,
-        param_4_0: false,
-        param_1_0: false,
-        param_1_1: false,
-        param_4_1: false
+    const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>(() => {
+        const saved = localStorage.getItem('drukwerken_linked_params');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                console.error("Failed to parse linked params from localStorage", e);
+            }
+        }
+        return {
+            marge: false,
+            margePercentage: false,
+            opstart: false,
+            param_4_4: false,
+            param_4_0: false,
+            param_1_0: false,
+            param_1_1: false,
+            param_4_1: false
+        };
     });
 
-    const handleParameterChange = async (press: string, param: string, value: any) => {
-        // Optimistic UI update
-        const newParameters = { ...parameters };
+    useEffect(() => {
+        localStorage.setItem('drukwerken_linked_params', JSON.stringify(linkedParams));
+    }, [linkedParams]);
 
-        // Prepare function to update DB
-        const updateDb = async (pressName: string, field: string, val: any) => {
-            const pressId = pressMap[pressName];
-            if (!pressId) return;
+    const updateDb = async (pressName: string, field: string, val: any) => {
+        const pressId = pressMap[pressName];
+        if (!pressId) return;
 
-            const currentParams = newParameters[pressName];
-            // Optimistically use current ID if we have it
-            let recordId = currentParams.id;
+        // Map UI fields to DB fields
+        const dbData: any = {};
+        if (field === 'margePercentage') dbData.marge = val;
+        else dbData[field] = val;
 
-            // Map UI fields to DB fields
-            const dbData: any = {};
-            if (field === 'margePercentage') dbData.marge = val;
-            else dbData[field] = val;
+        try {
+            const currentParams = parameters[pressName];
+            let recordId = currentParams?.id;
 
-            try {
-                if (recordId) {
+            if (recordId) {
+                await pb.collection('press_parameters').update(recordId, dbData);
+            } else {
+                try {
+                    const existing = await pb.collection('press_parameters').getFirstListItem(`press="${pressId}"`);
+                    recordId = existing.id;
                     await pb.collection('press_parameters').update(recordId, dbData);
-                } else {
-                    // If we don't have an ID, check if record exists in DB first (race condition / fetch failure safety)
-                    try {
-                        const existing = await pb.collection('press_parameters').getFirstListItem(`press="${pressId}"`);
-                        recordId = existing.id;
-                        // Found existing, update it
-                        await pb.collection('press_parameters').update(recordId, dbData);
-
-                        // Update local state with the ID we found
+                    setParameters(curr => ({
+                        ...curr,
+                        [pressName]: { ...curr[pressName], id: recordId }
+                    }));
+                } catch (err: any) {
+                    if (err.status === 404) {
+                        dbData.press = pressId;
+                        const created = await pb.collection('press_parameters').create(dbData);
                         setParameters(curr => ({
                             ...curr,
-                            [pressName]: { ...curr[pressName], id: recordId }
+                            [pressName]: { ...curr[pressName], id: created.id }
                         }));
-                    } catch (err: any) {
-                        // If 404, it really doesn't exist, so create it
-                        if (err.status === 404) {
-                            dbData.press = pressId;
-                            const created = await pb.collection('press_parameters').create(dbData);
-                            setParameters(curr => ({
-                                ...curr,
-                                [pressName]: { ...curr[pressName], id: created.id }
-                            }));
-                        } else {
-                            throw err; // Re-throw other errors
-                        }
-                    }
+                    } else throw err;
                 }
-            } catch (err) {
-                console.error(`Failed to save parameter ${field} for ${pressName}:`, err);
-                toast.error(`Kon parameter niet opslaan: ${field}`);
             }
-        };
+        } catch (err) {
+            console.error(`Failed to save parameter ${field} for ${pressName}:`, err);
+            toast.error(`Kon parameter niet opslaan: ${field}`);
+        }
+    };
 
+    const handleParameterChange = (press: string, param: string, value: any) => {
         if (linkedParams[param]) {
-            // Update all presses
+            const newParameters = { ...parameters };
             activePresses.forEach(p => {
                 newParameters[p] = { ...newParameters[p], [param]: value };
                 updateDb(p, param, value);
             });
             setParameters(newParameters);
         } else {
-            // Update only this press
             setParameters(prev => ({
                 ...prev,
-                [press]: {
-                    ...prev[press],
-                    [param]: value
-                }
+                [press]: { ...prev[press], [param]: value }
             }));
             updateDb(press, param, value);
         }
@@ -539,6 +548,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             const updated = { ...parameters };
             activePresses.forEach(press => {
                 updated[press] = { ...updated[press], [param]: firstPressValue };
+                // Persist synced value to all presses
+                updateDb(press, param, firstPressValue);
             });
             setParameters(updated);
         }
@@ -563,7 +574,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
             const records = await pb.collection('drukwerken').getFullList({
                 sort: '-created',
-                expand: 'pers',
                 filter: filter
             });
 
@@ -602,9 +612,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 red: r.rood,
                 delta_number: r.delta || 0,
                 delta_percentage: r.delta_percent || 0,
-                opmerkingen: r.opmerking,
                 delta: r.delta || 0,
-                performance: '100%'
+                performance: '100%',
+                pressId: r.pers,
+                pressName: (user?.role === 'press' && user.pressId === r.pers) ? user.press : (r.expand?.pers?.naam || '')
             })));
         } catch (error) {
             console.error("Error fetching finished jobs:", error);
@@ -834,6 +845,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const evaluateFormula = (formula: string, job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern): number | string => {
+        let evalFormula = formula;
         try {
             // Return early if formula is empty
             if (!formula || !formula.trim()) {
@@ -843,19 +855,18 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             // Helper function for IF logic
             const IF = (condition: boolean, trueVal: any, falseVal: any) => condition ? trueVal : falseVal;
 
-            // Get parameters from the first active press (or default if none)
-            const activePressName = activePresses.length > 0 ? activePresses[0] : '';
-            const pressParams = activePressName ? parameters[activePressName] : {};
-
-            // Replace field names with actual values
-            let evalFormula = formula;
+            // Get parameters for the specific press if available, else first active press
+            const jobPressName = (job as any).pressName;
+            const pressParams = (jobPressName && parameters[jobPressName])
+                ? parameters[jobPressName]
+                : (activePresses.length > 0 ? parameters[activePresses[0]] : {});
 
             // Helper function to escape regex special characters
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
             // Replace finished job fields
             finishedFields.forEach(field => {
-                const regex = new RegExp(escapeRegex(field.key), 'g');
+                const regex = new RegExp('\\b' + escapeRegex(field.key) + '\\b', 'g');
                 let value: any = (job as any)[field.key];
 
                 if (value === null) {
@@ -869,12 +880,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     value = value ? (pressParams['opstart'] || 0) : 0;
                 }
 
-                evalFormula = evalFormula.replace(regex, String(value));
+                // Sanitize value: replace comma with dot for formula evaluation
+                const sValue = String(value);
+                let sanitizedValue = sValue;
+                const commaCount = (sValue.match(/,/g) || []).length;
+
+                if (commaCount > 0) {
+                    if (commaCount === 1) {
+                        // This is likely a decimal separator
+                        sanitizedValue = sValue.replace(/\./g, '').replace(',', '.');
+                    } else {
+                        // Multiple commas, e.g. "1,2,3". This is not a valid number for us.
+                        // We will strip all commas to avoid a syntax error.
+                        sanitizedValue = sValue.replace(/,/g, '');
+                    }
+                }
+                evalFormula = evalFormula.replace(regex, sanitizedValue);
             });
 
             // Replace parameter fields with actual values from the first active press
             parameterFields.forEach(field => {
-                const regex = new RegExp(escapeRegex(field.key), 'g');
+                const regex = new RegExp('\\b' + escapeRegex(field.key) + '\\b', 'g');
                 // Map friendly parameter keys to internal state keys
                 let paramKey = field.key;
                 if (field.key === 'Marge') paramKey = 'marge';
@@ -884,10 +910,23 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
                 // Special handling for Marge percentage parsing (e.g., "4,2" -> 0.042)
                 if (paramKey === 'marge') {
-                    value = (parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
+                    const sMarge = String(pressParams['margePercentage'] || '0');
+                    const cleanMarge = sMarge.includes(',') ? sMarge.replace(/\./g, '').replace(',', '.') : sMarge;
+                    value = (parseFloat(cleanMarge) || 0) / 100;
                 }
 
-                evalFormula = evalFormula.replace(regex, String(value));
+                // Sanitize value
+                const sValue = String(value);
+                let sanitizedValue = sValue;
+                const commaCount = (sValue.match(/,/g) || []).length;
+                if (commaCount > 0) {
+                    if (commaCount === 1) {
+                        sanitizedValue = sValue.replace(/\./g, '').replace(',', '.');
+                    } else {
+                        sanitizedValue = sValue.replace(/,/g, '');
+                    }
+                }
+                evalFormula = evalFormula.replace(regex, sanitizedValue);
             });
 
             // Evaluate the formula safely with the IF function in scope
@@ -897,10 +936,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             if (typeof result === 'number') {
                 const rounded = Math.round(result * 100) / 100;
                 // Format with dots as thousand separators (European style)
-                return rounded.toLocaleString('nl-NL', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 2
-                });
+                return rounded;
             }
 
             return result;
@@ -992,9 +1028,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         result: string | number
     }) => {
         const explanation = getFormulaExplanation(formula, job);
+        const formattedResult = typeof result === 'number' ? formatNumber(result) : result;
 
         if (!explanation || explanation.length === 0) {
-            return <span>{result}</span>;
+            return <span>{formattedResult}</span>;
         }
 
         // Build a map of field keys to their substitution info for quick lookup
@@ -1028,7 +1065,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return (
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <span className="cursor-help border-b border-dashed border-gray-400">{result}</span>
+                    <span className="cursor-help border-b border-dashed border-gray-400">{formattedResult}</span>
                 </TooltipTrigger>
                 <TooltipContent
                     side="top"
@@ -1055,7 +1092,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </div>
                         <div className="border-t pt-2 mt-2 flex items-center justify-between" style={{ borderColor: '#e5e7eb' }}>
                             <span className="text-xs" style={{ color: '#6b7280' }}>Resultaat:</span>
-                            <span className="font-bold text-sm" style={{ color: '#1f2937' }}>{result}</span>
+                            <span className="font-bold text-sm" style={{ color: '#1f2937' }}>{formattedResult}</span>
                         </div>
                     </div>
                 </TooltipContent>
@@ -1083,17 +1120,26 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             return;
         }
 
+        let sanitizedFormula = currentFormula;
+        const numbersWithComma = currentFormula.match(/\d+,\d+/g);
+        if (numbersWithComma) {
+            numbersWithComma.forEach(numStr => {
+                const sanitizedNum = numStr.replace(',', '.');
+                sanitizedFormula = sanitizedFormula.replace(numStr, sanitizedNum);
+            });
+        }
+
         if (editingFormula) {
             setCalculatedFields(calculatedFields.map(f =>
                 f.id === editingFormula.id
-                    ? { ...f, name: formulaName, formula: currentFormula, targetColumn }
+                    ? { ...f, name: formulaName, formula: sanitizedFormula, targetColumn }
                     : f
             ));
         } else {
             const newField: CalculatedField = {
                 id: Date.now().toString(),
                 name: formulaName,
-                formula: currentFormula,
+                formula: sanitizedFormula,
                 targetColumn
             };
             setCalculatedFields([...calculatedFields, newField]);
@@ -1121,9 +1167,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         );
     }
 
-    const previewResult = finishedJobs.length > 0
-        ? evaluateFormula(currentFormula, finishedJobs[0])
-        : 'N/A';
+    const previewResult = (() => {
+        if (finishedJobs.length > 0) {
+            const res = evaluateFormula(currentFormula, finishedJobs[0]);
+            if (typeof res === 'number') {
+                return formatNumber(res);
+            }
+            return res || 'N/A'; // Show empty string as N/A
+        }
+        return 'N/A';
+    })();
 
     return (
         <div className="space-y-4">
@@ -1165,65 +1218,89 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         <Table className="table-fixed w-full">
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead className="w-[100px]">Version</TableHead>
-                                                    <TableHead className="w-[80px]">Pages</TableHead>
-                                                    <TableHead className="w-[100px]">Ex/Omw</TableHead>
-                                                    <TableHead className="w-[100px]">Net Run</TableHead>
-                                                    <TableHead className="w-[80px] text-center">Startup</TableHead>
-                                                    <TableHead className="w-[150px]">Layout (4-4, 4-0, etc)</TableHead>
-                                                    <TableHead className="w-[100px]">Max Gross</TableHead>
-                                                    <TableHead className="w-[100px]">Groen</TableHead>
-                                                    <TableHead className="w-[100px]">Rood</TableHead>
-                                                    <TableHead className="w-[100px]">Delta %</TableHead>
-                                                    <TableHead className="w-[50px]"></TableHead>
+                                                    <TableHead colSpan={4} className="text-center bg-blue-100" style={{ borderRight: '1px solid #e5e7eb' }}>Data</TableHead>
+                                                    <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderRight: '1px solid #e5e7eb' }}>Wissels</TableHead>
+                                                    <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderRight: '1px solid #e5e7eb' }}>Berekening</TableHead>
+                                                    <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
+                                                    <TableHead colSpan={1}></TableHead> {/* Actions */}
                                                 </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
+                                                <TableRow>
+                                                    <TableHead>Version</TableHead>
+                                                    <TableHead>Blz</TableHead>
+                                                    <TableHead>Ex/Omw</TableHead>
+                                                    <TableHead className="border-r">Net Run</TableHead>
+                                                    <TableHead className="text-center">Startup</TableHead>
+                                                    <TableHead className="text-center">4/4</TableHead>
+                                                    <TableHead className="text-center">4/0</TableHead>
+                                                    <TableHead className="text-center">1/0</TableHead>
+                                                    <TableHead className="text-center">1/1</TableHead>
+                                                    <TableHead className="text-center border-r">4/1</TableHead>
+                                                    <TableHead>Max Gross</TableHead>
+                                                    <TableHead>Groen</TableHead>
+                                                    <TableHead className="border-r">Rood</TableHead>
+                                                    <TableHead>Delta</TableHead>
+                                                    <TableHead>Delta %</TableHead>
+                                                    <TableHead></TableHead>                                                                                        </TableRow>
+                                            </TableHeader>                                            <TableBody>
                                                 {wo.katernen.map((katern) => {
-                                                    const jobWithMaxGross = { ...katern, orderNr: wo.orderNr, orderName: wo.orderName };
+                                                    const jobWithOrderInfo = { ...katern, orderNr: wo.orderNr, orderName: wo.orderName };
                                                     const maxGrossVal = getFormulaForColumn('maxGross')
-                                                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithMaxGross) as number
+                                                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo) as number
                                                         : katern.maxGross;
 
+                                                    const jobWithCalculatedMaxGross = { ...jobWithOrderInfo, maxGross: maxGrossVal };
                                                     return (
                                                         <TableRow key={katern.id}>
                                                             <TableCell>
                                                                 <Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} />
                                                             </TableCell>
                                                             <TableCell>
-                                                                <Input type="number" value={katern.pages || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', parseInt(e.target.value))} />
+                                                                <Input type="number" value={katern.pages || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', e.target.value)} />
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} />
                                                             </TableCell>
-                                                            <TableCell>
-                                                                <Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', parseInt(e.target.value))} />
+                                                            <TableCell className="border-r">
+                                                                <Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} />
                                                             </TableCell>
                                                             <TableCell className="text-center">
                                                                 <Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} />
                                                             </TableCell>
                                                             <TableCell>
-                                                                <div className="grid grid-cols-5 gap-1">
-                                                                    <Input title="4-4" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
-                                                                    <Input title="4-0" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
-                                                                    <Input title="1-0" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
-                                                                    <Input title="1-1" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
-                                                                    <Input title="4-1" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
-                                                                </div>
+                                                                <Input title="4-4" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input title="4-0" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input title="1-0" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input title="1-1" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
+                                                            </TableCell>
+                                                            <TableCell className="border-r">
+                                                                <Input title="4-1" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Input type="number" value={maxGrossVal} readOnly={!!getFormulaForColumn('maxGross')} className={getFormulaForColumn('maxGross') ? "bg-gray-100" : ""} />
                                                             </TableCell>
                                                             <TableCell>
-                                                                <Input type="number" value={katern.green || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', parseFloat(e.target.value))} />
+                                                                <Input type="number" value={katern.green || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} />
                                                             </TableCell>
-                                                            <TableCell>
-                                                                <Input type="number" value={katern.red || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', parseFloat(e.target.value))} />
+                                                            <TableCell className="border-r">
+                                                                <Input type="number" value={katern.red || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} />
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-medium">
+                                                                {(() => {
+                                                                    const f = getFormulaForColumn('delta_number');
+                                                                    const result = f ? evaluateFormula(f.formula, jobWithCalculatedMaxGross) : 0;
+                                                                    return formatNumber(result);
+                                                                })()}
                                                             </TableCell>
                                                             <TableCell className="text-center font-medium">
                                                                 {(() => {
                                                                     const f = getFormulaForColumn('delta_percentage');
-                                                                    const result = f ? evaluateFormula(f.formula, jobWithMaxGross) : katern.deltaPercentage;
+                                                                    const result = f ? evaluateFormula(f.formula, jobWithCalculatedMaxGross) : katern.deltaPercentage;
                                                                     const numericValue = typeof result === 'string'
                                                                         ? parseFloat(result.replace(/\./g, '').replace(',', '.'))
                                                                         : result;
@@ -1585,7 +1662,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                         <div className="font-medium">{field.name}</div>
                                                         <div className="text-sm text-gray-600 font-mono">{field.formula}</div>
                                                         <div className="text-xs text-gray-500 mt-1">
-                                                            Preview: {evaluateFormula(field.formula, finishedJobs[0])}
+                                                            Preview: {(() => {
+                                                                if (finishedJobs.length > 0) {
+                                                                    const res = evaluateFormula(field.formula, finishedJobs[0]);
+                                                                    return typeof res === 'number' ? formatNumber(res) : res;
+                                                                }
+                                                                return 'No data';
+                                                            })()}
                                                         </div>
                                                     </div>
                                                     <div className="flex gap-2">
@@ -1785,7 +1868,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         className="w-32"
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
-                                                addToFormula((e.target as HTMLInputElement).value);
+                                                const rawValue = (e.target as HTMLInputElement).value;
+                                                const sanitized = rawValue.replace(',', '.');
+                                                addToFormula(sanitized);
                                                 (e.target as HTMLInputElement).value = '';
                                             }
                                         }}
