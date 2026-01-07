@@ -68,6 +68,7 @@ interface User {
   name?: string;
   role: UserRole;
   press?: PressType;
+  pressId?: string;
 }
 
 export interface Operator {
@@ -202,12 +203,20 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     if (pb.authStore.isValid) {
       const model = pb.authStore.model;
       if (model) {
+        // Correctly handle press identification
+        let pressId = model.pers;
+        let pressName = model.press;
+
+        // If pressId is missing but we have a name, we'll try to resolve it in loadData
+        // but for now we set what we have.
+
         setUser({
           id: model.id,
           username: model.username,
           name: model.name,
-          role: 'admin', // Default to admin for the superuser
-          press: model.press
+          role: model.role ? mapDbRoleToUi(model.role) : 'admin',
+          press: pressName,
+          pressId: pressId
         });
       }
     }
@@ -244,8 +253,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
                 id: authData.record.id,
                 username: authData.record.username,
                 name: authData.record.name,
-                role: authData.record.role || 'press',
-                press: authData.record.press
+                role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
+                press: authData.record.press,
+                pressId: authData.record.pers
               });
               return true;
             }
@@ -261,8 +271,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
               id: authData.record.id,
               username: authData.record.username,
               name: authData.record.name,
-              role: authData.record.role || 'press',
-              press: authData.record.press
+              role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
+              press: authData.record.press,
+              pressId: authData.record.pers
             });
             return true;
           }
@@ -284,8 +295,14 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const fetchTasks = useCallback(async () => {
     try {
+      let filter = '';
+      if (user?.role === 'press' && user.press) {
+        filter = `pers.naam = "${user.press}"`;
+      }
+
       const records = await pb.collection('onderhoud').getFullList({
-        expand: 'category,pers,assigned_operator,assigned_team'
+        expand: 'category,pers,assigned_operator,assigned_team',
+        filter: filter
       });
 
       // Client-side sort
@@ -895,6 +912,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const addUserAccount = async (account: UserAccount) => {
     try {
+      const pressId = presses.find(p => p.name === account.press)?.id;
+
       await pb.collection('users').create({
         username: account.username,
         email: `${account.username}@example.com`,
@@ -902,7 +921,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         password: account.password,
         passwordConfirm: account.password,
         role: mapUiRoleToDb(account.role),
-        press: account.press
+        press: account.press,
+        pers: pressId // Save the relation
       });
       await fetchUserAccounts();
       toast.success(`User ${account.username} created`);
@@ -915,10 +935,14 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     try {
       const usr = userAccounts.find(u => u.username === username);
       if (!usr) throw new Error("User not found");
+
+      const pressId = presses.find(p => p.name === (updates.press || usr.press))?.id;
+
       await pb.collection('users').update(usr.id, {
         name: updates.name,
         role: mapUiRoleToDb(updates.role || usr.role),
-        press: updates.press
+        press: updates.press,
+        pers: pressId // Update the relation
       });
       await fetchUserAccounts();
       toast.success(`User ${username} updated`);
@@ -1032,26 +1056,60 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   }, [fetchTasks, fetchUserAccounts, fetchOperators, fetchPloegen]);
 
+  // 4. Initial Data Load
   useEffect(() => {
     if (user) {
       loadData();
-      const subscribe = async () => {
-        await pb.collection('onderhoud').subscribe('*', () => fetchTasks());
-        await pb.collection('persen').subscribe('*', () => loadData());
-        await pb.collection('categorieen').subscribe('*', () => loadData());
-        await pb.collection('operatoren').subscribe('*', () => fetchOperators());
-        await pb.collection('ploegen').subscribe('*', () => fetchPloegen());
-      };
-      subscribe();
     }
+  }, [user?.id, loadData]); // Only reload if user identity changes
+
+  // 5. Separate pressId resolution to prevent loops
+  useEffect(() => {
+    if (user && !user.pressId && user.press && presses.length > 0) {
+      const matchingPress = presses.find(p => p.name === user.press);
+      if (matchingPress) {
+        console.log("Resolving pressId for user:", user.username, "->", matchingPress.id);
+        setUser(prev => prev ? { ...prev, pressId: matchingPress.id } : null);
+      }
+    }
+  }, [user?.press, user?.pressId, presses]);
+
+  // 6. Stabilized Realtime Subscriptions
+  useEffect(() => {
+    if (!user) return;
+
+    let isSubscribed = true;
+    const subscribeAll = async () => {
+      try {
+        await Promise.all([
+          pb.collection('onderhoud').subscribe('*', () => fetchTasks()),
+          pb.collection('persen').subscribe('*', () => loadData()),
+          pb.collection('categorieen').subscribe('*', () => loadData()),
+          pb.collection('operatoren').subscribe('*', () => fetchOperators()),
+          pb.collection('ploegen').subscribe('*', () => fetchPloegen())
+        ]);
+        if (isSubscribed) {
+          console.log("Realtime subscriptions established");
+        }
+      } catch (err) {
+        if (isSubscribed) {
+          console.error("Realtime subscription failed:", err);
+        }
+      }
+    };
+
+    subscribeAll();
+
     return () => {
+      isSubscribed = false;
       pb.collection('onderhoud').unsubscribe('*');
       pb.collection('persen').unsubscribe('*');
       pb.collection('categorieen').unsubscribe('*');
       pb.collection('operatoren').unsubscribe('*');
       pb.collection('ploegen').unsubscribe('*');
+      console.log("Realtime subscriptions cleared");
     };
-  }, [user, loadData, fetchTasks, fetchOperators, fetchPloegen]);
+  }, [user?.id, fetchTasks, loadData, fetchOperators, fetchPloegen]);
 
   return (
     <AuthContext.Provider value={{

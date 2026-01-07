@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { PressType, useAuth, pb } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'; // Added useEffect
-import { useEffect } from 'react';
+
 import { toast } from 'sonner';
 // import { pillListClass, pillTriggerClass } from '../styles/TabStyles';
 import { Button } from './ui/button';
@@ -111,7 +111,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const { user } = useAuth();
 
-    const [activeTab, setActiveTab] = useState('werkorders');
+    const [activeTab, setActiveTab] = useState(user?.role === 'press' ? 'werkorders' : 'finished');
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJob, setEditingJob] = useState<FinishedPrintJob | null>(null);
@@ -249,6 +249,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const handleSaveOrderToFinished = async (werkorder: Werkorder) => {
+        if (user?.role === 'press' && !user.pressId) {
+            toast.error("Kan niet opslaan: Persgegevens nog niet geladen. Probeer het over enkele seconden opnieuw.");
+            return;
+        }
         try {
             const promises = werkorder.katernen.map(async (katern) => {
                 const today = new Date();
@@ -305,7 +309,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
 
                 // Prepare data for PocketBase
-                const pbData = {
+                const pbData: any = {
                     order_nummer: parseInt(werkorder.orderNr),
                     klant_order_beschrijving: werkorder.orderName,
                     versie: katern.version,
@@ -324,6 +328,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     delta: Number(calculatedDeltaNumber) || 0,
                     delta_percent: Number(calculatedDeltaPercentage) || 0,
                     opmerking: '', // No field in UI yet
+                    pers: user?.pressId // Link to press
                 };
 
                 // Save to PocketBase
@@ -341,9 +346,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 };
             });
 
-            const newFinishedJobs = await Promise.all(promises);
+            await Promise.all(promises);
 
-            setFinishedJobs(prevJobs => [...newFinishedJobs, ...prevJobs]);
+            fetchFinishedJobs(); // Refresh all jobs from server
 
             // Clear the Werkorder form by resetting to a new blank state
             setWerkorders(prev => prev.map(wo => {
@@ -541,6 +546,75 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([]);
 
+    const fetchFinishedJobs = useCallback(async () => {
+        try {
+            let filter = '';
+            if (user?.role === 'press' && user.press) {
+                // If the migration used 'pers' relation, we filter by that
+                // If it's a relation, we should use the ID if possible, but the name is also available in some contexts.
+                // Given I added 'pressId' to user, I'll use that.
+                if (user.pressId) {
+                    filter = `pers = "${user.pressId}"`;
+                } else {
+                    // Fallback to name if ID not yet available (shouldn't happen with updated AuthContext)
+                    filter = `pers.naam = "${user.press}"`;
+                }
+            }
+
+            const records = await pb.collection('drukwerken').getFullList({
+                sort: '-created',
+                expand: 'pers',
+                filter: filter
+            });
+
+            console.log("Fetched records count:", records.length, "Filter used:", filter);
+            console.log("Logged in user:", { role: user?.role, press: user?.press, pressId: user?.pressId });
+
+            // Strict filtering: only keep records that definitely belong to this press
+            const filteredRecords = (user?.role === 'press' && user.press)
+                ? records.filter((r: any) => {
+                    const hasMatch = (user.pressId && r.pers === user.pressId) ||
+                        (user.press && r.expand?.pers?.naam === user.press);
+                    return hasMatch;
+                })
+                : records;
+
+            console.log("Filtered records count:", filteredRecords.length);
+
+            setFinishedJobs(filteredRecords.map((r: any) => ({
+                id: r.id,
+                date: r.created.split('T')[0],
+                datum: r.created.split('T')[0].split('-').slice(1).reverse().join('-'), // simple format
+                orderNr: String(r.order_nummer || ''),
+                orderName: r.klant_order_beschrijving || '',
+                version: r.versie || '',
+                pages: r.blz,
+                exOmw: String(r.ex_omw || ''),
+                netRun: r.netto_oplage,
+                startup: !!r.opstart,
+                c4_4: r.k_4_4,
+                c4_0: r.k_4_0,
+                c1_0: r.k_1_0,
+                c1_1: r.k_1_1,
+                c4_1: r.k_4_1,
+                maxGross: r.max_bruto || 0,
+                green: r.groen,
+                red: r.rood,
+                delta_number: r.delta || 0,
+                delta_percentage: r.delta_percent || 0,
+                opmerkingen: r.opmerking,
+                delta: r.delta || 0,
+                performance: '100%'
+            })));
+        } catch (error) {
+            console.error("Error fetching finished jobs:", error);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        fetchFinishedJobs();
+    }, [fetchFinishedJobs]);
+
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchField, setSearchField] = useState('all');
@@ -586,14 +660,48 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         })
         : filteredJobs;
 
-    const handleJobSubmit = (jobData: Omit<FinishedPrintJob, 'id'>) => {
+    const handleJobSubmit = async (jobData: Omit<FinishedPrintJob, 'id'>) => {
+        if (user?.role === 'press' && !user.pressId) {
+            toast.error("Kan niet opslaan: Persgegevens nog niet geladen.");
+            return;
+        }
         const processedJob = processJobFormulas(jobData);
-        if (editingJob) {
-            // Update existing job
-            setFinishedJobs(finishedJobs.map(j => j.id === editingJob.id ? { ...processedJob, id: j.id } : j));
-        } else {
-            // Add new job
-            setFinishedJobs([{ ...processedJob, id: Date.now().toString() }, ...finishedJobs]);
+        try {
+            const pbData: any = {
+                order_nummer: parseInt(processedJob.orderNr),
+                klant_order_beschrijving: processedJob.orderName,
+                versie: processedJob.version,
+                blz: processedJob.pages,
+                ex_omw: processedJob.exOmw,
+                netto_oplage: processedJob.netRun,
+                opstart: processedJob.startup,
+                k_4_4: processedJob.c4_4,
+                k_4_0: processedJob.c4_0,
+                k_1_0: processedJob.c1_0,
+                k_1_1: processedJob.c1_1,
+                k_4_1: processedJob.c4_1,
+                max_bruto: processedJob.maxGross,
+                groen: processedJob.green,
+                rood: processedJob.red,
+                delta: processedJob.delta_number,
+                delta_percent: processedJob.delta_percentage,
+                opmerking: processedJob.opmerkingen,
+                pers: user?.pressId
+            };
+
+            if (editingJob) {
+                // Update existing job
+                await pb.collection('drukwerken').update(editingJob.id, pbData);
+                toast.success("Drukwerk succesvol bijgewerkt.");
+            } else {
+                // Add new job
+                await pb.collection('drukwerken').create(pbData);
+                toast.success("Drukwerk succesvol toegevoegd.");
+            }
+            fetchFinishedJobs(); // Refresh from server
+        } catch (error) {
+            console.error("Error saving job:", error);
+            toast.error("Fout bij opslaan drukwerk.");
         }
     };
 
@@ -654,8 +762,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setIsAddJobDialogOpen(true);
     };
 
-    const handleDeleteJob = (jobId: string) => {
-        setFinishedJobs(finishedJobs.filter(job => job.id !== jobId));
+    const handleDeleteJob = async (jobId: string) => {
+        if (!confirm("Weet u zeker dat u dit drukwerk wilt verwijderen?")) return;
+        try {
+            await pb.collection('drukwerken').delete(jobId);
+            toast.success("Drukwerk verwijderd.");
+            fetchFinishedJobs();
+        } catch (error) {
+            console.error("Error deleting job:", error);
+            toast.error("Fout bij verwijderen drukwerk.");
+        }
     };
 
     const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([
@@ -994,6 +1110,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         setCalculatedFields(calculatedFields.filter(f => f.id !== id));
     };
 
+    if (user?.role === 'press' && !user.pressId) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center space-y-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                    <p className="text-gray-500">Persgegevens laden...</p>
+                </div>
+            </div>
+        );
+    }
+
     const previewResult = finishedJobs.length > 0
         ? evaluateFormula(currentFormula, finishedJobs[0])
         : 'N/A';
@@ -1002,132 +1129,136 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="tab-pill-list">
-                    <TabsTrigger value="werkorders" className="tab-pill-trigger">Werkorders</TabsTrigger>
+                    {user?.role === 'press' && (
+                        <TabsTrigger value="werkorders" className="tab-pill-trigger">Werkorders</TabsTrigger>
+                    )}
                     <TabsTrigger value="finished" className="tab-pill-trigger">Finished</TabsTrigger>
                     {user?.role !== 'press' && (
                         <TabsTrigger value="parameters" className="tab-pill-trigger">Parameters</TabsTrigger>
                     )}
                 </TabsList>
 
-                <TabsContent value="werkorders">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="pl-4">Werkorders</CardTitle>
-                            <CardAction>
-                                <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
-                            </CardAction>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {werkorders.map((wo) => (
-                                <div key={wo.id} className="border p-4 rounded-lg">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <div className="flex gap-4 w-full items-end">
-                                            <div className="flex flex-col items-center">
-                                                <Label>Order Nr</Label>
-                                                <Input value={`DT${wo.orderNr}`} onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)} style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <Label className="pl-3">Order</Label>
-                                                <Input value={wo.orderName} onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)} className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                {user?.role === 'press' && (
+                    <TabsContent value="werkorders">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="pl-4">Werkorders</CardTitle>
+                                <CardAction>
+                                    <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
+                                </CardAction>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {werkorders.map((wo) => (
+                                    <div key={wo.id} className="border p-4 rounded-lg">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex gap-4 w-full items-end">
+                                                <div className="flex flex-col items-center">
+                                                    <Label>Order Nr</Label>
+                                                    <Input value={`DT${wo.orderNr}`} onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)} style={{ width: '85px' }} className="text-center p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <Label className="pl-3">Order</Label>
+                                                    <Input value={wo.orderName} onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)} className="w-full border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+                                                </div>
                                             </div>
                                         </div>
+                                        <Table className="table-fixed w-full">
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-[100px]">Version</TableHead>
+                                                    <TableHead className="w-[80px]">Pages</TableHead>
+                                                    <TableHead className="w-[100px]">Ex/Omw</TableHead>
+                                                    <TableHead className="w-[100px]">Net Run</TableHead>
+                                                    <TableHead className="w-[80px] text-center">Startup</TableHead>
+                                                    <TableHead className="w-[150px]">Layout (4-4, 4-0, etc)</TableHead>
+                                                    <TableHead className="w-[100px]">Max Gross</TableHead>
+                                                    <TableHead className="w-[100px]">Groen</TableHead>
+                                                    <TableHead className="w-[100px]">Rood</TableHead>
+                                                    <TableHead className="w-[100px]">Delta %</TableHead>
+                                                    <TableHead className="w-[50px]"></TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {wo.katernen.map((katern) => {
+                                                    const jobWithMaxGross = { ...katern, orderNr: wo.orderNr, orderName: wo.orderName };
+                                                    const maxGrossVal = getFormulaForColumn('maxGross')
+                                                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithMaxGross) as number
+                                                        : katern.maxGross;
+
+                                                    return (
+                                                        <TableRow key={katern.id}>
+                                                            <TableCell>
+                                                                <Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input type="number" value={katern.pages || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', parseInt(e.target.value))} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', parseInt(e.target.value))} />
+                                                            </TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="grid grid-cols-5 gap-1">
+                                                                    <Input title="4-4" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
+                                                                    <Input title="4-0" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
+                                                                    <Input title="1-0" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
+                                                                    <Input title="1-1" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
+                                                                    <Input title="4-1" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', parseInt(e.target.value))} className="p-1 px-2 h-8 text-xs" />
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input type="number" value={maxGrossVal} readOnly={!!getFormulaForColumn('maxGross')} className={getFormulaForColumn('maxGross') ? "bg-gray-100" : ""} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input type="number" value={katern.green || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', parseFloat(e.target.value))} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Input type="number" value={katern.red || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', parseFloat(e.target.value))} />
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-medium">
+                                                                {(() => {
+                                                                    const f = getFormulaForColumn('delta_percentage');
+                                                                    const result = f ? evaluateFormula(f.formula, jobWithMaxGross) : katern.deltaPercentage;
+                                                                    const numericValue = typeof result === 'string'
+                                                                        ? parseFloat(result.replace(/\./g, '').replace(',', '.'))
+                                                                        : result;
+
+                                                                    if (isNaN(numericValue as number)) {
+                                                                        return '0.00%';
+                                                                    }
+
+                                                                    return `${(numericValue * 100).toFixed(2)}%`;
+                                                                })()}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                        <div className="flex justify-between items-center mt-2">
+                                            <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
+                                                <Plus className="w-4 h-4 mr-1" /> Katern/Versie toevoegen
+                                            </Button>
+                                            <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
+                                                Order Opslaan
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <Table className="table-fixed w-full">
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead style={{ width: '60px' }}>Order Datum</TableHead>
-                                                <TableHead>Versie/Katern</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">Pagina's</TableHead>
-                                                <TableHead style={{ width: '100px' }} className="text-center">Ex/Omw.</TableHead>
-                                                <TableHead style={{ width: '100px' }}>Oplage</TableHead>
-                                                <TableHead style={{ width: '60px' }}>Opstart</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">4/4</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">4/0</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">1/0</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">1/1</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">4/1</TableHead>
-                                                <TableHead style={{ width: '100px' }} className="text-center">Max Bruto</TableHead>
-                                                <TableHead style={{ width: '100px' }} className="text-center">Groen</TableHead>
-                                                <TableHead style={{ width: '100px' }} className="text-center">Rood</TableHead>
-                                                <TableHead style={{ width: '100px' }} className="text-center">Delta</TableHead>
-                                                <TableHead style={{ width: '55px' }} className="text-center">Delta %</TableHead>
-                                                <TableHead style={{ width: '100px' }}>Acties</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {wo.katernen.map((katern) => {
-                                                const maxGrossFormula = getFormulaForColumn('maxGross');
-                                                const evaluatedMaxGrossStr = maxGrossFormula ? evaluateFormula(maxGrossFormula.formula, katern) : String(katern.maxGross);
-                                                const numericMaxGross = evaluatedMaxGrossStr ? parseFloat(String(evaluatedMaxGrossStr).replace(/\./g, '').replace(',', '.')) : 0;
-                                                const katernWithCalculatedMaxGross = { ...katern, maxGross: isNaN(numericMaxGross) ? 0 : numericMaxGross };
-
-                                                return (
-                                                    <TableRow key={katern.id}>
-                                                        <TableCell>{wo.orderDate}</TableCell>
-                                                        <TableCell><Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.pages ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'pages', e.target.value)} className="text-right" /></TableCell>
-                                                        <TableCell><Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} className="text-center px-0 py-0" /></TableCell>
-                                                        <TableCell><Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} className="text-right" /></TableCell>
-                                                        <TableCell><Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_4} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_4', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_0} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_0', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell className="text-center"><Input type="number" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className="text-center border-none focus-visible:ring-0 focus-visible:ring-offset-0" /></TableCell>
-                                                        <TableCell>
-                                                            {maxGrossFormula
-                                                                ? <FormulaResultWithTooltip formula={maxGrossFormula.formula} job={katern} result={evaluatedMaxGrossStr} />
-                                                                : formatNumber(katern.maxGross)}
-                                                        </TableCell>
-                                                        <TableCell><Input type="number" value={katern.green ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} /></TableCell>
-                                                        <TableCell><Input type="number" value={katern.red ?? ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} /></TableCell>
-                                                        <TableCell>
-                                                            {(() => {
-                                                                const formula = getFormulaForColumn('delta_number');
-                                                                return formula ? evaluateFormula(formula.formula, katernWithCalculatedMaxGross) : formatNumber(katern.delta);
-                                                            })()}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {(() => {
-                                                                const formula = getFormulaForColumn('delta_percentage');
-                                                                const result = formula
-                                                                    ? evaluateFormula(formula.formula, katernWithCalculatedMaxGross)
-                                                                    : katern.deltaPercentage;
-
-                                                                const numericValue = typeof result === 'string'
-                                                                    ? parseFloat(result.replace(/\./g, '').replace(',', '.'))
-                                                                    : result;
-
-                                                                if (isNaN(numericValue)) {
-                                                                    return '0.00%';
-                                                                }
-
-                                                                return `${(numericValue * 100).toFixed(2)}%`;
-                                                            })()}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Button size="sm" variant="ghost" className="hover:bg-red-100 text-red-500">
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </Button>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
-                                            <Plus className="w-4 h-4 mr-1" /> Katern/Versie toevoegen
-                                        </Button>
-                                        <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
-                                            Order Opslaan
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                                ))}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                )}
 
                 <TabsContent value="finished">
                     <Card>
