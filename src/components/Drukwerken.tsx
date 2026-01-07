@@ -1215,12 +1215,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 </div>
                                             </div>
                                         </div>
-                                        <Table className="table-fixed w-full">
+                                        <Table className="w-full">
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead colSpan={4} className="text-center bg-blue-100" style={{ borderRight: '1px solid #e5e7eb' }}>Data</TableHead>
-                                                    <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderRight: '1px solid #e5e7eb' }}>Wissels</TableHead>
-                                                    <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderRight: '1px solid #e5e7eb' }}>Berekening</TableHead>
+                                                    <TableHead colSpan={4} className="text-center bg-blue-100" style={{ borderRight: '2px solid #e5e7eb' }}>Data</TableHead>
+                                                    <TableHead colSpan={6} className="text-center bg-green-100" style={{ borderRight: '2px solid #e5e7eb' }}>Wissels</TableHead>
+                                                    <TableHead colSpan={3} className="text-center bg-yellow-100" style={{ borderRight: '2px solid #e5e7eb' }}>Berekening</TableHead>
                                                     <TableHead colSpan={2} className="text-center bg-purple-100">Prestatie</TableHead>
                                                     <TableHead colSpan={1}></TableHead> {/* Actions */}
                                                 </TableRow>
@@ -1228,16 +1228,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <TableHead>Version</TableHead>
                                                     <TableHead>Blz</TableHead>
                                                     <TableHead>Ex/Omw</TableHead>
-                                                    <TableHead className="border-r">Net Run</TableHead>
+                                                    <TableHead style={{ borderRight: '2px solid #e5e7eb' }}>Net Run</TableHead>
                                                     <TableHead className="text-center">Startup</TableHead>
                                                     <TableHead className="text-center">4/4</TableHead>
                                                     <TableHead className="text-center">4/0</TableHead>
                                                     <TableHead className="text-center">1/0</TableHead>
                                                     <TableHead className="text-center">1/1</TableHead>
-                                                    <TableHead className="text-center border-r">4/1</TableHead>
+                                                    <TableHead className="text-center" style={{ borderRight: '2px solid #e5e7eb' }}>4/1</TableHead>
                                                     <TableHead>Max Gross</TableHead>
                                                     <TableHead>Groen</TableHead>
-                                                    <TableHead className="border-r">Rood</TableHead>
+                                                    <TableHead className="border-r" style={{ borderRight: '2px solid #e5e7eb' }}>Rood</TableHead>
                                                     <TableHead>Delta</TableHead>
                                                     <TableHead>Delta %</TableHead>
                                                     <TableHead></TableHead>                                                                                        </TableRow>
@@ -1260,7 +1260,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             <TableCell>
                                                                 <Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} />
                                                             </TableCell>
-                                                            <TableCell className="border-r">
+                                                            <TableCell style={{ borderRight: '2px solid #e5e7eb' }}>
                                                                 <Input type="number" value={katern.netRun} onChange={(e) => handleKaternChange(wo.id, katern.id, 'netRun', e.target.value)} />
                                                             </TableCell>
                                                             <TableCell className="text-center">
@@ -1278,16 +1278,16 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                             <TableCell>
                                                                 <Input title="1-1" value={katern.c1_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c1_1', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
                                                             </TableCell>
-                                                            <TableCell className="border-r">
+                                                            <TableCell style={{ borderRight: '2px solid #e5e7eb' }}>
                                                                 <Input title="4-1" value={katern.c4_1} onChange={(e) => handleKaternChange(wo.id, katern.id, 'c4_1', e.target.value)} className="p-1 px-2 h-8 text-xs text-center" />
                                                             </TableCell>
-                                                            <TableCell>
+                                                            <TableCell style={{ borderRight: '2px solid #e5e7eb' }}>
                                                                 <Input type="number" value={maxGrossVal} readOnly={!!getFormulaForColumn('maxGross')} className={getFormulaForColumn('maxGross') ? "bg-gray-100" : ""} />
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Input type="number" value={katern.green || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'green', e.target.value)} />
                                                             </TableCell>
-                                                            <TableCell className="border-r">
+                                                            <TableCell style={{ borderRight: '2px solid #e5e7eb' }}>
                                                                 <Input type="number" value={katern.red || ''} onChange={(e) => handleKaternChange(wo.id, katern.id, 'red', e.target.value)} />
                                                             </TableCell>
                                                             <TableCell className="text-center font-medium">
