@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { GroupedTask, Subtask, MaintenanceTask } from './AuthContext';
 import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react';
+import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,23 +17,7 @@ import {
   AlertDialogTrigger,
 } from './ui/alert-dialog';
 import { toast } from 'sonner';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+
 
 interface MaintenanceTableProps {
   tasks: GroupedTask[];
@@ -46,13 +30,12 @@ interface MaintenanceTableProps {
 }
 
 export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, onAddTask, onUpdateTaskOrder }: MaintenanceTableProps) {
-  const { user, categoryOrder, updateCategoryOrder } = useAuth();
+  const { user, categoryOrder, categories } = useAuth();
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedGroupedTasks, setCollapsedGroupedTasks] = useState<Set<string>>(new Set());
   const [quickEditTask, setQuickEditTask] = useState<MaintenanceTask | null>(null);
   const [quickEditSiblings, setQuickEditSiblings] = useState<MaintenanceTask[]>([]);
   const [quickEditField, setQuickEditField] = useState<'lastMaintenance' | 'opmerkingen'>('lastMaintenance');
-  const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{
     key: 'task' | 'lastMaintenance' | 'nextMaintenance' | 'status' | 'assignedTo' | null;
@@ -60,12 +43,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   } | null>(null);
 
   // Drag and drop sensors for tasks
-  const taskSensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // Use distance activation constraint so clicks are not blocked
+
+
+
 
   const toMaintenanceTask = (subtask: Subtask, group: GroupedTask): MaintenanceTask => ({
     id: subtask.id,
@@ -115,26 +96,35 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   const getStatusInfo = (nextMaintenance: Date) => {
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize today
     const next = new Date(nextMaintenance);
-    const daysUntil = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    next.setHours(0, 0, 0, 0); // Normalize target
+
+    const diffTime = next.getTime() - today.getTime();
+    const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (daysUntil < 0) {
-      return { label: 'Te laat', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
+      return { key: 'Te laat', label: '!!!', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
     } else if (daysUntil <= 7) {
-      return { label: 'Binnenkort', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
+      const label = daysUntil === 1 ? '1 Dag' : `${daysUntil} Dagen`;
+      return { key: 'Binnenkort', label: label, color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
     } else if (daysUntil <= 30) {
-      return { label: 'Op komst', color: 'bg-yellow-50', textColor: 'text-yellow-700', badgeClass: 'bg-yellow-500 hover:bg-yellow-600' };
+      const label = daysUntil === 1 ? '1 Dag' : `${daysUntil} Dagen`;
+      return { key: 'Op komst', label: label, color: 'bg-yellow-50', textColor: 'text-yellow-700', badgeClass: 'bg-yellow-500 hover:bg-yellow-600' };
     } else {
-      return { label: 'Gepland', color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
+      // Weeks calculation
+      const weeks = Math.max(1, Math.round(daysUntil / 7));
+      const label = weeks === 1 ? '1 Week' : `${weeks} Weken`;
+      return { key: 'Gepland', label: label, color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
     }
   };
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (categoryId: string) => {
     const newCollapsed = new Set(collapsedCategories);
-    if (newCollapsed.has(category)) {
-      newCollapsed.delete(category);
+    if (newCollapsed.has(categoryId)) {
+      newCollapsed.delete(categoryId);
     } else {
-      newCollapsed.add(category);
+      newCollapsed.add(categoryId);
     }
     setCollapsedCategories(newCollapsed);
   };
@@ -161,50 +151,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     toast.success(`${name} succesvol verwijderd`);
   };
 
-  const handleDragStart = (category: string) => {
-    setDraggedCategory(category);
-  };
 
-  const handleDragOver = (e: React.DragEvent, category: string) => {
-    e.preventDefault();
-    if (draggedCategory && draggedCategory !== category) {
-      const newOrder = [...categoryOrder];
-      const draggedIndex = newOrder.indexOf(draggedCategory);
-      const targetIndex = newOrder.indexOf(category);
 
-      newOrder.splice(draggedIndex, 1);
-      newOrder.splice(targetIndex, 0, draggedCategory);
 
-      updateCategoryOrder(newOrder);
-    }
-  };
 
-  const handleDragEnd = () => {
-    setDraggedCategory(null);
-  };
-
-  const handleTaskDragEnd = async (event: DragEndEvent, category: string) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const categoryTasks = groupedTasksByCategory[category];
-      const oldIndex = categoryTasks.findIndex((task) => task.id === active.id);
-      const newIndex = categoryTasks.findIndex((task) => task.id === over.id);
-
-      const reorderedTasks = arrayMove(categoryTasks, oldIndex, newIndex);
-      const taskIds = reorderedTasks.map(task => task.id);
-
-      // Update order in backend if callback provided
-      if (onUpdateTaskOrder) {
-        try {
-          await onUpdateTaskOrder(category, taskIds);
-          toast.success('Taakvolgorde bijgewerkt');
-        } catch (error) {
-          toast.error('Bijwerken van taakvolgorde mislukt');
-        }
-      }
-    }
-  };
 
   // Flatten subtasks for status filtering and counting
   const allSubtasks: Subtask[] = tasks.flatMap(group => group.subtasks);
@@ -213,34 +163,50 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   // Count subtasks by status
   const statusCounts = allSubtasks.reduce((acc, subtask) => {
-    const status = getStatusInfo(subtask.nextMaintenance).label;
+    const status = getStatusInfo(subtask.nextMaintenance).key;
     if (status !== 'Gepland') {
       acc[status] = (acc[status] || 0) + 1;
     }
     return acc;
   }, {} as Record<string, number>);
 
-  // Group GroupedTasks by category
-  const groupedTasksByCategory = tasks.reduce((acc, groupedTask) => {
-    if (!acc[groupedTask.category]) {
-      acc[groupedTask.category] = [];
+  // Group GroupedTasks by category ID
+  const groupedTasksByCategoryId = tasks.reduce((acc, groupedTask) => {
+    if (!acc[groupedTask.categoryId]) {
+      acc[groupedTask.categoryId] = [];
     }
-    acc[groupedTask.category].push(groupedTask);
+    acc[groupedTask.categoryId].push(groupedTask);
     return acc;
   }, {} as Record<string, GroupedTask[]>);
 
-  // Sort categories by the custom order
-  const orderedCategories = useMemo(() => {
-    const categoriesWithTasks = Object.keys(groupedTasksByCategory);
+  // Sort categories by the custom order (IDs)
+  const orderedCategoryIds = useMemo(() => {
+    const categoryIdsWithTasks = Object.keys(groupedTasksByCategoryId);
     if (!categoryOrder || categoryOrder.length === 0) {
-      return categoriesWithTasks.sort();
+      // Fallback: Sort by Name if we can resolve it, else ID
+      return categoryIdsWithTasks.sort((a, b) => {
+        const nameA = categories.find(c => c.id === a)?.name || a;
+        const nameB = categories.find(c => c.id === b)?.name || b;
+        return nameA.localeCompare(nameB);
+      });
     }
-    // Start with items in categoryOrder that actually have tasks
-    const ordered = categoryOrder.filter(cat => groupedTasksByCategory[cat]?.length > 0);
-    // Add any categories that have tasks but are NOT in categoryOrder
-    const remaining = categoriesWithTasks.filter(cat => !categoryOrder.includes(cat));
-    return [...ordered, ...remaining];
-  }, [categoryOrder, groupedTasksByCategory]);
+
+    // Map Order ID -> Index
+    const idToIndex = new Map<string, number>();
+    categoryOrder.forEach((id, index) => idToIndex.set(id, index));
+
+    return categoryIdsWithTasks.sort((idA, idB) => {
+      const indexA = idToIndex.has(idA) ? idToIndex.get(idA)! : 99999;
+      const indexB = idToIndex.has(idB) ? idToIndex.get(idB)! : 99999;
+
+      if (indexA !== indexB) return indexA - indexB;
+
+      // Fallback to Name sort
+      const nameA = categories.find(c => c.id === idA)?.name || idA;
+      const nameB = categories.find(c => c.id === idB)?.name || idB;
+      return nameA.localeCompare(nameB);
+    });
+  }, [categoryOrder, groupedTasksByCategoryId, categories]);
 
   const handleStatusFilter = (status: string) => {
     setStatusFilter(statusFilter === status ? null : status);
@@ -285,8 +251,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           bValue = bSubtask?.nextMaintenance ? new Date(bSubtask.nextMaintenance).getTime() : 0;
           break;
         case 'status':
-          aValue = getStatusInfo(aSubtask?.nextMaintenance).label;
-          bValue = getStatusInfo(bSubtask?.nextMaintenance).label;
+          aValue = getStatusInfo(aSubtask?.nextMaintenance).key;
+          bValue = getStatusInfo(bSubtask?.nextMaintenance).key;
           break;
         case 'assignedTo':
           aValue = aSubtask?.assignedTo?.toLowerCase() || '';
@@ -312,12 +278,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     className?: string;
   }) => {
     const isActive = sortConfig?.key === sortKey;
+    const isCenter = className.includes('text-center');
 
     return (
       <th className={className}>
         <button
           onClick={() => handleSort(sortKey)}
-          className="flex items-center gap-1 hover:text-gray-900 transition-colors w-full"
+          className={`flex items-center gap-1 hover:text-gray-900 transition-colors w-full ${isCenter ? 'justify-center' : ''}`}
         >
           <span>{label}</span>
           {isActive && (
@@ -353,7 +320,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     } | null;
   }
 
-  function SortableTaskGroup({
+  function TaskGroupRow({
     groupedTask,
     isSingleTask,
     isGroupedTaskCollapsed,
@@ -371,20 +338,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     onEdit,
     sortConfig,
   }: SortableTaskGroupProps) {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({ id: groupedTask.id });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.8 : 1,
-    };
+    // Drag and drop logic removed for individual tasks
 
     // Sort subtasks if sortConfig is present
     const sortedSubtasks = useMemo(() => {
@@ -408,8 +362,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
             bValue = b.nextMaintenance ? new Date(b.nextMaintenance).getTime() : 0;
             break;
           case 'status':
-            aValue = getStatusInfo(a.nextMaintenance).label;
-            bValue = getStatusInfo(b.nextMaintenance).label;
+            aValue = getStatusInfo(a.nextMaintenance).key;
+            bValue = getStatusInfo(b.nextMaintenance).key;
             break;
           case 'assignedTo':
             aValue = a.assignedTo?.toLowerCase() || '';
@@ -436,15 +390,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     }, [relevantSubtasks]);
 
     const summaryStatusInfo = earliestSubtask ? getStatusInfo(earliestSubtask.nextMaintenance) : null;
-    const summaryRowBgClass = summaryStatusInfo && summaryStatusInfo.label !== 'Gepland' ? summaryStatusInfo.color : '';
+    const summaryRowBgClass = summaryStatusInfo && summaryStatusInfo.key !== 'Gepland' ? summaryStatusInfo.color : '';
 
     return (
       <>
         {/* Group Header (only for multi-task groups) */}
         {!isSingleTask && (
           <tr
-            ref={setNodeRef}
-            style={style}
             className={`bg-gray-50 border-b border-gray-100 ${isGroupedTaskCollapsed && summaryRowBgClass ? summaryRowBgClass : ''}`}
           >
             <td
@@ -454,14 +406,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
               <div className="flex items-start">
                 {user?.role === 'admin' && (
                   <div className="w-6 flex-shrink-0 flex justify-center mt-1">
-                    <button
-                      type="button"
-                      className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 touch-none"
-                      {...attributes}
-                      {...listeners}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
+                    {/* Drag handle removed */}
                   </div>
                 )}
                 <div className="w-6 flex-shrink-0 flex justify-center mt-1">
@@ -550,7 +495,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     <span className="text-gray-600">{formatInterval(earliestSubtask.maintenanceInterval, earliestSubtask.maintenanceIntervalUnit)}</span>
                   </td>
                 )}
-                <td className="px-3 py-1.5">
+                <td className="px-3 py-1.5 text-center">
                   {summaryStatusInfo && (
                     <Badge className={summaryStatusInfo.badgeClass}>{summaryStatusInfo.label}</Badge>
                   )}
@@ -624,22 +569,13 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           return (
             <tr
               key={subtask.id}
-              ref={setNodeRef}
-              style={style}
               className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass}`}
             >
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
                   {user?.role === 'admin' && (
                     <div className="w-6 flex-shrink-0 flex justify-center mt-1">
-                      <button
-                        type="button"
-                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 touch-none"
-                        {...attributes}
-                        {...listeners}
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </button>
+                      {/* Drag handle removed */}
                     </div>
                   )}
                   {/* Spacer for Chevron alignment */}
@@ -654,8 +590,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 </div>
               </td>
               <td
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100/50 transition-colors"
-                onClick={() => handleQuickEdit(subtask, groupedTask, 'lastMaintenance')}
+                className="px-3 py-1.5 cursor-pointer"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickEdit(subtask, groupedTask, 'lastMaintenance');
+                }}
               >
                 <div className="flex items-center gap-2 text-gray-600">
                   <Calendar className="w-4 h-4" />
@@ -673,7 +613,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   <span className="text-gray-600">{formatInterval(subtask.maintenanceInterval, subtask.maintenanceIntervalUnit)}</span>
                 </td>
               )}
-              <td className="px-3 py-1.5">
+              <td className="px-3 py-1.5 text-center">
                 <Badge className={statusInfo.badgeClass}>{statusInfo.label}</Badge>
               </td>
               <td className="px-3 py-1.5">
@@ -683,8 +623,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 </div>
               </td>
               <td
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100/50 transition-colors"
-                onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
+                className="px-3 py-1.5 cursor-pointer"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickEdit(subtask, groupedTask, 'opmerkingen');
+                }}
               >
                 <div className="max-w-xs">
                   {subtask.comment ? (
@@ -762,8 +706,9 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 </div>
               </td>
               <td
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100/50 transition-colors"
-                onClick={() => handleQuickEdit(subtask, groupedTask, 'lastMaintenance')}
+                className="px-3 py-1.5 cursor-pointer"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => { e.stopPropagation(); handleQuickEdit(subtask, groupedTask, 'lastMaintenance'); }}
               >
                 <div className="flex items-center gap-2 text-gray-600">
                   <Calendar className="w-4 h-4" />
@@ -781,7 +726,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   <span className="text-gray-600">{formatInterval(subtask.maintenanceInterval, subtask.maintenanceIntervalUnit)}</span>
                 </td>
               )}
-              <td className="px-3 py-1.5">
+              <td className="px-3 py-1.5 text-center">
                 <Badge className={statusInfo.badgeClass}>{statusInfo.label}</Badge>
               </td>
               <td className="px-3 py-1.5">
@@ -791,8 +736,9 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 </div>
               </td>
               <td
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100/50 transition-colors"
-                onClick={() => handleQuickEdit(subtask, groupedTask, 'opmerkingen')}
+                className="px-3 py-1.5 cursor-pointer"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => { e.stopPropagation(); handleQuickEdit(subtask, groupedTask, 'opmerkingen'); }}
               >
                 <div className="max-w-xs">
                   {subtask.comment ? (
@@ -846,6 +792,166 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           );
         })}
       </>
+    );
+  }
+
+  interface CategorySectionProps {
+    categoryId: string;
+    categoryName: string;
+    onToggle: (categoryId: string) => void;
+    isCollapsed: boolean;
+    user: any;
+    categoryGroupedTasks: GroupedTask[];
+    statusFilter: string | null;
+    getStatusInfo: (nextMaintenance: Date) => any;
+
+    getSortedTasks: (tasks: GroupedTask[]) => GroupedTask[];
+    collapsedGroupedTasks: Set<string>;
+    toggleGroupedTask: (id: string) => void;
+    onEditGroup?: (group: GroupedTask) => void;
+    handleDelete: (id: string, name: string) => void;
+    formatDate: (date: Date | null) => string;
+    formatDateTime: (date: Date | null) => string;
+    formatInterval: (interval: number, unit: any) => string;
+    handleQuickEdit: (subtask: Subtask, group: GroupedTask, field: any) => void;
+    toMaintenanceTask: (subtask: Subtask, group: GroupedTask) => MaintenanceTask;
+    onEdit: (task: MaintenanceTask) => void;
+    sortConfig: any;
+  }
+
+  function CategorySection({
+    categoryId,
+    categoryName,
+    onToggle,
+    isCollapsed,
+    user,
+    categoryGroupedTasks,
+    statusFilter,
+    getStatusInfo,
+
+    getSortedTasks,
+    collapsedGroupedTasks,
+    toggleGroupedTask,
+    onEditGroup,
+    handleDelete,
+    formatDate,
+    formatDateTime,
+    formatInterval,
+    handleQuickEdit,
+    toMaintenanceTask,
+    onEdit,
+    sortConfig,
+  }: CategorySectionProps) {
+
+
+    return (
+      <div
+        className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
+      >
+        {/* Category Header */}
+        <div
+          className="flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => onToggle(categoryId)}
+        >
+
+          <div className="w-6 flex-shrink-0 flex justify-center">
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            )}
+          </div>
+          <div className="flex-1 flex items-center">
+            <span className="text-gray-900 font-medium">{categoryName}</span>
+            <Badge variant="secondary" className="ml-auto">
+              {categoryGroupedTasks.flatMap(gt => gt.subtasks).filter(st => {
+                const status = getStatusInfo(st.nextMaintenance).key;
+                return !statusFilter || status === statusFilter;
+              }).length}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Tasks Table */}
+        {!isCollapsed && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-200">
+                  <SortableColumnHeader
+                    label="Taak / Subtaak"
+                    sortKey="task"
+                    className={`px-3 py-2 text-left text-gray-700 w-[26%] ${user?.role === 'admin' ? 'pl-[60px]' : 'pl-[36px]'}`}
+                  />
+                  <SortableColumnHeader
+                    label="Laatst Onderhoud"
+                    sortKey="lastMaintenance"
+                    className="px-3 py-2 text-left text-gray-700 w-[10%]"
+                  />
+                  <SortableColumnHeader
+                    label="Volgend Onderhoud"
+                    sortKey="nextMaintenance"
+                    className="px-3 py-2 text-left text-gray-700 w-[10%]"
+                  />
+                  {user?.role !== 'press' && (
+                    <th className="px-3 py-2 text-left text-gray-700 w-[8%]">Interval</th>
+                  )}
+                  <SortableColumnHeader
+                    label="Status"
+                    sortKey="status"
+                    className="px-3 py-2 text-center text-gray-700 w-[6]"
+                  />
+                  <SortableColumnHeader
+                    label="Toegewezen aan"
+                    sortKey="assignedTo"
+                    className="px-3 py-2 text-left text-gray-700 w-[12%]"
+                  />
+                  <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Opmerkingen</th>
+                  {user?.role === 'admin' && (
+                    <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Acties</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {getSortedTasks(categoryGroupedTasks).map((groupedTask) => {
+                  const relevantSubtasks = groupedTask.subtasks.filter(subtask => {
+                    if (!statusFilter) return true;
+                    const status = getStatusInfo(subtask.nextMaintenance).key;
+                    return status === statusFilter;
+                  });
+
+                  if (relevantSubtasks.length === 0) return null;
+
+                  const isSingleTask = groupedTask.subtasks.length === 1;
+                  const isGroupedTaskCollapsed = collapsedGroupedTasks.has(groupedTask.id);
+
+                  return (
+                    <TaskGroupRow
+                      key={groupedTask.id}
+                      groupedTask={groupedTask}
+                      isSingleTask={isSingleTask}
+                      isGroupedTaskCollapsed={isGroupedTaskCollapsed}
+                      relevantSubtasks={relevantSubtasks}
+                      user={user}
+                      toggleGroupedTask={toggleGroupedTask}
+                      onEditGroup={onEditGroup}
+                      handleDelete={handleDelete}
+                      getStatusInfo={getStatusInfo}
+                      formatDate={formatDate}
+                      formatDateTime={formatDateTime}
+                      formatInterval={formatInterval}
+                      handleQuickEdit={handleQuickEdit}
+                      toMaintenanceTask={toMaintenanceTask}
+                      onEdit={onEdit}
+                      sortConfig={sortConfig}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -910,144 +1016,39 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
         )}
       </div>
 
-      <div className="space-y-3">
-        {orderedCategories.length === 0 ? (
+      <div className="space-y-4">
+        {orderedCategoryIds.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500">
             Geen onderhoudstaken gevonden. Voeg uw eerste taak toe om aan de slag te gaan.
           </div>
         ) : (
-          orderedCategories.map((category) => {
-            const categoryGroupedTasks = groupedTasksByCategory[category];
-            const isCategoryCollapsed = collapsedCategories.has(category);
-
-            return (
-              <div key={category} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                {/* Category Header */}
-                <div
-                  className="flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => toggleCategory(category)}
-                  draggable={user?.role === 'admin'}
-                  onDragStart={() => handleDragStart(category)}
-                  onDragOver={(e) => handleDragOver(e, category)}
-                  onDragEnd={handleDragEnd}
-                >
-                  {user?.role === 'admin' && (
-                    <div className="w-6 flex-shrink-0 flex justify-center">
-                      <GripVertical className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing" />
-                    </div>
-                  )}
-                  <div className="w-6 flex-shrink-0 flex justify-center">
-                    {isCategoryCollapsed ? (
-                      <ChevronRight className="w-4 h-4 text-gray-500" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 flex items-center">
-                    <span className="text-gray-900 font-medium">{category}</span>
-                    <Badge variant="secondary" className="ml-auto">
-                      {categoryGroupedTasks.flatMap(gt => gt.subtasks).filter(st => {
-                        const status = getStatusInfo(st.nextMaintenance).label;
-                        return !statusFilter || status === statusFilter;
-                      }).length}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Tasks Table */}
-                {!isCategoryCollapsed && (
-                  <div className="overflow-x-auto">
-                    <DndContext
-                      sensors={taskSensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={(e) => handleTaskDragEnd(e, category)}
-                    >
-                      <SortableContext
-                        items={getSortedTasks(categoryGroupedTasks).map(task => task.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <table className="w-full text-sm text-left">
-                          <thead>
-                            <tr className="bg-gray-50/50 border-b border-gray-200">
-                              <SortableColumnHeader
-                                label="Taak / Subtaak"
-                                sortKey="task"
-                                className={`px-3 py-2 text-left text-gray-700 w-[20%] ${user?.role === 'admin' ? 'pl-[60px]' : 'pl-[36px]'}`}
-                              />
-                              <SortableColumnHeader
-                                label="Laatst Onderhoud"
-                                sortKey="lastMaintenance"
-                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                              />
-                              <SortableColumnHeader
-                                label="Volgend Onderhoud"
-                                sortKey="nextMaintenance"
-                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                              />
-                              {user?.role !== 'press' && (
-                                <th className="px-3 py-2 text-left text-gray-700 w-[8%]">Interval</th>
-                              )}
-                              <SortableColumnHeader
-                                label="Status"
-                                sortKey="status"
-                                className="px-3 py-2 text-left text-gray-700 w-[8%]"
-                              />
-                              <SortableColumnHeader
-                                label="Toegewezen aan"
-                                sortKey="assignedTo"
-                                className="px-3 py-2 text-left text-gray-700 w-[12%]"
-                              />
-                              <th className="px-3 py-2 text-left text-gray-700 w-[20%]">Opmerkingen</th>
-                              {user?.role === 'admin' && (
-                                <th className="px-3 py-2 text-right text-gray-700 w-[8%]">Acties</th>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {getSortedTasks(categoryGroupedTasks).map((groupedTask) => {
-                              // Filter subtasks based on status
-                              const relevantSubtasks = groupedTask.subtasks.filter(subtask => {
-                                if (!statusFilter) return true;
-                                const status = getStatusInfo(subtask.nextMaintenance).label;
-                                return status === statusFilter;
-                              });
-
-                              if (relevantSubtasks.length === 0) return null;
-
-                              const isSingleTask = groupedTask.subtasks.length === 1;
-                              const isGroupedTaskCollapsed = collapsedGroupedTasks.has(groupedTask.id);
-
-                              return (
-                                <SortableTaskGroup
-                                  key={groupedTask.id}
-                                  groupedTask={groupedTask}
-                                  isSingleTask={isSingleTask}
-                                  isGroupedTaskCollapsed={isGroupedTaskCollapsed}
-                                  relevantSubtasks={relevantSubtasks}
-                                  user={user}
-                                  toggleGroupedTask={toggleGroupedTask}
-                                  onEditGroup={onEditGroup}
-                                  handleDelete={handleDelete}
-                                  getStatusInfo={getStatusInfo}
-                                  formatDate={formatDate}
-                                  formatDateTime={formatDateTime}
-                                  formatInterval={formatInterval}
-                                  handleQuickEdit={handleQuickEdit}
-                                  toMaintenanceTask={toMaintenanceTask}
-                                  onEdit={onEdit}
-                                  sortConfig={sortConfig}
-                                />
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </SortableContext>
-                    </DndContext>
-                  </div>
-                )}
-              </div>
-            );
-          })
+          <div className="space-y-4">
+            {orderedCategoryIds.map((categoryId) => (
+              <CategorySection
+                key={categoryId}
+                categoryId={categoryId}
+                categoryName={categories.find(c => c.id === categoryId)?.name || 'Unknown Category'}
+                onToggle={toggleCategory}
+                isCollapsed={collapsedCategories.has(categoryId)}
+                user={user}
+                categoryGroupedTasks={groupedTasksByCategoryId[categoryId]}
+                statusFilter={statusFilter}
+                getStatusInfo={getStatusInfo}
+                getSortedTasks={getSortedTasks}
+                collapsedGroupedTasks={collapsedGroupedTasks}
+                toggleGroupedTask={toggleGroupedTask}
+                onEditGroup={onEditGroup}
+                handleDelete={handleDelete}
+                formatDate={formatDate}
+                formatDateTime={formatDateTime}
+                formatInterval={formatInterval}
+                handleQuickEdit={handleQuickEdit}
+                toMaintenanceTask={toMaintenanceTask}
+                onEdit={onEdit}
+                sortConfig={sortConfig}
+              />
+            ))}
+          </div>
         )}
       </div>
 

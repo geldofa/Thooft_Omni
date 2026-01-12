@@ -122,6 +122,7 @@ export interface Press {
   name: PressType;
   active: boolean;
   archived: boolean;
+  category_order?: any;
 }
 
 export interface UserAccount {
@@ -148,6 +149,7 @@ interface AuthContextType {
   deleteCategory: (id: string) => Promise<void>;
   categoryOrder: string[];
   updateCategoryOrder: (order: string[]) => void;
+  updatePressCategoryOrder: (pressId: string, order: string[]) => Promise<boolean>;
   activityLogs: ActivityLog[];
   addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
   presses: Press[];
@@ -382,7 +384,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     } catch (e) {
       console.error("Fetch tasks failed:", e);
     }
-  }, []);
+  }, [user, categories, presses]); // Add user and other data it maps
 
   const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
     try {
@@ -764,8 +766,44 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   };
 
-  const updateCategoryOrder = (order: string[]) => {
+  const updateCategoryOrder = async (order: string[]) => {
     setCategoryOrder(order);
+    if (user?.pressId) {
+      try {
+        await pb.collection('persen').update(user.pressId, {
+          category_order: order
+        });
+      } catch (e: any) {
+        console.error("Failed to persist category order:", e);
+      }
+    }
+  };
+
+  const updatePressCategoryOrder = async (pressId: string, order: string[]) => {
+    try {
+      await pb.collection('persen').update(pressId, {
+        category_order: order
+      });
+
+      // Update local state if the modified press is currently loaded in presses list
+      setPresses(prev => prev.map(p => {
+        if (p.id === pressId) {
+          return { ...p, category_order: order };
+        }
+        return p;
+      }));
+
+      // If we updated the CURRENT user's press, update the local categoryOrder state too
+      // If we updated the CURRENT user's press OR if user is Admin (to see the effect), update local state
+      if (user?.pressId === pressId || user?.role === 'admin') {
+        setCategoryOrder(order);
+      }
+
+      return true;
+    } catch (e: any) {
+      console.error("Failed to update press category order:", e);
+      throw e;
+    }
   };
 
   const addPress = async (press: Omit<Press, 'id'>) => {
@@ -1026,17 +1064,44 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const loadData = useCallback(async () => {
     try {
+      // 0. If user is press-role but missing press info, try to refresh user record first
+      if (user && user.role === 'press' && (!user.press || !user.pressId)) {
+        try {
+          const freshUser = await pb.collection('users').getOne(user.id);
+          if (freshUser.press || freshUser.pers) {
+            setUser(prev => prev ? {
+              ...prev,
+              press: freshUser.press || prev.press,
+              pressId: freshUser.pers || prev.pressId
+            } : null);
+          }
+        } catch (e) {
+          console.error("Failed to auto-refresh user record:", e);
+        }
+      }
+
       const [pressesResult, categoriesResult] = await Promise.all([
         pb.collection('persen').getFullList(),
         pb.collection('categorieen').getFullList()
       ]);
 
-      setPresses(pressesResult.map((p: any) => ({
-        id: p.id,
-        name: p.naam,
-        active: p.status !== 'niet actief', // Default to active if status is missing or not 'niet actief'
-        archived: p.archived || false
-      })));
+      setPresses(pressesResult.map((p: any) => {
+        let catOrder = p.category_order;
+        if (typeof catOrder === 'string') {
+          try {
+            catOrder = JSON.parse(catOrder);
+          } catch (e) {
+            console.warn('Failed to parse category_order for press', p.naam);
+          }
+        }
+        return {
+          id: p.id,
+          name: p.naam,
+          active: p.status !== 'niet actief',
+          archived: p.archived || false,
+          category_order: Array.isArray(catOrder) ? catOrder : []
+        };
+      }));
 
       setCategories(categoriesResult.map((c: any) => ({
         id: c.id,
@@ -1044,6 +1109,33 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         pressIds: c.presses || [],
         active: c.active !== false
       })));
+
+      // Set category order from current press if available
+      // Set category order from current press if available
+      // Set category order logic:
+      // 1. If user is Press, use their press's order
+      // 2. If user is Admin, use the first active press's order (fallback)
+      const targetPressId = user?.pressId || (user?.role === 'admin' && pressesResult.length > 0 ? (pressesResult.find((p: any) => p.status !== 'niet actief')?.id || pressesResult[0].id) : null);
+
+      if (targetPressId) {
+        const currentPress = pressesResult.find((p: any) => p.id === targetPressId);
+        if (currentPress?.category_order) {
+          let order = currentPress.category_order;
+          // Handle if stored as stringified JSON
+          if (typeof order === 'string') {
+            try {
+              const parsed = JSON.parse(order);
+              if (Array.isArray(parsed)) order = parsed;
+            } catch (e) {
+              console.error("Failed to parse category order", e);
+            }
+          }
+
+          if (Array.isArray(order)) {
+            setCategoryOrder(order);
+          }
+        }
+      }
 
       await Promise.all([
         fetchTasks(),
@@ -1061,7 +1153,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     if (user) {
       loadData();
     }
-  }, [user?.id, loadData]); // Only reload if user identity changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // Only reload if user identity changes
 
   // 5. Separate pressId resolution to prevent loops
   useEffect(() => {
@@ -1075,6 +1168,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   }, [user?.press, user?.pressId, presses]);
 
   // 6. Stabilized Realtime Subscriptions
+  // NOTE: We intentionally exclude callback functions from dependencies.
+  // Subscriptions should only be set up once per user session to prevent
+  // infinite loops from callback reference changes.
   useEffect(() => {
     if (!user) return;
 
@@ -1082,11 +1178,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     const subscribeAll = async () => {
       try {
         await Promise.all([
-          pb.collection('onderhoud').subscribe('*', () => fetchTasks()),
-          pb.collection('persen').subscribe('*', () => loadData()),
-          pb.collection('categorieen').subscribe('*', () => loadData()),
-          pb.collection('operatoren').subscribe('*', () => fetchOperators()),
-          pb.collection('ploegen').subscribe('*', () => fetchPloegen())
+          pb.collection('onderhoud').subscribe('*', () => { if (isSubscribed) fetchTasks(); }),
+          pb.collection('persen').subscribe('*', () => { if (isSubscribed) loadData(); }),
+          pb.collection('categorieen').subscribe('*', () => { if (isSubscribed) loadData(); }),
+          pb.collection('operatoren').subscribe('*', () => { if (isSubscribed) fetchOperators(); }),
+          pb.collection('ploegen').subscribe('*', () => { if (isSubscribed) fetchPloegen(); })
         ]);
         if (isSubscribed) {
           console.log("Realtime subscriptions established");
@@ -1102,14 +1198,16 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
     return () => {
       isSubscribed = false;
-      pb.collection('onderhoud').unsubscribe('*');
-      pb.collection('persen').unsubscribe('*');
-      pb.collection('categorieen').unsubscribe('*');
-      pb.collection('operatoren').unsubscribe('*');
-      pb.collection('ploegen').unsubscribe('*');
+      // Wrap unsubscribe in try-catch to prevent "Missing or invalid client id" errors
+      try { pb.collection('onderhoud').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('persen').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('categorieen').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('operatoren').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('ploegen').unsubscribe('*'); } catch (e) { /* ignore */ }
       console.log("Realtime subscriptions cleared");
     };
-  }, [user?.id, fetchTasks, loadData, fetchOperators, fetchPloegen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // Only re-run when user identity changes
 
   return (
     <AuthContext.Provider value={{
@@ -1153,6 +1251,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       deleteCategory,
       categoryOrder,
       updateCategoryOrder,
+      updatePressCategoryOrder,
       sendFeedback,
       fetchFeedback,
       resolveFeedback,

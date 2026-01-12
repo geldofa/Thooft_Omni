@@ -3,34 +3,60 @@ import path from 'path';
 import Papa from 'papaparse';
 import PocketBase from 'pocketbase';
 
-// Use environment variable for PB_URL with a fallback
-const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
+const PB_URL = 'http://127.0.0.1:8090';
 const pb = new PocketBase(PB_URL);
 
 async function importLithomanTasks() {
     try {
-        // Authenticate as admin
-        await pb.admins.authWithPassword('admin@example.com', 'admin123456');
-        console.log("Authenticated as Admin.");
+        const adminEmail = "geldofa@gmail.com";
+        const adminPass = "cQGNFBWI$zVV%3UV!hBqi*8Le&K3nLS!V!z&#8*zJk9z6wIaoh7OdmebJuhWuq4$";
 
-        const csvFilePath = path.resolve('./Import/Lithoman - Taken.csv');
-        const csvFileContent = fs.readFileSync(csvFilePath, 'utf8');
+        await pb.admins.authWithPassword(adminEmail, adminPass);
+        console.log("Authenticated as Superuser.");
 
-        // Parse CSV
-        const { data } = Papa.parse(csvFileContent, {
-            header: false, // Don't use first row as header, we'll manually skip
-            skipEmptyLines: true,
-            comments: '#', // Assuming no comments, but good to have
+        const pressId = '0i13j2r636t1ghr'; // Lithoman
+
+        // --- PREPARE LOOKUPS ---
+        const operators = await pb.collection('operatoren').getFullList();
+        const ploegen = await pb.collection('ploegen').getFullList();
+
+        const opNameToId = {};
+        operators.forEach(o => { opNameToId[o.naam.trim().toLowerCase()] = o.id; });
+
+        const teamNameToId = {};
+        ploegen.forEach(p => { teamNameToId[p.naam.trim().toLowerCase()] = p.id; });
+
+        // --- CLEANUP ---
+        console.log("Cleaning up previous Lithoman tasks...");
+        const existingTasks = await pb.collection('onderhoud').getFullList({
+            filter: `pers = "${pressId}"`
+        });
+        for (const t of existingTasks) {
+            await pb.collection('onderhoud').delete(t.id);
+        }
+        console.log("Cleanup complete.");
+
+        // --- IMPORT ---
+        const existingCategories = await pb.collection('categorieen').getFullList();
+        const categoryNameToId = {};
+        existingCategories.forEach(c => {
+            categoryNameToId[c.naam.toUpperCase()] = c.id;
         });
 
-        // Skip initial header rows
-        const taskData = data.slice(3); // Skip first 3 rows
+        const getCategoryId = async (name) => {
+            const upperName = name.toUpperCase();
+            if (categoryNameToId[upperName]) return categoryNameToId[upperName];
+            const newCat = await pb.collection('categorieen').create({ naam: name, pers: pressId });
+            categoryNameToId[upperName] = newCat.id;
+            return newCat.id;
+        };
 
-        let currentPress = "Lithoman"; // As per the file name
-        let currentCategory = "";
-        let tasksImportedCount = 0;
+        const csvFilePath = path.resolve('./Import/Lithoman - Taken');
+        const csvFileContent = fs.readFileSync(csvFilePath, 'utf8');
 
-        // Map for categories - keys are uppercase for case-insensitive matching
+        const { data } = Papa.parse(csvFileContent, { header: false, skipEmptyLines: true });
+        const taskData = data.slice(3);
+
         const categoryMap = {
             "AFROLLER": "Afroller",
             "DRUKGROEPEN": "Drukgroepen",
@@ -40,124 +66,140 @@ async function importLithomanTasks() {
             "VOUWER": "Vouwer",
             "SNIJSTRAAT - STACKER - BINDSTRAAT - ROBOT": "Snijstraat",
             "VARIA": "Varia",
-            // Special case found during inspection
             "BINNENKANTEN DRUKGROEPKASTEN VETVRIJ MAKEN": "Drukgroepen"
         };
 
-        // Helper to format date to YYYY-MM-DD
+        let currentCategoryName = "";
+        let currentCategoryId = "";
+        let currentTaskGroup = "";
+        let tasksImportedCount = 0;
+
         const formatDate = (dateString) => {
             if (!dateString) return null;
             dateString = dateString.trim();
-            if (dateString.length === 0) return null;
+            if (!dateString || dateString.toLowerCase().includes('week')) return null;
             const parts = dateString.split('/');
             if (parts.length === 3) {
-                // Ensure month and day have leading zeros if needed
                 const day = parts[0].padStart(2, '0');
                 const month = parts[1].padStart(2, '0');
-                const year = parts[2];
-                return `${year}-${month}-${day}`;
+                const year = parts[2].trim();
+                return `${year}-${month}-${day} 00:00:00`;
+            }
+            return null;
+        };
+
+        const parseCommentDate = (dateString) => {
+            if (!dateString) return null;
+            // Example: "09.05.2025 | 10:25"
+            const match = dateString.match(/(\d{2})[./](\d{2})[./](\d{4})/);
+            if (match) {
+                return `${match[3]}-${match[2]}-${match[1]} 12:00:00`;
             }
             return null;
         };
 
         for (const row of taskData) {
-            const colB = (row[1] || '').trim(); // Task title or category header
-            const colD = (row[3] || '').trim(); // Original column D in CSV, now row[3]
+            const colB = (row[1] || '').trim();
+            const colC = (row[2] || '').trim();
+            const colD = (row[3] || '').trim();
+            const colE = (row[4] || '').trim();
+            const colF = (row[5] || '').trim();
+            const colG = (row[6] || '').trim();
+            const colI = (row[8] || '').trim(); // Uitgevoerd door
+            const colJ = (row[9] || '').trim(); // Opmerkingen
+            const colK = (row[10] || '').trim(); // Laatste opmerking (often contains date)
 
-            // Corrected: Check if it's a category row (column B is a known category and column D (row[3]) is 'T')
-            if (Object.keys(categoryMap).some(key => colB.toUpperCase() === key) && colD.toUpperCase() === 'T') {
-                currentCategory = categoryMap[colB.toUpperCase()];
-                console.log(`--- Identified Category: ${currentCategory} ---`);
-                continue; // Move to the next row
+            // Category Detection
+            const matchedCatKey = Object.keys(categoryMap).find(key => colB.toUpperCase().includes(key));
+            if (matchedCatKey && (colD.toUpperCase() === 'T' || !colD)) {
+                currentCategoryName = categoryMap[matchedCatKey];
+                currentCategoryId = await getCategoryId(currentCategoryName);
+                currentTaskGroup = "";
+                continue;
             }
 
-            // Process as a task if column B is not empty and a category is set
-            if (colB && currentCategory) {
+            // Group Header Detection
+            if (colB && !colD && !colF && !colG) {
+                currentTaskGroup = colB;
+                continue;
+            }
+
+            // Task Processing
+            if (colB && currentCategoryId) {
+                if (!colC) currentTaskGroup = "";
+
                 const task = {
-                    title: colB,
-                    press: currentPress,
-                    category: currentCategory,
+                    task: currentTaskGroup || colB,
+                    subtask: colC ? `${colB} (${colC})` : colB,
+                    pers: pressId,
+                    category: currentCategoryId,
+                    assigned_operator: [],
+                    assigned_team: [],
+                    opmerkingen: colJ,
+                    commentDate: parseCommentDate(colK)
                 };
 
-                let intervalOffset = 0; // Offset for columns if group_title is present
-                const colC = (row[2] || '').trim(); // Interval number or group_title from original Col C
-
-                // Check if colC is group_title or interval
-                if (colC && isNaN(parseInt(colC))) { // colC is text, so it's group_title
-                    task.group_title = colC;
-                    intervalOffset = 1; // Shift subsequent columns by one
-                } else if (colC && !isNaN(parseInt(colC))) { // colC is a number, so it's interval
-                    task.interval = parseInt(colC);
+                // Interval
+                const intervalVal = parseInt(colD);
+                if (!isNaN(intervalVal)) {
+                    task.interval = intervalVal;
+                    const unit = colE.toUpperCase();
+                    if (unit === 'D') task.interval_unit = 'Dagen';
+                    else if (unit === 'W') task.interval_unit = 'Weken';
+                    else if (unit === 'M') task.interval_unit = 'Maanden';
+                    else if (unit === 'J') task.interval_unit = 'Jaren';
                 }
 
-                // Interval Unit (colD if no group_title, colE if group_title)
-                // Use original column D (row[3]) if no group_title offset, else original col E (row[4])
-                const intervalUnitCol = (row[3 + intervalOffset] || '').trim().toUpperCase();
-                if (task.interval) { // Only set unit if interval is present
-                    switch (intervalUnitCol) {
-                        case 'D':
-                            task.interval_unit = 'days';
-                            break;
-                        case 'W': // Weeks, convert to days as schema doesn't have weeks
-                            task.interval_unit = 'days';
-                            task.interval = task.interval * 7;
-                            break;
-                        case 'M':
-                            task.interval_unit = 'months';
-                            break;
-                        case 'J': // Jaar = Year, convert to months
-                            task.interval_unit = 'months';
-                            task.interval = task.interval * 12;
-                            break;
-                        default:
-                            console.warn(`Unknown interval unit: ${intervalUnitCol} for task: "${task.title}". Defaulting to "days".`);
-                            task.interval_unit = 'days'; // Default to days if unknown
-                            break;
+                task.last_date = formatDate(colF);
+                task.next_date = formatDate(colG);
+
+                // Assignment resolution
+                if (colI) {
+                    // Split names by common separators
+                    const names = colI.split(/[,&\/]| en /i).map(n => n.trim().toLowerCase()).filter(Boolean);
+                    for (const name of names) {
+                        if (opNameToId[name]) {
+                            task.assigned_operator.push(opNameToId[name]);
+                        } else if (teamNameToId[name]) {
+                            task.assigned_team.push(teamNameToId[name]);
+                        } else {
+                            // Try partial match for "Ploeg Koen" -> "Ploeg Koen V."
+                            const foundTeam = ploegen.find(p => p.naam.toLowerCase().includes(name));
+                            if (foundTeam) {
+                                task.assigned_team.push(foundTeam.id);
+                            } else {
+                                const foundOp = operators.find(o => o.naam.toLowerCase().includes(name));
+                                if (foundOp) {
+                                    task.assigned_operator.push(foundOp.id);
+                                } else {
+                                    // Fallback: put in opmerkingen if not matched
+                                    if (!task.opmerkingen.includes(name)) {
+                                        task.opmerkingen = (task.opmerkingen ? task.opmerkingen + " | " : "") + `Assigned: ${name}`;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Last Maintenance (colE if no group_title, colF if group_title)
-                task.last_maintenance = formatDate(row[4 + intervalOffset]);
-
-                // Next Maintenance (colF if no group_title, colG if group_title)
-                task.next_maintenance = formatDate(row[5 + intervalOffset]);
-
-                // Assigned To (colH if no group_title, colI if group_title)
-                task.assigned_to = (row[7 + intervalOffset] || '').trim();
-
-                // Notes (colI if no group_title, colJ if group_title)
-                task.notes = (row[8 + intervalOffset] || '').trim();
-
-                // Remove empty fields to avoid sending null/empty strings for non-required fields
-                Object.keys(task).forEach(key => {
-                    if (task[key] === null || task[key] === '' || (Array.isArray(task[key]) && task[key].length === 0)) {
-                        delete task[key];
-                    }
-                });
-
-                // console.log("Attempting to import task:", task); // Log the task object before import
+                // If colK has text other than date, append to opmerkingen
+                if (colK && !parseCommentDate(colK)) {
+                    task.opmerkingen = (task.opmerkingen ? task.opmerkingen + " | " : "") + colK;
+                }
 
                 try {
-                    await pb.collection('maintenance_tasks').create(task);
+                    await pb.collection('onderhoud').create(task);
                     tasksImportedCount++;
-                    // console.log(`Imported task: "${task.title}" (Category: ${task.category}, Press: ${task.press})`);
                 } catch (error) {
-                    console.error(`Failed to import task "${task.title}" (Category: ${task.category}, Press: ${task.press}):`, error.response?.data || error.message);
+                    console.error(`Failed: ${task.subtask} ->`, error.response?.data || error.message);
                 }
-            } else if (colB && !currentCategory) {
-                // console.warn(`Skipping task "${colB}" because no category has been identified yet.`);
             }
         }
-        console.log(`Successfully imported ${tasksImportedCount} tasks.`);
+
+        console.log(`Successfully imported ${tasksImportedCount} tasks with resolved assignments and dates.`);
 
     } catch (error) {
-        console.error("Error during import process:", error.response?.data || error.message);
-    } finally {
-        // Log out the admin if session is still active
-        if (pb.authStore.isValid) {
-            pb.authStore.clear();
-            console.log("Admin logged out.");
-        }
+        console.error("Fatal error:", error.message);
     }
 }
 

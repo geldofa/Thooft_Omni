@@ -24,7 +24,7 @@ export function Reports({ tasks }: ReportsProps) {
     { label: 'Taak', w: 'w-[40%]', key: 'task' },
     { label: 'Gepland', w: 'w-[10%]', key: 'due' },
     { label: 'Status', w: 'w-[10%]', key: 'status' },
-    { label: 'Toegewezen', w: 'w-[10%]', key: 'assigned' },
+    { label: 'Laatst door', w: 'w-[10%]', key: 'assigned' },
     { label: 'Opmerkingen', w: 'w-[30%]', key: 'opmerkingen' },
   ];
 

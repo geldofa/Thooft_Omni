@@ -1,6 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useAuth, Category } from './AuthContext';
 import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+    useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
     Table,
     TableBody,
     TableCell,
@@ -10,7 +27,14 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus, Check } from 'lucide-react';
+import { Edit, Trash2, Plus, Check, Settings2, GripVertical, Save } from 'lucide-react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "./ui/select";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -20,6 +44,7 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+
     AlertDialogTrigger,
 } from './ui/alert-dialog';
 import {
@@ -29,12 +54,178 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    DialogTrigger,
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
+
+
+
+function SortableItem(props: { id: string, name: string }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id: props.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 10 : 1,
+        opacity: isDragging ? 0.8 : 1
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} className="flex items-center p-3 bg-white border border-gray-200 rounded-md mb-2 shadow-sm group hover:border-blue-300 transition-colors">
+            <button {...attributes} {...listeners} className="mr-3 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 touch-none">
+                <GripVertical className="h-5 w-5" />
+            </button>
+            <span className="font-medium text-gray-700">{props.name}</span>
+        </div>
+    );
+}
+
+function CategoryOrderConfiguration() {
+    const { presses, categories, updatePressCategoryOrder } = useAuth();
+    const activePresses = presses.filter(p => p.active && !p.archived);
+
+    // Check if we have presses to configure
+    const [selectedPressId, setSelectedPressId] = useState<string>(activePresses.length > 0 ? activePresses[0].id : '');
+    const [order, setOrder] = useState<string[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+
+    // Provide sensors for DnD
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
+
+    // Load initial order when press changes
+    useEffect(() => {
+        if (!selectedPressId) return;
+
+        // Get categories linked to this press
+        const linkedCategories = categories.filter(c => c.pressIds.includes(selectedPressId) && c.active);
+        const linkedIds = linkedCategories.map(c => c.id);
+
+        const currentPress = presses.find(p => p.id === selectedPressId);
+
+        // Saved order is now guaranteed to be an array (or undefined) by AuthContext
+        const savedOrder: string[] = currentPress?.category_order || [];
+
+        console.log('[CategoryOrderConfig] Loading for press:', currentPress?.name, 'Saved Order:', savedOrder);
+        console.log('[CategoryOrderConfig] Linked IDs:', linkedIds);
+
+        // Merge saved order with current categories
+        // 1. Filter saved order to keep only valid linked IDs
+        // 2. Add any new linked categories that aren't in saved order
+        const validSavedOrder = savedOrder.filter(id => linkedIds.includes(id));
+        const newIds = linkedIds.filter(id => !validSavedOrder.includes(id));
+
+        setOrder([...validSavedOrder, ...newIds]);
+
+    }, [selectedPressId, categories, presses, isOpen]);
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            setOrder((items) => {
+                const oldIndex = items.indexOf(active.id as string);
+                const newIndex = items.indexOf(over.id as string);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
+
+    const handleSave = async () => {
+        if (!selectedPressId) return;
+        setIsSaving(true);
+        try {
+            await updatePressCategoryOrder(selectedPressId, order);
+            toast.success("Categorievolgorde opgeslagen");
+            setIsOpen(false);
+        } catch (error) {
+            toast.error("Kon volgorde niet opslaan");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // Helper to get name
+    const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || id;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                    <Settings2 className="w-4 h-4" />
+                    Volgorde Configureren
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md h-[80vh] flex flex-col">
+                <DialogHeader>
+                    <DialogTitle>Categorievolgorde Configureren</DialogTitle>
+                    <DialogDescription>
+                        Sleep categorieën om de volgorde voor een specifieke pers te bepalen.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="py-4 space-y-4 flex-1 overflow-hidden flex flex-col">
+                    <div className="space-y-2">
+                        <Label>Selecteer Pers</Label>
+                        <Select value={selectedPressId} onValueChange={setSelectedPressId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Kies een pers" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {activePresses.map(p => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto border rounded-md p-4 bg-gray-50/50">
+                        {order.length === 0 ? (
+                            <div className="text-center text-gray-500 py-8">Geen categorieën gevonden voor deze pers.</div>
+                        ) : (
+                            <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDragEnd}
+                            >
+                                <SortableContext items={order} strategy={verticalListSortingStrategy}>
+                                    {order.map(id => (
+                                        <SortableItem key={id} id={id} name={getCategoryName(id)} />
+                                    ))}
+                                </SortableContext>
+                            </DndContext>
+                        )}
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsOpen(false)}>Annuleren</Button>
+                    <Button onClick={handleSave} disabled={isSaving || !selectedPressId} className="gap-2">
+                        {isSaving ? "Opslaan..." : (
+                            <>
+                                <Save className="w-4 h-4" />
+                                Opslaan
+                            </>
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export function CategoryManagement() {
     const { categories, addCategory, updateCategory, deleteCategory, addActivityLog, user, presses } = useAuth();
@@ -211,6 +402,10 @@ export function CategoryManagement() {
                         Categorie Toevoegen
                     </Button>
                 </div>
+            </div>
+
+            <div className="flex justify-end">
+                <CategoryOrderConfiguration />
             </div>
 
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">

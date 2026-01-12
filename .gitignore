@@ -25,4 +25,5 @@ dist-ssr
 build
 pb_data_dev
 pb_data_prod
-types.d.ts
+types.d.tspb_data_dev
+pb_data_prod

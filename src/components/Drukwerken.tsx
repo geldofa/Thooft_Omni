@@ -1235,11 +1235,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                     <TableHead className="text-center">1/0</TableHead>
                                                     <TableHead className="text-center">1/1</TableHead>
                                                     <TableHead className="text-center" style={{ borderRight: '2px solid #e5e7eb' }}>4/1</TableHead>
-                                                    <TableHead>Max Gross</TableHead>
-                                                    <TableHead>Groen</TableHead>
+                                                    <TableHead className="text-center">Max Gross</TableHead>
+                                                    <TableHead className="text-center">Groen</TableHead>
                                                     <TableHead className="border-r" style={{ borderRight: '2px solid #e5e7eb' }}>Rood</TableHead>
-                                                    <TableHead>Delta</TableHead>
-                                                    <TableHead>Delta %</TableHead>
+                                                    <TableHead className="text-center">Delta</TableHead>
+                                                    <TableHead className="text-center">Delta %</TableHead>
                                                     <TableHead></TableHead>                                                                                        </TableRow>
                                             </TableHeader>                                            <TableBody>
                                                 {wo.katernen.map((katern) => {
