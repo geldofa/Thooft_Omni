@@ -1,0 +1,10 @@
+node_modules
+pb_data
+.git
+.vscode
+build
+dist
+storage
+*.db
+*.db-shm
+*.db-wal

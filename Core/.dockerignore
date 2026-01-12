@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.env
+.env.local
+.env.production
+.git
+.vscode
+*.db
+*.db-shm
+*.db-wal
+pb_data
+pb_migrations

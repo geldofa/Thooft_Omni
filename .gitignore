@@ -7,23 +7,24 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Dependencies
+node_modules/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# OS / IDE
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-build
-pb_data_dev
-pb_data_prod
-types.d.tspb_data_dev
-pb_data_prod
+.vscode/
+.idea/
+
+# Build
+build/
+dist/
+dist-ssr/
+
+# PocketBase Data
+pb_data/
+pb_data_dev/
+pb_data_prod/
+
+# Other
+*.local
+types.d.ts
