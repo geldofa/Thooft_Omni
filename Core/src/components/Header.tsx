@@ -9,7 +9,8 @@ import {
   Factory,
   Key,
   FileText,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Upload
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { startTransition } from 'react';
@@ -87,6 +88,10 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
                   <TabsTrigger value="feedback-list" className="tab-pill-trigger">
                     <MessageSquarePlus className="w-4 h-4" /> Inbox
+                  </TabsTrigger>
+
+                  <TabsTrigger value="import" className="tab-pill-trigger">
+                    <Upload className="w-4 h-4" /> Import
                   </TabsTrigger>
 
                 </TabsList>

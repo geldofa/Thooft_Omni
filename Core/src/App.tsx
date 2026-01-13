@@ -19,6 +19,7 @@ const Reports = lazy(() => import('./components/Reports').then(m => ({ default: 
 const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
 const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({ default: m.FeedbackList })));
+const ImportTool = lazy(() => import('./components/ImportTool').then(m => ({ default: m.ImportTool })));
 
 function MainApp() {
   const {
@@ -292,6 +293,7 @@ function MainApp() {
             {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
             {activeTab === 'logs' && <ActivityLog />}
             {activeTab === 'feedback-list' && <FeedbackList />}
+            {activeTab === 'import' && <ImportTool />}
           </Suspense>
         )}
 

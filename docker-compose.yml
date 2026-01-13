@@ -14,8 +14,8 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - ./pb_data:/pb/pb_data
-      - ./pb_migrations:/pb/pb_migrations
+      - pb_data:/pb/pb_data
+      - ./pb_migrations:/pb/pb_migrations:ro
     restart: unless-stopped
     container_name: thooft_db
     command: >
@@ -23,5 +23,10 @@ services:
         apk add --no-cache curl unzip ca-certificates &&
         curl -L https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_amd64.zip -o /tmp/pb.zip &&
         unzip -o /tmp/pb.zip -d /pb/ &&
+        chown -R root:root /pb/pb_data &&
+        chmod -R 755 /pb/pb_data &&
         /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
       "
+
+volumes:
+  pb_data:
