@@ -90,7 +90,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                                 <SelectValue placeholder="Select contact person" />
                             </SelectTrigger>
                             <SelectContent>
-                                {operators.map((op) => (
+                                {operators.filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
                                     <SelectItem key={op.id} value={op.name}>
                                         {op.name}
                                     </SelectItem>

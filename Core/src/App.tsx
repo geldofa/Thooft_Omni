@@ -86,12 +86,12 @@ function MainApp() {
     else if (activeTab === 'passwords') fetchUserAccounts();
   }, [activeTab, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
 
-  // Ensure a valid press is selected when they load
+  // Ensure a valid press is selected when they load or active list changes
   useEffect(() => {
-    if (activePresses.length > 0 && (!selectedPress || selectedPress === 'Lithoman')) {
-      const firstPress = activePresses[0].name;
-      if (selectedPress !== firstPress) {
-        setSelectedPress(firstPress);
+    if (activePresses.length > 0) {
+      const isValid = activePresses.some(p => p.name === selectedPress);
+      if (!isValid) {
+        setSelectedPress(activePresses[0].name);
       }
     }
   }, [activePresses, selectedPress]);
@@ -261,7 +261,8 @@ function MainApp() {
                             maintenanceInterval: subtask.maintenanceInterval,
                             maintenanceIntervalUnit: subtask.maintenanceIntervalUnit,
                             assignedTo: subtask.assignedTo,
-                            opmerkingen: subtask.comment,
+                            opmerkingen: subtask.opmerkingen || subtask.comment || '',
+                            comment: subtask.comment || '',
                             commentDate: subtask.commentDate,
                             sort_order: subtask.sort_order || 0,
                             created: new Date().toISOString(),

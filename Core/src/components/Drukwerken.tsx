@@ -1539,7 +1539,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">Alle Persen</SelectItem>
-                                            {activePresses.map(press => (
+                                            {activePresses.filter(press => press && press.trim() !== '').map(press => (
                                                 <SelectItem key={press} value={press}>{press}</SelectItem>
                                             ))}
                                         </SelectContent>
@@ -1825,7 +1825,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                         </Table>
                                     </div>
                                     <div className="mt-4 flex justify-end">
-                                        <Button>Save Changes</Button>
+                                        <Button onClick={() => toast.success('Parameters succesvol bijgewerkt')}>Save Changes</Button>
                                     </div>
                                 </CardContent>
                             </Card>

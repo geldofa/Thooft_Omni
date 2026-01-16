@@ -290,7 +290,7 @@ export function AddMaintenanceDialog({
       assignedTo: '', // Assignments are handled in QuickEditDialog
       assignedToIds: [],
       assignedToTypes: [],
-      opmerkingen: taskFormData.opmerkingen,
+      comment: taskFormData.opmerkingen, // Map opmerkingen to comment for MaintenanceTask compatibility
       commentDate,
       subtaskName: taskFormData.subtaskName || taskFormData.task,
       subtaskSubtext: taskFormData.subtaskSubtext || taskFormData.taskSubtext,
@@ -322,6 +322,7 @@ export function AddMaintenanceDialog({
           maintenanceIntervalUnit: taskFormData.maintenanceIntervalUnit !== initialValues.maintenanceIntervalUnit ? taskFormData.maintenanceIntervalUnit : (initialTask?.maintenanceIntervalUnit || taskFormData.maintenanceIntervalUnit),
           assignedTo: (taskFormData.assignedTo !== initialValues.assignedTo && taskFormData.assignedTo !== '') ? taskFormData.assignedTo : (initialTask?.assignedTo || ''),
           opmerkingen: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
+          comment: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
           commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
           sort_order: index, // Use current array index as sort order
           created: initialTask?.created || new Date().toISOString(),
@@ -516,7 +517,7 @@ export function AddMaintenanceDialog({
                       <SelectValue placeholder="Selecteer een machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {presses.map((p: any) => (
+                      {presses.filter((p: any) => p && p.id && p.id.trim() !== '').map((p: any) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
                         </SelectItem>
@@ -539,7 +540,7 @@ export function AddMaintenanceDialog({
                       <SelectValue placeholder={taskFormData.press ? "Selecteer een categorie" : "Selecteer eerst een machine"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {filteredCategories.map((cat: any) => (
+                      {filteredCategories.filter((cat: any) => cat && cat.id && cat.id.trim() !== '').map((cat: any) => (
                         <SelectItem key={cat.id} value={cat.id}>
                           {cat.name}
                         </SelectItem>

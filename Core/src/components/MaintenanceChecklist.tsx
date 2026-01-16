@@ -147,7 +147,7 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                 <SelectValue placeholder="Selecteer een pers" />
               </SelectTrigger>
               <SelectContent>
-                {activePresses.map((press) => (
+                {activePresses.filter(p => p.name && p.name.trim() !== '').map((press) => (
                   <SelectItem key={press.id} value={press.name}>
                     {press.name}
                   </SelectItem>

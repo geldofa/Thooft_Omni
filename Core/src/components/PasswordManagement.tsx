@@ -109,7 +109,7 @@ export function PasswordManagement() {
     }, 200); // Small delay to prevent title/field flash during close animation
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     // Validation
     if (!formData.username) {
       toast.error('Gebruikersnaam is verplicht');
@@ -118,20 +118,24 @@ export function PasswordManagement() {
 
     if (editingUser) {
       // Update existing
-      updateUserAccount(editingUser, {
+      const success = await updateUserAccount(editingUser, {
         name: formData.name,
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined
       });
-      toast.success(`Gebruiker ${editingUser} bijgewerkt`);
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Updated',
-        entity: 'User Account',
-        entityId: editingUser,
-        entityName: editingUser,
-        details: `Updated account details for ${editingUser}`
-      });
+
+      if (success) {
+        toast.success(`Gebruiker ${editingUser} bijgewerkt`);
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Updated',
+          entity: 'User Account',
+          entityId: editingUser,
+          entityName: editingUser,
+          details: `Updated account details for ${editingUser}`
+        });
+        setIsUserDialogOpen(false);
+      }
     } else {
       // Create new
       if (!formData.password || formData.password.length < 6) {
@@ -144,7 +148,7 @@ export function PasswordManagement() {
         return;
       }
 
-      addUserAccount({
+      const success = await addUserAccount({
         id: Math.random().toString(36).substr(2, 9),
         username: formData.username,
         name: formData.name,
@@ -152,17 +156,20 @@ export function PasswordManagement() {
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined
       });
-      toast.success(`Gebruiker ${formData.username} aangemaakt`);
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Created',
-        entity: 'User Account',
-        entityId: formData.username,
-        entityName: formData.username,
-        details: `Created new user account: ${formData.username}`
-      });
+
+      if (success) {
+        toast.success(`Gebruiker ${formData.username} aangemaakt`);
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'User Account',
+          entityId: formData.username,
+          entityName: formData.username,
+          details: `Created new user account: ${formData.username}`
+        });
+        setIsUserDialogOpen(false);
+      }
     }
-    setIsUserDialogOpen(false);
   };
 
   const handleDeleteUser = () => {
@@ -361,7 +368,7 @@ export function PasswordManagement() {
                     <SelectValue placeholder="Selecteer pers" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activePresses.map(p => (
+                    {activePresses.filter(p => p.id && p.id.trim() !== '' && p.name && p.name.trim() !== '').map((p) => (
                       <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                     ))}
                   </SelectContent>

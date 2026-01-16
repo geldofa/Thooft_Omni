@@ -185,7 +185,7 @@ function CategoryOrderConfiguration() {
                                 <SelectValue placeholder="Kies een pers" />
                             </SelectTrigger>
                             <SelectContent>
-                                {activePresses.map(p => (
+                                {activePresses.filter(p => p && p.id && p.id.trim() !== '').map(p => (
                                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -255,15 +255,28 @@ export function CategoryManagement() {
         );
     };
 
-    const handleSaveChanges = () => {
-        editedCategories.forEach(editedCategory => {
+    const handleSaveChanges = async () => {
+        const updates = editedCategories.map(async (editedCategory) => {
             const originalCategory = categories.find(cat => cat.id === editedCategory.id);
             if (originalCategory && JSON.stringify(originalCategory) !== JSON.stringify(editedCategory)) {
-                updateCategory(editedCategory);
+                return await updateCategory(editedCategory);
             }
+            return null;
         });
-        toast.success('Wijzigingen succesvol opgeslagen');
-        setEditMode(false);
+
+        const results = await Promise.all(updates);
+        const failures = results.filter(r => r === false).length;
+        const changes = results.filter(r => r !== null).length;
+
+        if (changes === 0) {
+            setEditMode(false);
+            return;
+        }
+
+        if (failures === 0) {
+            toast.success('Wijzigingen succesvol opgeslagen');
+            setEditMode(false);
+        }
     };
 
     const handleOpenDialog = (category?: Category) => {
@@ -304,7 +317,7 @@ export function CategoryManagement() {
         }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (!formData.name.trim()) {
@@ -317,6 +330,8 @@ export function CategoryManagement() {
             return;
         }
 
+        let success = false;
+
         if (editingCategory) {
             const updatedCategory: Category = {
                 ...editingCategory,
@@ -324,32 +339,38 @@ export function CategoryManagement() {
                 pressIds: formData.pressIds,
                 active: formData.active
             };
-            updateCategory(updatedCategory);
-            toast.success('Categorie succesvol bijgewerkt');
+            success = await updateCategory(updatedCategory);
 
-            addActivityLog({
-                user: user?.username || 'Unknown',
-                action: 'Updated',
-                entity: 'Category',
-                entityId: editingCategory.id,
-                entityName: formData.name,
-                details: `Updated category presses count: ${formData.pressIds.length}`
-            });
+            if (success) {
+                toast.success('Categorie succesvol bijgewerkt');
+                addActivityLog({
+                    user: user?.username || 'Unknown',
+                    action: 'Updated',
+                    entity: 'Category',
+                    entityId: editingCategory.id,
+                    entityName: formData.name,
+                    details: `Updated category presses count: ${formData.pressIds.length}`
+                });
+            }
         } else {
-            addCategory(formData);
-            toast.success('Categorie succesvol toegevoegd');
+            success = await addCategory(formData);
 
-            addActivityLog({
-                user: user?.username || 'Unknown',
-                action: 'Created',
-                entity: 'Category',
-                entityId: 'new',
-                entityName: formData.name,
-                details: `Added new category with ${formData.pressIds.length} presses`
-            });
+            if (success) {
+                toast.success('Categorie succesvol toegevoegd');
+                addActivityLog({
+                    user: user?.username || 'Unknown',
+                    action: 'Created',
+                    entity: 'Category',
+                    entityId: 'new',
+                    entityName: formData.name,
+                    details: `Added new category with ${formData.pressIds.length} presses`
+                });
+            }
         }
 
-        handleCloseDialog();
+        if (success) {
+            handleCloseDialog();
+        }
     };
 
     const handleDelete = (id: string, name: string) => {

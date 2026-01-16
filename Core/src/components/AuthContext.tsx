@@ -54,6 +54,7 @@ export interface MaintenanceTask {
   assignedToIds?: string[];
   assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
   opmerkingen: string;
+  comment: string;
   commentDate: Date | null;
   sort_order: number;
   subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number }[];
@@ -146,8 +147,8 @@ interface AuthContextType {
   updateOperator: (operator: Operator) => Promise<void>;
   deleteOperator: (id: string) => Promise<void>;
   categories: Category[];
-  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
-  updateCategory: (category: Category) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<boolean>;
+  updateCategory: (category: Category) => Promise<boolean>;
   deleteCategory: (id: string) => Promise<void>;
   categoryOrder: string[];
   updateCategoryOrder: (order: string[]) => void;
@@ -160,8 +161,8 @@ interface AuthContextType {
   deletePress: (id: string) => Promise<void>;
   userAccounts: UserAccount[];
   changePassword: (username: string, newPassword: string) => Promise<void>;
-  addUserAccount: (account: UserAccount) => Promise<void>;
-  updateUserAccount: (username: string, updates: Partial<UserAccount>) => Promise<void>;
+  addUserAccount: (account: UserAccount) => Promise<boolean>;
+  updateUserAccount: (username: string, updates: Partial<UserAccount>) => Promise<boolean>;
   deleteUserAccount: (username: string) => Promise<void>;
   getElevatedOperators: () => Operator[];
   tasks: GroupedTask[];
@@ -365,7 +366,27 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           subtaskName: record.subtask || record.task,
           subtext: record.subtask_subtext || record.task_subtext || '',
           lastMaintenance: record.last_date ? new Date(record.last_date) : null,
-          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
+          nextMaintenance: record.next_date ? new Date(record.next_date) : (() => {
+            if (record.last_date && record.interval) {
+              const last = new Date(record.last_date);
+              const unit = (record.interval_unit || '').toLowerCase();
+
+              if (unit.includes('maand') || unit.includes('month')) {
+                last.setMonth(last.getMonth() + record.interval);
+              } else if (unit.includes('week')) {
+                last.setDate(last.getDate() + (record.interval * 7));
+              } else {
+                // Days or default
+                last.setDate(last.getDate() + record.interval);
+              }
+              return last;
+            }
+            if (!record.last_date && !record.next_date) {
+              // Console warning for debugging (only showing once per session usually, but here per fetch)
+              // console.warn(`Task ${record.task} missing last_date, defaulting next to Today.`);
+            }
+            return new Date();
+          })(),
           maintenanceInterval: record.interval || 0,
           maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
             record.interval_unit === 'Weken' ? 'weeks' :
@@ -402,24 +423,65 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       console.log('addTask called with:', task);
       console.log('categoryId:', task.categoryId, 'pressId:', task.pressId);
 
+      let finalCategoryId = task.categoryId;
+      let finalPressId = task.pressId;
+
+      // Dynamic creation of new categories/presses if they come from the importer
+      if (finalPressId?.startsWith('__NEW_PRESS__')) {
+        const newName = finalPressId.replace('__NEW_PRESS__', '');
+        try {
+          const created = await pb.collection('persen').create({
+            name: newName,
+            active: true,
+            archived: false
+          });
+          finalPressId = created.id;
+          console.log(`[DynamicImport] Created new press: ${newName} (${created.id})`);
+        } catch (err) {
+          console.error(`Failed to create new press '${newName}':`, err);
+        }
+      }
+
+      if (finalCategoryId?.startsWith('__NEW_CAT__')) {
+        const newName = finalCategoryId.replace('__NEW_CAT__', '');
+        try {
+          const created = await pb.collection('categorieen').create({
+            naam: newName,
+            presses: [finalPressId].filter(Boolean),
+            active: true
+          });
+          finalCategoryId = created.id;
+          console.log(`[DynamicImport] Created new category: ${newName} (${created.id})`);
+        } catch (err) {
+          console.error(`Failed to create new category '${newName}':`, err);
+        }
+      }
+
+      const baseData = {
+        category: finalCategoryId,
+        pers: finalPressId,
+        last_date: task.lastMaintenance,
+        next_date: task.nextMaintenance,
+        interval: task.maintenanceInterval,
+        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+        assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
+        assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
+        comment: task.comment || '',
+        commentDate: task.commentDate,
+        sort_order: task.sort_order || 0
+      };
+
       if (task.subtasks && task.subtasks.length > 0) {
         // Handle Grouped Task: Create a record for each subtask
         const promises = task.subtasks.map(subtask =>
           pb.collection('onderhoud').create({
+            ...baseData,
             task: task.task,
             task_subtext: task.taskSubtext,
             subtask: subtask.name,
             subtask_subtext: subtask.subtext,
-            category: task.categoryId,
-            pers: task.pressId,
-            last_date: task.lastMaintenance,
-            next_date: task.nextMaintenance,
-            interval: task.maintenanceInterval,
-            interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
-              task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-                task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
-            assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
-            assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
             opmerkingen: subtask.opmerkingen || task.opmerkingen,
             commentDate: subtask.commentDate || task.commentDate,
             sort_order: subtask.sort_order || 0
@@ -437,23 +499,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       } else {
         // Handle Single Task
         const data = {
+          ...baseData,
           task: task.task,
           task_subtext: task.taskSubtext,
           subtask: task.subtaskName || task.task,
           subtask_subtext: task.subtaskSubtext || task.taskSubtext,
-          category: task.categoryId,
-          pers: task.pressId,
-          last_date: task.lastMaintenance,
-          next_date: task.nextMaintenance,
-          interval: task.maintenanceInterval,
-          interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
-            task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-              task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
-          assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
-          assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
-          opmerkingen: task.opmerkingen,
-          commentDate: task.commentDate,
-          sort_order: task.sort_order || 0
+          opmerkingen: task.opmerkingen
         };
         console.log('Creating task with data:', data);
         const record = await pb.collection('onderhoud').create(data);
@@ -468,6 +519,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         });
       }
       await fetchTasks(); // Refresh list after adding
+      if (finalPressId?.startsWith('__NEW_') || finalCategoryId?.startsWith('__NEW_')) {
+        await loadData(); // Full reload if base entities were created
+      }
     } catch (e) {
       console.error("Add task failed:", e);
       alert("Failed to save to server");
@@ -504,6 +558,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         assigned_operator: operatorIds,
         assigned_team: teamIds,
         opmerkingen: task.opmerkingen,
+        comment: task.comment || '',
         commentDate: task.commentDate,
         sort_order: task.sort_order || 0
       });
@@ -778,8 +833,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         active: category.active
       });
       await loadData();
+      return true;
     } catch (e: any) {
       toast.error(`Failed to add category: ${e.message}`);
+      return false;
     }
   };
 
@@ -791,8 +848,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         active: category.active
       });
       await loadData();
+      return true;
     } catch (e: any) {
       toast.error(`Failed to update category: ${e.message}`);
+      return false;
     }
   };
 
@@ -1003,8 +1062,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       });
       await fetchUserAccounts();
       toast.success(`User ${account.username} created`);
+      return true;
     } catch (e: any) {
       toast.error(`Failed to add user: ${e.message}`);
+      return false;
     }
   };
 
@@ -1023,8 +1084,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       });
       await fetchUserAccounts();
       toast.success(`User ${username} updated`);
+      return true;
     } catch (e: any) {
       toast.error(`Failed to update user: ${e.message}`);
+      return false;
     }
   };
 
