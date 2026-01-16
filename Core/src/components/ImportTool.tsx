@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useAuth, pb, MaintenanceTask } from './AuthContext';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useAuth, pb } from './AuthContext';
 import {
     Table,
     TableBody,
@@ -54,6 +54,7 @@ const TARGET_FIELDS: MappingTarget[] = [
     { id: 'opmerkingen', label: 'Interne Opmerkingen', required: false, systemField: 'opmerkingen' },
     { id: 'comment', label: 'Laatste Verslag (Tekst)', required: false, systemField: 'comment' },
     { id: 'commentDate', label: 'Datum Laatste Verslag', required: false, systemField: 'commentDate' },
+    { id: 'is_external', label: 'Externe Taak', required: false, systemField: 'isExternal' },
 ];
 
 const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months'> = {
@@ -72,40 +73,8 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months'> = {
     'year': 'months',
 };
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
-    constructor(props: { children: React.ReactNode }) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
-
-    static getDerivedStateFromError(error: Error) {
-        return { hasError: true, error };
-    }
-
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.error("ImportTool Error:", error, errorInfo);
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return (
-                <div className="p-4 border border-red-500 bg-red-50 rounded text-red-700">
-                    <h2 className="font-bold">Something went wrong in ImportTool</h2>
-                    <pre className="mt-2 text-sm">{this.state.error?.message}</pre>
-                </div>
-            );
-        }
-
-        return (
-            <TooltipProvider>
-                {this.props.children}
-            </TooltipProvider>
-        );
-    }
-}
-
-function ImportToolContent() {
-    const { categories, presses, operators, externalEntities, addTask, addActivityLog, user, tasks, updateTask, fetchTasks } = useAuth();
+export function ImportTool({ onComplete }: { onComplete?: () => void }) {
+    const { categories, presses, operators, externalEntities, addTask, addActivityLog, user } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
     const [headers, setHeaders] = useState<string[]>([]);
@@ -113,7 +82,6 @@ function ImportToolContent() {
     const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [isImporting, setIsImporting] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [isRecalculating, setIsRecalculating] = useState(false);
 
     // Persistence for field labels (friendly names)
     const [fieldLabels, setFieldLabels] = useState<Record<string, string>>(() => {
@@ -137,7 +105,7 @@ function ImportToolContent() {
         return {};
     });
 
-    React.useEffect(() => {
+    useEffect(() => {
         localStorage.setItem('import_field_labels', JSON.stringify(fieldLabels));
     }, [fieldLabels]);
 
@@ -160,12 +128,11 @@ function ImportToolContent() {
         setRowModifications(prev => {
             const next = { ...prev };
             selectedRows.forEach(idx => {
-                // Find original values to use as fallback
                 const row = processedData.find(d => d.originalIndex === idx);
                 if (row) {
                     next[idx] = {
                         task: groupNameInput.trim(),
-                        subtaskName: row.subtaskName || row.task // Preserve existing subtask or use old task name
+                        subtaskName: row.subtaskName || row.task
                     };
                 }
             });
@@ -190,17 +157,14 @@ function ImportToolContent() {
     const parseImportDate = (val: any): Date | null => {
         if (!val) return null;
         const str = val.toString().trim();
-        // Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
         const ddmmyyyy = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
         if (ddmmyyyy) {
             return new Date(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]));
         }
-        // Try YYYY-MM-DD
         const yyyymmdd = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
         if (yyyymmdd) {
             return new Date(parseInt(yyyymmdd[1]), parseInt(yyyymmdd[2]) - 1, parseInt(yyyymmdd[3]));
         }
-
         const d = new Date(str);
         return isNaN(d.getTime()) ? null : d;
     };
@@ -245,8 +209,7 @@ function ImportToolContent() {
         };
     }, [csvData, mappings, categories, presses, operators, externalEntities]);
 
-    // Update resolutions when unrecognised items change
-    React.useEffect(() => {
+    useEffect(() => {
         setResolutions(prev => {
             const next = { ...prev };
             unrecognised.categories.forEach(cat => {
@@ -285,14 +248,11 @@ function ImportToolContent() {
 
                     const initialMappings: Record<string, string | null> = {};
                     TARGET_FIELDS.forEach(target => {
-                        // 1. Try saved mapping first
                         const savedCol = savedMappings[target.systemField];
                         if (savedCol && rawHeaders.includes(savedCol)) {
                             initialMappings[target.systemField] = savedCol;
                             return;
                         }
-
-                        // 2. Fuzzy match fallback
                         const match = rawHeaders.find(h => {
                             const cleanedH = h.toLowerCase().trim();
                             const cleanedL = target.label.toLowerCase();
@@ -381,6 +341,14 @@ function ImportToolContent() {
                     val = parseImportDate(val);
                 }
 
+                if (target.systemField === 'isExternal') {
+                    if (val === null || val === undefined) val = false;
+                    else {
+                        const s = val.toString().toLowerCase().trim();
+                        val = s === 'ja' || s === 'yes' || s === 'true' || s === '1' || s === 'x' || s === 'v';
+                    }
+                }
+
                 item[target.systemField] = val;
             });
 
@@ -405,11 +373,9 @@ function ImportToolContent() {
                 names.forEach((n: string) => {
                     const resOp = resolutions.operators[n];
                     if (resOp?.type === 'existing') {
-                        // Check if it's a reference to another pending operator
                         if (resOp.value.startsWith('__PENDING__')) {
                             const pendingKey = resOp.value.replace('__PENDING__', '');
                             const pendingRes = resolutions.operators[pendingKey];
-                            // Mark as pending - will be resolved in handleImport after creation
                             resolvedOpIds.push(`__PENDING_OP__${pendingKey}`);
                             resolvedOpTypes.push(pendingRes?.type === 'external' ? 'external' : 'operator');
                         } else {
@@ -418,7 +384,6 @@ function ImportToolContent() {
                             resolvedOpTypes.push(isExt ? 'external' : 'operator');
                         }
                     } else if (resOp?.type === 'new' || resOp?.type === 'external') {
-                        // Will be created during import - use placeholder
                         resolvedOpIds.push(`__NEW_OP__${n}`);
                         resolvedOpTypes.push(resOp.type === 'external' ? 'external' : 'operator');
                     } else if (!resOp && [...operators, ...externalEntities].some(o => o.name.toLowerCase() === n.toLowerCase())) {
@@ -433,25 +398,20 @@ function ImportToolContent() {
 
             const errors: string[] = [];
             if (!item.task) errors.push('Groep/Taak Naam ontbreekt');
-            // Note: subtask is NOT required - single tasks use task name as subtask automatically
             if (rawCatName && !resolvedCategory && resCat?.type !== 'new') errors.push(`Categorie '${rawCatName}' niet herkend`);
             if (!rawCatName && !resolvedCategory) errors.push('Categorie ontbreekt');
             if (rawPressName && !resolvedPress && resPress?.type !== 'new') errors.push(`Machine '${rawPressName}' niet herkend`);
             if (!rawPressName && !resolvedPress) errors.push('Machine ontbreekt');
 
-            if (!rawPressName && !resolvedPress) errors.push('Machine ontbreekt');
-
-            // Apply manual modifications
             const mod = rowModifications[index];
             const finalTaskName = mod?.task || item.task;
-            const finalSubtaskName = mod?.subtaskName || (item.subtaskName || item.task); // If grouped, fallback to task name as subtask
+            const finalSubtaskName = mod?.subtaskName || (item.subtaskName || item.task);
 
             return {
                 ...item,
                 originalIndex: index,
                 task: finalTaskName,
                 subtaskName: finalSubtaskName,
-                // Adjust subtask subtext if needed? (Usually stays same)
                 categoryId: resolvedCategory?.id || (resCat?.type === 'new' ? `__NEW_CAT__${rawCatName}` : ''),
                 categoryName: resolvedCategory?.name || (resCat?.type === 'new' ? resCat.value : (item.category || 'Onbekend')),
                 pressId: resolvedPress?.id || (resPress?.type === 'new' ? `__NEW_PRESS__${rawPressName}` : ''),
@@ -509,11 +469,31 @@ function ImportToolContent() {
                 }
             }
 
+            // 1. Identify all unique presses for each new operator in the validRows
+            const operatorPressMap: Record<string, Set<string>> = {};
+            validRows.forEach(row => {
+                if (row.assignedToIds && row.assignedToIds.length > 0) {
+                    row.assignedToIds.forEach((id: string) => {
+                        if (id.startsWith('__NEW_OP__')) {
+                            const opName = id.replace('__NEW_OP__', '');
+                            if (!operatorPressMap[opName]) operatorPressMap[opName] = new Set();
+                            operatorPressMap[opName].add(row.pressName);
+                        }
+                    });
+                }
+            });
+
             const opMap: Record<string, string> = {};
             for (const [rawName, res] of Object.entries(resolutions.operators)) {
-                if (res.type === 'new') {
+                if (res.type === 'new' || res.type === 'external') {
+                    const associatedPresses = Array.from(operatorPressMap[rawName] || []);
                     try {
-                        const record = await pb.collection('operatoren').create({ naam: res.value, active: true, dienstverband: 'Intern' });
+                        const record = await pb.collection('operatoren').create({
+                            naam: res.value,
+                            active: true,
+                            dienstverband: res.type === 'external' ? 'Extern' : 'Intern',
+                            presses: associatedPresses
+                        });
                         opMap[rawName] = record.id;
                     } catch (err: any) {
                         try {
@@ -523,23 +503,9 @@ function ImportToolContent() {
                             console.error(`Failed to create or find operator ${res.value}`, err);
                         }
                     }
-                } else if (res.type === 'external') {
-                    try {
-                        const record = await pb.collection('operatoren').create({ naam: res.value, active: true, dienstverband: 'Extern' });
-                        opMap[rawName] = record.id;
-                    } catch (err: any) {
-                        try {
-                            const existing = await pb.collection('operatoren').getFirstListItem(`naam="${res.value}"`);
-                            opMap[rawName] = existing.id;
-                        } catch (fetchErr) {
-                            console.error(`Failed to create or find external entity ${res.value}`, err);
-                        }
-                    }
                 }
             }
 
-            // Count occurrences of each group name to determine single vs grouped tasks
-            // Use lowercase for case-insensitive grouping
             const groupCounts: Record<string, number> = {};
             validRows.forEach(row => {
                 const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
@@ -549,14 +515,11 @@ function ImportToolContent() {
             for (const row of validRows) {
                 const finalCatId = row.categoryId.startsWith('__NEW_CAT__') ? catMap[row.categoryId] : row.categoryId;
                 const finalPressId = row.pressId.startsWith('__NEW_PRESS__') ? pressMap[row.pressId] : row.pressId;
-
                 const finalAssignedToIds = row.assignedToIds.map((id: string) => {
-                    // Handle __NEW_OP__ placeholders (operators being created by name)
                     if (id.startsWith('__NEW_OP__')) {
                         const opName = id.replace('__NEW_OP__', '');
                         return opMap[opName] || id;
                     }
-                    // Handle __PENDING_OP__ placeholders (references to other pending operators)
                     if (id.startsWith('__PENDING_OP__')) {
                         const pendingKey = id.replace('__PENDING_OP__', '');
                         return opMap[pendingKey] || id;
@@ -564,16 +527,12 @@ function ImportToolContent() {
                     return id;
                 });
 
-                // Determine if this is a single task (group appears only once)
-                // Use lowercase for case-insensitive matching
                 const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
                 const isSingleTask = groupCounts[groupKey] === 1;
 
                 await addTask({
                     task: row.task,
                     taskSubtext: isSingleTask ? '' : (row.taskSubtext || ''),
-                    // For single tasks: subtaskName = task (no subtask concept)
-                    // For grouped tasks: use the subtaskName from CSV
                     subtaskName: isSingleTask ? row.task : row.subtaskName,
                     subtaskSubtext: isSingleTask ? '' : (row.subtaskSubtext || ''),
                     category: row.categoryName,
@@ -591,13 +550,14 @@ function ImportToolContent() {
                     comment: row.comment || '',
                     commentDate: row.commentDate || null,
                     sort_order: 0,
-                    isGroupTask: !isSingleTask
+                    isGroupTask: !isSingleTask,
+                    isExternal: !!row.isExternal
                 } as any);
                 successCount++;
             }
 
             addActivityLog({
-                user: user?.username || 'Admin',
+                user: user?.username || 'Import Tool',
                 action: 'Imported',
                 entity: 'MaintenanceTask',
                 entityId: 'multiple',
@@ -608,88 +568,12 @@ function ImportToolContent() {
             toast.success(`${successCount} taken succesvol geïmporteerd`);
             setStep('upload');
             setCsvData([]);
+            if (onComplete) onComplete();
         } catch (error) {
             console.error('Import error:', error);
             toast.error('Er is een fout opgetreden bij de import.');
         } finally {
             setIsImporting(false);
-        }
-    };
-
-    const handleRecalculateDates = async () => {
-        if (!confirm('Dit zal alle geplande datums herberekenen op basis van de laatste onderhoudsdatum. Dit corrigeert foutieve "Vandaag" datums door de import. Weet u het zeker?')) return;
-
-        setIsRecalculating(true);
-        let count = 0;
-        try {
-            const updates: Promise<void>[] = [];
-
-            for (const group of tasks) {
-                for (const sub of group.subtasks) {
-                    if (sub.lastMaintenance && sub.maintenanceInterval) {
-                        const last = new Date(sub.lastMaintenance);
-                        const unit = (sub.maintenanceIntervalUnit || '').toLowerCase();
-                        const interval = sub.maintenanceInterval;
-
-                        const expected = new Date(last);
-                        if (unit.includes('maand') || unit.includes('month') || unit === 'months') {
-                            expected.setMonth(expected.getMonth() + interval);
-                        } else if (unit.includes('week') || unit.includes('weeks')) {
-                            expected.setDate(expected.getDate() + (interval * 7));
-                        } else {
-                            expected.setDate(expected.getDate() + interval);
-                        }
-
-                        // Check diff
-                        const current = sub.nextMaintenance ? new Date(sub.nextMaintenance) : new Date();
-                        const diff = Math.abs(current.getTime() - expected.getTime());
-
-                        if (diff > 86400000) { // > 1 day difference
-                            const taskToUpdate: MaintenanceTask = {
-                                id: sub.id,
-                                task: group.taskName,
-                                taskSubtext: group.taskSubtext,
-                                subtaskName: sub.subtaskName,
-                                subtaskSubtext: sub.subtext,
-                                category: group.category,
-                                categoryId: group.categoryId,
-                                press: group.press,
-                                pressId: group.pressId,
-                                lastMaintenance: sub.lastMaintenance,
-                                nextMaintenance: expected,
-                                maintenanceInterval: sub.maintenanceInterval,
-                                maintenanceIntervalUnit: sub.maintenanceIntervalUnit,
-                                assignedTo: sub.assignedTo,
-                                assignedToIds: sub.assignedToIds || [],
-                                assignedToTypes: sub.assignedToTypes || [],
-                                opmerkingen: sub.opmerkingen || '',
-                                comment: sub.comment || '',
-                                commentDate: sub.commentDate,
-                                sort_order: sub.sort_order || 0,
-                                created: new Date().toISOString(),
-                                updated: new Date().toISOString()
-                            };
-
-                            updates.push(updateTask(taskToUpdate, false));
-                            count++;
-                        }
-                    }
-                }
-            }
-
-            if (updates.length > 0) {
-                await Promise.all(updates);
-                await fetchTasks();
-                toast.success(`${count} datums succesvol hersteld.`);
-            } else {
-                toast.info('Geen datums hoeven te worden aangepast.');
-            }
-
-        } catch (e) {
-            console.error(e);
-            toast.error('Fout bij herstel.');
-        } finally {
-            setIsRecalculating(false);
         }
     };
 
@@ -712,15 +596,16 @@ function ImportToolContent() {
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
+                    className="min-h-[40vh]"
                 >
-                    <Card className={`border-dashed border-2 transition-all duration-200 ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+                    <Card className={`border-2 transition-all duration-200 h-full ${isDragOver ? 'border-blue-500 bg-blue-50 border-solid' : 'border-gray-300 bg-gray-50/50 hover:bg-gray-50 border-dashed'
                         }`}>
-                        <CardContent className="flex flex-col items-center justify-center py-12">
-                            <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragOver ? 'text-blue-500' : 'text-gray-400'}`} />
-                            <CardTitle className="mb-2">
+                        <CardContent className="flex flex-col items-center justify-center py-24 h-full">
+                            <Upload className={`h-16 w-16 mb-6 transition-colors ${isDragOver ? 'text-blue-500' : 'text-gray-400'}`} />
+                            <CardTitle className="mb-3 text-xl">
                                 {isDragOver ? 'Bestand Loslaten' : 'Excel/CSV/TSV Bestand Uploaden'}
                             </CardTitle>
-                            <CardDescription className="mb-6 text-center">
+                            <CardDescription className="mb-8 text-center text-base">
                                 Sleep uw bestand hierheen of klik om te bladeren.<br />
                                 Ondersteunt .csv en .tsv formaten.
                             </CardDescription>
@@ -732,7 +617,7 @@ function ImportToolContent() {
                                 id="csv-upload"
                             />
                             <Label htmlFor="csv-upload">
-                                <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium cursor-pointer transition-colors inline-block">
+                                <span className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-medium cursor-pointer transition-colors inline-block text-lg">
                                     Bestand Selecteren
                                 </span>
                             </Label>
@@ -742,448 +627,406 @@ function ImportToolContent() {
             )}
 
             {step === 'analysis' && (
-                <Card className="max-w-4xl mx-auto">
-                    <CardHeader>
-                        <CardTitle>Import Analyse & Mapping</CardTitle>
-                        <CardDescription>
-                            We hebben {csvData.length} rijen gevonden. Controleer hieronder de koppelingen tussen uw bestand en het systeem.
-                        </CardDescription>
+                <Card>
+                    <CardHeader className="border-b bg-gray-50/50">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="text-lg">Stap 1: Kolom Koppeling</CardTitle>
+                                <CardDescription>Koppel uw spreadsheet-kolommen aan de systeem velden</CardDescription>
+                            </div>
+                            <Button onClick={saveSettings} variant="outline" size="sm" className="gap-2">
+                                <Save className="w-4 h-4" /> Instellingen Opslaan
+                            </Button>
+                        </div>
                     </CardHeader>
-                    <CardContent className="p-0 flex flex-col max-h-[75vh]">
-                        <div className="p-6 pb-2 space-y-6 flex-1 overflow-hidden flex flex-col">
-                            <div className="border rounded-lg overflow-auto flex-1 bg-white">
-                                <Table>
-                                    <TableHeader className="bg-gray-50 sticky top-0 z-10">
-                                        <TableRow>
-                                            <TableHead className="w-[35%]">Veld Naam (Bewerkbaar)</TableHead>
-                                            <TableHead className="w-[30%]">CSV Kolom</TableHead>
-                                            <TableHead className="w-[35%]">Data Preview</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {TARGET_FIELDS.map(field => {
-                                            const mappedCol = mappings[field.systemField];
-                                            const isMapped = !!mappedCol;
-                                            const isRequired = field.required;
-                                            const previewValues = mappedCol
-                                                ? csvData.slice(0, 3).map(row => row[mappedCol]).join(', ')
-                                                : '';
-
-                                            return (
-                                                <TableRow key={field.id}>
-                                                    <TableCell>
-                                                        <div className="space-y-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <Input
-                                                                    value={fieldLabels[field.id]}
-                                                                    onChange={(e) => setFieldLabels(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                                                    className="h-8 font-medium bg-transparent border-gray-200 hover:border-gray-300 focus:bg-white transition-colors"
-                                                                />
-                                                                {isMapped ? (
-                                                                    <Check className="h-4 w-4 text-green-500 shrink-0" />
-                                                                ) : isRequired && (
-                                                                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
-                                                                )}
-                                                            </div>
-                                                            <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1">
-                                                                {isRequired ? <span className="text-red-400">Verplicht</span> : 'Optioneel'}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Select
-                                                            value={mappedCol && mappedCol.trim() !== '' ? mappedCol : '_none'}
-                                                            onValueChange={(val) => updateMapping(field.systemField, val)}
-                                                        >
-                                                            <SelectTrigger className={`w-full h-8 ${!mappedCol && isRequired ? 'border-red-200 bg-red-50/30' : ''}`}>
-                                                                <SelectValue placeholder="Kies kolom..." />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="_none" className="text-gray-400 italic">-- overslaan --</SelectItem>
-                                                                {headers.filter(h => h && typeof h === 'string' && h.trim() !== '').map(h => (
-                                                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {mappedCol ? (
-                                                            <div className="text-[11px] text-gray-400 font-mono bg-gray-50/50 p-1.5 rounded truncate max-w-[200px]" title={previewValues}>
-                                                                {previewValues}{csvData.length > 3 && '...'}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[11px] text-gray-300 italic">Geen selectie</span>
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        </div>
-
-                        <div className="p-4 bg-gray-100/50 border-t flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                            <div className="flex gap-2">
-                                <Button variant="ghost" onClick={() => setStep('upload')} className="text-gray-500 hover:text-gray-700">Annuleren</Button>
-                                <Button variant="outline" onClick={saveSettings} className="bg-white text-blue-600 border-blue-200 hover:bg-blue-50 h-9 font-semibold">
-                                    <Save className="w-4 h-4 mr-2" /> Instellingen Opslaan
-                                </Button>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                {TARGET_FIELDS.some(t => t.required && !mappings[t.systemField]) && (
-                                    <span className="text-sm text-red-600 font-bold bg-white px-3 py-1 rounded-full border border-red-100 animate-pulse">Map alle verplichte velden</span>
-                                )}
-                                <Button
-                                    onClick={() => {
-                                        saveSettings();
-                                        if (validateMappings()) setStep('resolve');
-                                    }}
-                                    disabled={TARGET_FIELDS.some(t => t.required && !mappings[t.systemField])}
-                                    className="bg-blue-600 hover:bg-blue-700 h-10 px-8 shadow-lg transition-all active:scale-95 font-bold"
-                                >
-                                    Opslaan & Doorgaan <ArrowRight className="ml-2 h-5 w-5" />
-                                </Button>
-                            </div>
-                        </div>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-1/3">Systeem Veld</TableHead>
+                                    <TableHead className="w-2/3">Uw Kolom</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {TARGET_FIELDS.map(target => (
+                                    <TableRow key={target.id}>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <Label className="font-medium text-gray-700">
+                                                    {fieldLabels[target.id] || target.label}
+                                                    {target.required && <span className="text-red-500 ml-1">*</span>}
+                                                </Label>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0 text-gray-400"
+                                                    onClick={() => {
+                                                        const newLabel = prompt('Voer een nieuwe naam in voor dit veld:', fieldLabels[target.id] || target.label);
+                                                        if (newLabel) setFieldLabels(prev => ({ ...prev, [target.id]: newLabel }));
+                                                    }}
+                                                >
+                                                    <Save className="w-3 h-3" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Select
+                                                value={mappings[target.systemField] || '_none'}
+                                                onValueChange={(val) => updateMapping(target.systemField, val)}
+                                            >
+                                                <SelectTrigger className={`w-full ${!mappings[target.systemField] && target.required ? 'border-red-300 bg-red-50 text-red-900' : ''}`}>
+                                                    <SelectValue placeholder="Kies een kolom..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="_none">--- Niet importeren ---</SelectItem>
+                                                    {headers.map(h => (
+                                                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </CardContent>
+                    <div className="p-4 border-t bg-gray-50 flex justify-end">
+                        <Button
+                            onClick={() => {
+                                if (validateMappings()) {
+                                    setStep('resolve');
+                                }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 px-8"
+                        >
+                            Volgende Stap <ArrowRight className="w-4 h-4" />
+                        </Button>
+                    </div>
                 </Card>
             )}
 
             {step === 'resolve' && (
-                <Card className="max-w-4xl mx-auto">
-                    <CardHeader>
-                        <CardTitle>Onbekende Entiteiten Koppelen</CardTitle>
-                        <CardDescription>De volgende items zijn niet gevonden in het systeem. Kies hoe u ze wilt verwerken.</CardDescription>
+                <Card>
+                    <CardHeader className="border-b bg-gray-50/50">
+                        <CardTitle className="text-lg">Stap 2: Entiteiten Herkennen</CardTitle>
+                        <CardDescription>Koppel onbekende waarden aan bestaande data of maak nieuwe aan</CardDescription>
                     </CardHeader>
-                    <CardContent className="p-0 flex flex-col max-h-[75vh]">
-                        <div className="p-6 pb-2 space-y-8 flex-1 overflow-auto bg-gray-50/30">
-                            {/* Categories */}
-                            {unrecognised.categories.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                        <div className="bg-orange-100 text-orange-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">1</div>
-                                        Nieuwe Categorieën ({unrecognised.categories.length})
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {unrecognised.categories.map(cat => (
-                                            <div key={cat} className="flex items-center gap-4 p-3 bg-white rounded-lg border shadow-sm">
-                                                <span className="font-medium text-gray-700 flex-1">{cat}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <Select value={resolutions.categories[cat]?.type} onValueChange={(val) => updateResolution('categories', cat, { type: val as any })}>
-                                                        <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
+                    <CardContent className="space-y-6 pt-6 max-h-[60vh] overflow-y-auto">
+                        {unrecognised.categories.length > 0 && (
+                            <div className="space-y-3">
+                                <h3 className="font-semibold flex items-center gap-2 text-gray-900">
+                                    <AlertCircle className="w-4 h-4 text-orange-500" /> Categorieën ({unrecognised.categories.length})
+                                </h3>
+                                <div className="space-y-2">
+                                    {unrecognised.categories.map(cat => (
+                                        <div key={cat} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-sm font-medium text-gray-500 block">In bestand:</span>
+                                                <span className="text-gray-900 font-semibold truncate block">{cat}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Select
+                                                    value={resolutions.categories[cat]?.type || 'new'}
+                                                    onValueChange={(val: any) => updateResolution('categories', cat, { type: val })}
+                                                >
+                                                    <SelectTrigger className="w-[140px] h-9">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="new">Nieuw maken</SelectItem>
+                                                        <SelectItem value="existing">Koppelen aan...</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {resolutions.categories[cat]?.type === 'existing' && (
+                                                    <Select
+                                                        value={resolutions.categories[cat]?.value || ''}
+                                                        onValueChange={(val) => updateResolution('categories', cat, { value: val })}
+                                                    >
+                                                        <SelectTrigger className="w-[180px] h-9">
+                                                            <SelectValue placeholder="Kies..." />
+                                                        </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="new" className="text-blue-600 font-medium">Nieuw aanmaken</SelectItem>
-                                                            <SelectItem value="existing">Bestaande koppelen</SelectItem>
+                                                            {categories.map(c => (
+                                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                                            ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    {resolutions.categories[cat]?.type === 'existing' ? (
-                                                        <Select value={resolutions.categories[cat]?.value} onValueChange={(val) => updateResolution('categories', cat, { value: val })}>
-                                                            <SelectTrigger className="w-[200px] h-9"><SelectValue placeholder="Kies..." /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {categories.filter(c => c.id && c.id.trim() !== '').map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    ) : (
-                                                        <Input value={resolutions.categories[cat]?.value} onChange={(e) => updateResolution('categories', cat, { value: e.target.value })} className="w-[200px] h-9" placeholder="Systeemnaam..." />
-                                                    )}
-                                                </div>
+                                                )}
+                                                {resolutions.categories[cat]?.type === 'new' && (
+                                                    <Input
+                                                        value={resolutions.categories[cat]?.value || ''}
+                                                        onChange={(e) => updateResolution('categories', cat, { value: e.target.value })}
+                                                        className="w-[180px] h-9"
+                                                        placeholder="Naam..."
+                                                    />
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {/* Presses */}
-                            {unrecognised.presses.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                        <div className="bg-orange-100 text-orange-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">2</div>
-                                        Nieuwe Machines/Persen ({unrecognised.presses.length})
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {unrecognised.presses.map(p => (
-                                            <div key={p} className="flex items-center gap-4 p-3 bg-white rounded-lg border shadow-sm">
-                                                <span className="font-medium text-gray-700 flex-1">{p}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <Select value={resolutions.presses[p]?.type} onValueChange={(val) => updateResolution('presses', p, { type: val as any })}>
-                                                        <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
+                        {unrecognised.presses.length > 0 && (
+                            <div className="space-y-3">
+                                <h3 className="font-semibold flex items-center gap-2 text-gray-900">
+                                    <AlertCircle className="w-4 h-4 text-orange-500" /> Machine/Persen ({unrecognised.presses.length})
+                                </h3>
+                                <div className="space-y-2">
+                                    {unrecognised.presses.map(p => (
+                                        <div key={p} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-sm font-medium text-gray-500 block">In bestand:</span>
+                                                <span className="text-gray-900 font-semibold truncate block">{p}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Select
+                                                    value={resolutions.presses[p]?.type || 'new'}
+                                                    onValueChange={(val: any) => updateResolution('presses', p, { type: val })}
+                                                >
+                                                    <SelectTrigger className="w-[140px] h-9">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="new">Nieuw maken</SelectItem>
+                                                        <SelectItem value="existing">Koppelen aan...</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {resolutions.presses[p]?.type === 'existing' && (
+                                                    <Select
+                                                        value={resolutions.presses[p]?.value || ''}
+                                                        onValueChange={(val) => updateResolution('presses', p, { value: val })}
+                                                    >
+                                                        <SelectTrigger className="w-[180px] h-9">
+                                                            <SelectValue placeholder="Kies..." />
+                                                        </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="new" className="text-blue-600 font-medium">Nieuw aanmaken</SelectItem>
-                                                            <SelectItem value="existing">Bestaande koppelen</SelectItem>
+                                                            {presses.map(pr => (
+                                                                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                                                            ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    {resolutions.presses[p]?.type === 'existing' ? (
-                                                        <Select value={resolutions.presses[p]?.value} onValueChange={(val) => updateResolution('presses', p, { value: val })}>
-                                                            <SelectTrigger className="w-[200px] h-9"><SelectValue placeholder="Kies..." /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {presses.filter(pr => pr.id && pr.id.trim() !== '').map(pr => <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>)}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    ) : (
-                                                        <Input value={resolutions.presses[p]?.value} onChange={(e) => updateResolution('presses', p, { value: e.target.value })} className="w-[200px] h-9" placeholder="Systeemnaam..." />
-                                                    )}
-                                                </div>
+                                                )}
+                                                {resolutions.presses[p]?.type === 'new' && (
+                                                    <Input
+                                                        value={resolutions.presses[p]?.value || ''}
+                                                        onChange={(e) => updateResolution('presses', p, { value: e.target.value })}
+                                                        className="w-[180px] h-9"
+                                                        placeholder="Naam..."
+                                                    />
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {/* Operators */}
-                            {unrecognised.operators.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                        <div className="bg-orange-100 text-orange-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">3</div>
-                                        Nieuwe Operatoren ({unrecognised.operators.length})
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {unrecognised.operators.map(op => (
-                                            <div key={op} className="flex items-center gap-4 p-3 bg-white rounded-lg border shadow-sm">
-                                                <span className="font-medium text-gray-700 flex-1">{op}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <Select value={resolutions.operators[op]?.type} onValueChange={(val) => updateResolution('operators', op, { type: val as any })}>
-                                                        <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
+                        {unrecognised.operators.length > 0 && (
+                            <div className="space-y-3">
+                                <h3 className="font-semibold flex items-center gap-2 text-gray-900">
+                                    <AlertCircle className="w-4 h-4 text-orange-500" /> Personeel ({unrecognised.operators.length})
+                                </h3>
+                                <div className="space-y-2">
+                                    {unrecognised.operators.map(op => (
+                                        <div key={op} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-sm font-medium text-gray-500 block">In bestand:</span>
+                                                <span className="text-gray-900 font-semibold truncate block">{op}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Select
+                                                    value={resolutions.operators[op]?.type || 'ignore'}
+                                                    onValueChange={(val: any) => updateResolution('operators', op, { type: val })}
+                                                >
+                                                    <SelectTrigger className="w-[160px] h-9">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="ignore">Niet importeren</SelectItem>
+                                                        <SelectItem value="new">Nieuw (Intern)</SelectItem>
+                                                        <SelectItem value="external">Nieuw (Extern)</SelectItem>
+                                                        <SelectItem value="existing">Koppelen aan...</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {resolutions.operators[op]?.type === 'existing' && (
+                                                    <Select
+                                                        value={resolutions.operators[op]?.value || ''}
+                                                        onValueChange={(val) => updateResolution('operators', op, { value: val })}
+                                                    >
+                                                        <SelectTrigger className="w-[180px] h-9">
+                                                            <SelectValue placeholder="Kies..." />
+                                                        </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="ignore">Negeren / Leeg laten</SelectItem>
-                                                            <SelectItem value="new" className="text-blue-600 font-medium">Nieuw aanmaken (Intern)</SelectItem>
-                                                            <SelectItem value="external" className="text-purple-600 font-medium">Nieuw aanmaken (Extern)</SelectItem>
-                                                            <SelectItem value="existing">Bestaande koppelen</SelectItem>
+                                                            <SelectItem value="_header" className="font-bold border-b bg-gray-50">Intern Personeel</SelectItem>
+                                                            {operators.map(o => (
+                                                                <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                                                            ))}
+                                                            <SelectItem value="_header_ext" className="font-bold border-b bg-gray-50 mt-2">Extern / Derden</SelectItem>
+                                                            {externalEntities.map(e => (
+                                                                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                                            ))}
+                                                            <SelectItem value="_header_pnd" className="font-bold border-b bg-gray-50 mt-2">Nieuw bij deze import</SelectItem>
+                                                            {Object.entries(resolutions.operators)
+                                                                .filter(([name, res]) => name !== op && (res.type === 'new' || res.type === 'external'))
+                                                                .map(([name]) => (
+                                                                    <SelectItem key={name} value={`__PENDING__${name}`}>{name}</SelectItem>
+                                                                ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    {resolutions.operators[op]?.type === 'existing' ? (
-                                                        <Select value={resolutions.operators[op]?.value} onValueChange={(val) => updateResolution('operators', op, { value: val })}>
-                                                            <SelectTrigger className="w-[200px] h-9"><SelectValue placeholder="Kies..." /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {/* Existing operators and external entities */}
-                                                                {[...operators, ...externalEntities].filter(o => o.id && o.id.trim() !== '').map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-                                                                {/* Pending new operators from current session (for reuse with duplicates) */}
-                                                                {Object.entries(resolutions.operators)
-                                                                    .filter(([key, res]) => key !== op && (res.type === 'new' || res.type === 'external') && res.value)
-                                                                    .map(([key, res]) => (
-                                                                        <SelectItem key={`pending-${key}`} value={`__PENDING__${key}`} className="text-blue-600">
-                                                                            {res.value} (nieuw)
-                                                                        </SelectItem>
-                                                                    ))
-                                                                }
-                                                            </SelectContent>
-                                                        </Select>
-                                                    ) : resolutions.operators[op]?.type === 'new' || resolutions.operators[op]?.type === 'external' ? (
-                                                        <Input value={resolutions.operators[op]?.value} onChange={(e) => updateResolution('operators', op, { value: e.target.value })} className="w-[200px] h-9" placeholder="Systeemnaam..." />
-                                                    ) : (
-                                                        <div className="w-[200px] text-xs text-gray-400 italic text-center">Veld blijft leeg</div>
-                                                    )}
-                                                </div>
+                                                )}
+                                                {(resolutions.operators[op]?.type === 'new' || resolutions.operators[op]?.type === 'external') && (
+                                                    <Input
+                                                        value={resolutions.operators[op]?.value || ''}
+                                                        onChange={(e) => updateResolution('operators', op, { value: e.target.value })}
+                                                        className="w-[180px] h-9"
+                                                        placeholder="Naam..."
+                                                    />
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {unrecognised.categories.length === 0 && unrecognised.presses.length === 0 && unrecognised.operators.length === 0 && (
-                                <div className="text-center py-12 bg-green-50 rounded-lg border border-green-100 border-dashed">
-                                    <Check className="h-10 w-10 text-green-500 mx-auto mb-2" />
-                                    <p className="text-green-700 font-medium">Alle items herkend!</p>
-                                    <p className="text-green-600 text-sm">U kunt door naar de preview om te importeren.</p>
+                        {unrecognised.categories.length === 0 && unrecognised.presses.length === 0 && unrecognised.operators.length === 0 && (
+                            <div className="py-12 text-center">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Check className="w-8 h-8 text-green-600" />
                                 </div>
-                            )}
-                        </div>
-
-                        <div className="p-4 bg-gray-100/50 border-t flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                            <Button variant="ghost" onClick={() => setStep('analysis')} className="text-gray-500 hover:text-gray-700">Terug naar Mapping</Button>
-                            <Button onClick={() => setStep('preview')} className="bg-blue-600 hover:bg-blue-700 h-10 px-8 shadow-lg transition-all active:scale-95 font-bold">
-                                Naar Preview & Import <ArrowRight className="ml-2 h-5 w-5" />
-                            </Button>
-                        </div>
+                                <h3 className="text-lg font-semibold text-gray-900">Alles Herkend!</h3>
+                                <p className="text-gray-500">Alle entiteiten in uw bestand komen overeen met bestaande data.</p>
+                            </div>
+                        )}
                     </CardContent>
+                    <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
+                        <Button variant="outline" onClick={() => setStep('analysis')} className="h-11 px-8">Vorige</Button>
+                        <Button onClick={() => setStep('preview')} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 px-8">
+                            Gekozen Opties Bevestigen <ArrowRight className="w-4 h-4" />
+                        </Button>
+                    </div>
                 </Card>
             )}
 
             {step === 'preview' && (
-                <div className="pb-32">
-                    <Card className="shadow-xl max-w-6xl mx-auto">
-                        <CardHeader className="bg-gray-50/50 border-b flex-none">
-                            <div className="flex items-center justify-between">
+                <div className="space-y-4">
+                    <Card>
+                        <CardHeader className="border-b bg-gray-50/50">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
-                                    <CardTitle>Data Preview & Validatie</CardTitle>
-                                    <CardDescription>Controleer de data. Ongeldige rijen worden automatisch overgeslagen bij import.</CardDescription>
+                                    <CardTitle className="text-lg">Stap 3: Voorbeeld & Controle</CardTitle>
+                                    <CardDescription>
+                                        Controleer de data voordat u deze definitief importeert.
+                                        ({processedData.filter(d => d.isValid).length} geldig, {processedData.filter(d => !d.isValid).length} ongeldig)
+                                    </CardDescription>
                                 </div>
-                                <div className="flex gap-2 items-center">
-                                    {selectedRows.size > 0 && (
-                                        <div className="flex items-center gap-2 mr-4 bg-blue-100 px-3 py-1 rounded-md animate-in fade-in">
-                                            <span className="text-sm font-medium text-blue-700">{selectedRows.size} geselecteerd</span>
-                                            <Button size="sm" onClick={() => setIsGroupDialogOpen(true)} className="h-7 text-xs bg-blue-600 hover:bg-blue-700">
-                                                Groeperen
-                                            </Button>
-                                            <Button size="sm" variant="ghost" onClick={() => setSelectedRows(new Set())} className="h-7 w-7 p-0 text-blue-700 hover:text-blue-900 hover:bg-blue-200">
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    )}
-                                    <Badge variant="outline" className="bg-white px-3 py-1">{processedData.length} Totaal</Badge>
-                                    <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
-                                        {processedData.filter(d => d.isValid).length} Geldig
-                                    </Badge>
-                                    {processedData.some(d => !d.isValid) && (
-                                        <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200">
-                                            {processedData.filter(d => !d.isValid).length} Fouten
-                                        </Badge>
-                                    )}
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={selectedRows.size === 0}
+                                        onClick={() => setIsGroupDialogOpen(true)}
+                                        className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                                    >
+                                        Geselecteerde Taken Groeperen ({selectedRows.size})
+                                    </Button>
                                 </div>
                             </div>
                         </CardHeader>
-
-                        {/* Main Scrollable Content */}
-                        <CardContent className="flex-1 overflow-y-auto min-h-0 p-0">
-                            {/* Group by category for MaintenanceTable-like display */}
-                            {(() => {
-                                // Group data by category
-                                const groupedByCategory: Record<string, typeof processedData> = {};
-                                processedData.forEach(row => {
-                                    const catKey = row.categoryName || 'Onbekend';
-                                    if (!groupedByCategory[catKey]) groupedByCategory[catKey] = [];
-                                    groupedByCategory[catKey].push(row);
-                                });
-
-                                return Object.entries(groupedByCategory).map(([categoryName, rows]) => {
-                                    // Further group by task name within each category
-                                    const groupedByTask: Record<string, typeof rows> = {};
-                                    rows.forEach(row => {
-                                        const taskKey = row.task?.toLowerCase() || 'Onbekend';
-                                        if (!groupedByTask[taskKey]) groupedByTask[taskKey] = [];
-                                        groupedByTask[taskKey].push(row);
-                                    });
-
-                                    return (
-                                        <div key={categoryName} className="border-b last:border-b-0">
-                                            {/* Category Header */}
-                                            <div className="bg-gray-100 px-4 py-2 flex items-center gap-3 sticky top-0 z-10">
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                <span className="font-semibold text-gray-800">{categoryName}</span>
-                                                <Badge variant="outline" className="text-xs">{rows.length} taken</Badge>
-                                            </div>
-
-                                            {/* Task Groups within Category */}
-                                            {Object.entries(groupedByTask).map(([taskKey, taskRows]) => {
-                                                const isGrouped = taskRows.length > 1;
-                                                const firstRow = taskRows[0];
-                                                const hasErrors = taskRows.some(r => !r.isValid);
-
-                                                return (
-                                                    <div key={taskKey} className={`border-l-4 ${hasErrors ? 'border-l-red-300' : 'border-l-transparent'}`}>
-                                                        {/* Group Header (if multiple subtasks) */}
-                                                        {isGrouped && (
-                                                            <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded flex items-center justify-center text-xs font-bold">
-                                                                        {taskRows.length}
-                                                                    </div>
-                                                                    <span className="font-medium text-gray-700">{firstRow.task}</span>
-                                                                    {firstRow.taskSubtext && (
-                                                                        <span className="text-xs text-gray-400">{firstRow.taskSubtext}</span>
-                                                                    )}
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <Badge variant="secondary" className="text-xs">{firstRow.pressName}</Badge>
-                                                                    {hasErrors && <AlertCircle className="h-4 w-4 text-red-500" />}
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Subtask Rows */}
-                                                        {taskRows.map((row, idx) => (
-                                                            <div
-                                                                key={idx}
-                                                                className={`px-4 py-2 flex items-center justify-between border-b border-gray-100 last:border-b-0 ${!row.isValid ? 'bg-red-50/50' : 'hover:bg-gray-50/50'
-                                                                    } ${isGrouped ? 'pl-2' : ''}`}
-                                                            >
-                                                                {/* Selection Checkbox */}
-                                                                <div className="pr-3 flex items-center">
-                                                                    <Checkbox
-                                                                        checked={selectedRows.has(row.originalIndex)}
-                                                                        onCheckedChange={() => toggleRowSelection(row.originalIndex)}
-                                                                    />
-                                                                </div>
-
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="flex items-center gap-2">
-                                                                        {!isGrouped && (
-                                                                            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full flex-shrink-0"></div>
-                                                                        )}
-                                                                        <span className={`font-medium text-gray-900 truncate ${isGrouped ? 'text-sm' : ''}`}>
-                                                                            {isGrouped ? row.subtaskName : row.task}
-                                                                        </span>
-                                                                        {row.subtaskSubtext && (
-                                                                            <span className="text-xs text-gray-400 truncate">{row.subtaskSubtext}</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-500">
-                                                                        <div title="Machine" className="truncate">🏭 {row.pressName}</div>
-                                                                        <div title="Interval" className="truncate">⏱️ {row.maintenanceInterval} {row.maintenanceIntervalUnit}</div>
-                                                                        <div title="Toegewezen aan" className="truncate">👤 {row.assignedTo || '-'}</div>
-                                                                        <div title="Vorige" className="truncate text-gray-400">📅 Vorige: {row.lastMaintenance ? row.lastMaintenance.toLocaleDateString('nl-NL') : '-'}</div>
-                                                                        <div title="Volgende" className="truncate font-medium text-blue-600">📅 Volgende: {row.nextMaintenance ? row.nextMaintenance.toLocaleDateString('nl-NL') : '-'}</div>
-                                                                        {row.comment && <div className="col-span-2 truncate" title={`Laatste verslag: ${row.comment}`}>💬 {row.comment}</div>}
-                                                                        {row.opmerkingen && <div className="col-span-2 truncate text-amber-700 bg-amber-50 px-1 rounded inline-block" title={`Opmerking: ${row.opmerkingen}`}>📝 {row.opmerkingen}</div>}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-3 flex-shrink-0">
-                                                                    {!row.isValid ? (
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <div className="bg-red-100 p-1 rounded-full cursor-help">
-                                                                                    <AlertCircle className="h-4 w-4 text-red-600" />
-                                                                                </div>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent side="left" className="bg-white border-red-100 text-red-700 p-3 shadow-xl max-w-[250px]">
-                                                                                <div className="font-bold mb-2 flex items-center gap-2">
-                                                                                    <AlertCircle className="h-4 w-4" /> Validatiefouten:
-                                                                                </div>
-                                                                                <ul className="list-disc list-inside text-xs space-y-1">
-                                                                                    {(row.errors as string[]).map((err: string, i: number) => <li key={i}>{err}</li>)}
-                                                                                </ul>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    ) : (
-                                                                        <Check className="h-4 w-4 text-green-500" />
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    );
-                                });
-                            })()}
+                        <CardContent className="p-0 overflow-x-auto max-h-[50vh]">
+                            <Table>
+                                <TableHeader className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                                    <TableRow>
+                                        <TableHead className="w-[40px] px-2 text-center">
+                                            <Checkbox
+                                                checked={selectedRows.size === processedData.length && processedData.length > 0}
+                                                onCheckedChange={(checked) => {
+                                                    if (checked) {
+                                                        setSelectedRows(new Set(processedData.map(d => d.originalIndex)));
+                                                    } else {
+                                                        setSelectedRows(new Set());
+                                                    }
+                                                }}
+                                            />
+                                        </TableHead>
+                                        <TableHead className="w-[150px]">Status</TableHead>
+                                        <TableHead className="min-w-[200px]">Taak (Groep)</TableHead>
+                                        <TableHead className="min-w-[150px]">Subtaak</TableHead>
+                                        <TableHead className="w-[120px]">Machine</TableHead>
+                                        <TableHead className="w-[120px]">Categorie</TableHead>
+                                        <TableHead className="w-[120px]">Interval</TableHead>
+                                        <TableHead className="w-[120px]">Laatste Datum</TableHead>
+                                        <TableHead className="w-[150px]">Toegewezen</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {processedData.map((row) => (
+                                        <TableRow
+                                            key={row.originalIndex}
+                                            className={row.isValid ? (selectedRows.has(row.originalIndex) ? 'bg-blue-50/50' : '') : 'bg-red-50/50'}
+                                        >
+                                            <TableCell className="px-2 text-center">
+                                                {row.isValid && (
+                                                    <Checkbox
+                                                        checked={selectedRows.has(row.originalIndex)}
+                                                        onCheckedChange={() => toggleRowSelection(row.originalIndex)}
+                                                    />
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {row.isValid ? (
+                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-medium">
+                                                        <Check className="w-3 h-3" /> Gereed
+                                                    </Badge>
+                                                ) : (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 cursor-help font-medium">
+                                                                    <X className="w-3 h-3" /> Fout ({row.errors.length})
+                                                                </Badge>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent className="bg-white border-red-200 text-red-900 p-3 shadow-xl max-w-xs">
+                                                                <p className="font-bold mb-1">Verbeter de volgende punten:</p>
+                                                                <ul className="list-disc pl-4 space-y-1">
+                                                                    {row.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                                                                </ul>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="max-w-[250px]">
+                                                <div className="font-medium text-gray-900 truncate">
+                                                    {row.task}
+                                                    {rowModifications[row.originalIndex] && (
+                                                        <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-600 h-4">Gewijzigd</Badge>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="max-w-[150px] truncate text-gray-500 italic">
+                                                {row.subtaskName}
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap font-medium">{row.pressName}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{row.categoryName}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{row.maintenanceInterval} {row.maintenanceIntervalUnit}</TableCell>
+                                            <TableCell className="whitespace-nowrap tabular-nums">
+                                                {row.lastMaintenance ? row.lastMaintenance.toLocaleDateString() : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-gray-600">
+                                                {row.assignedTo || <span className="text-gray-300 italic">Geen</span>}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
                         </CardContent>
-
-                        {/* Static Footer inside Flex Container */}
-                        <div className="flex-none p-4 bg-blue-50/80 border-t flex flex-col sm:flex-row justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] rounded-b-lg gap-4 sm:gap-0">
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                                {processedData.some(d => d.isValid) ? (
-                                    <>
-                                        <div className="bg-blue-600 p-2.5 rounded-full shadow-lg flex-shrink-0"><Check className="h-5 w-5 text-white" /></div>
-                                        <div className="flex-1 sm:flex-auto">
-                                            <p className="text-blue-900 font-bold leading-tight">Ready voor Import</p>
-                                            <p className="text-blue-700 text-xs font-medium">
-                                                {processedData.filter(d => d.isValid).length} records worden toegevoegd.
-                                                {processedData.some(d => !d.isValid) && ` (${processedData.filter(d => !d.isValid).length} overgeslagen)`}
-                                            </p>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="bg-red-500 p-2.5 rounded-full shadow-lg flex-shrink-0"><X className="h-5 w-5 text-white" /></div>
-                                        <div className="flex-1 sm:flex-auto">
-                                            <p className="text-red-900 font-bold leading-tight">Geen geldige rijen</p>
-                                            <p className="text-red-700 text-xs font-medium">Controleer de mapping en onbekende items.</p>
-                                        </div>
-                                    </>
-                                )}
+                        <div className="p-6 border-t bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="text-sm text-gray-500">
+                                <span className="font-bold text-gray-900">{processedData.filter(d => d.isValid).length}</span> taken worden toegevoegd.
                             </div>
-                            <div className="flex gap-4 w-full sm:w-auto flex-col sm:flex-row items-center">
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
                                 <button
                                     onClick={handleImport}
                                     disabled={isImporting || !processedData.some(d => d.isValid)}
@@ -1201,8 +1044,7 @@ function ImportToolContent() {
                         </div>
                     </Card>
                 </div>
-            )
-            }
+            )}
 
             <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
                 <DialogContent>
@@ -1228,44 +1070,6 @@ function ImportToolContent() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            <div className="mt-12 border-t pt-8 pb-8">
-                <Card className="border-orange-200 bg-orange-50">
-                    <CardHeader>
-                        <CardTitle className="text-orange-800">Database Tools</CardTitle>
-                        <CardDescription className="text-orange-700">
-                            Hulpmiddelen voor database correctie en onderhoud.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="font-medium text-orange-900">Planning Herberekenen</h3>
-                                <p className="text-sm text-orange-700 mt-1">
-                                    Herstel foutieve "Vandaag" datums door de import.
-                                    Dit berekent de volgende datum opnieuw op basis van "Laatste Onderhoud" + "Interval".
-                                </p>
-                            </div>
-                            <Button
-                                onClick={handleRecalculateDates}
-                                disabled={isRecalculating}
-                                variant="outline"
-                                className="border-orange-300 text-orange-800 hover:bg-orange-100 bg-white"
-                            >
-                                {isRecalculating ? 'Bezig...' : 'Datums Herstellen'}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        </div >
-    );
-}
-
-export function ImportTool() {
-    return (
-        <ErrorBoundary>
-            <ImportToolContent />
-        </ErrorBoundary>
+        </div>
     );
 }

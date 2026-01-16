@@ -10,7 +10,7 @@ import {
   Key,
   FileText,
   MessageSquarePlus,
-  Upload
+  Wrench
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { startTransition } from 'react';
@@ -62,6 +62,10 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                     <ListChecks className="w-4 h-4" /> Checklist
                   </TabsTrigger>
 
+                  <TabsTrigger value="extern" className="tab-pill-trigger">
+                    <Users className="w-4 h-4" /> Extern
+                  </TabsTrigger>
+
                   <TabsTrigger value="operators" className="tab-pill-trigger">
                     <Users className="w-4 h-4" /> Personeel
                   </TabsTrigger>
@@ -90,8 +94,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                     <MessageSquarePlus className="w-4 h-4" /> Inbox
                   </TabsTrigger>
 
-                  <TabsTrigger value="import" className="tab-pill-trigger">
-                    <Upload className="w-4 h-4" /> Import
+                  <TabsTrigger value="toolbox" className="tab-pill-trigger">
+                    <Wrench className="w-4 h-4" /> Toolbox
                   </TabsTrigger>
 
                 </TabsList>

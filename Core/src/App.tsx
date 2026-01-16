@@ -7,6 +7,7 @@ import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
 import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Toaster, toast } from 'sonner';
+import { OnboardingWizard } from './components/OnboardingWizard';
 
 // Lazy Imports
 const MaintenanceTable = lazy(() => import('./components/MaintenanceTable').then(m => ({ default: m.MaintenanceTable })));
@@ -19,7 +20,8 @@ const Reports = lazy(() => import('./components/Reports').then(m => ({ default: 
 const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
 const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({ default: m.FeedbackList })));
-const ImportTool = lazy(() => import('./components/ImportTool').then(m => ({ default: m.ImportTool })));
+const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: m.Toolbox })));
+const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
 
 function MainApp() {
   const {
@@ -32,7 +34,9 @@ function MainApp() {
     deleteTask,
     fetchTasks,
     fetchActivityLogs,
-    fetchUserAccounts
+    fetchUserAccounts,
+    isFirstRun,
+    checkFirstRun
   } = useAuth();
 
   const activePresses = presses.filter(p => p.active && !p.archived);
@@ -48,6 +52,8 @@ function MainApp() {
       press: group.press,
       pressId: group.pressId,
       opmerkingen: subtask.comment,
+      comment: subtask.comment,
+      isExternal: subtask.isExternal || false,
       created: new Date().toISOString(),
       updated: new Date().toISOString()
     }))
@@ -74,6 +80,15 @@ function MainApp() {
       sessionStorage.setItem('activeTab', activeTab);
     }
   }, [activeTab]);
+
+  // Handle post-onboarding redirect
+  useEffect(() => {
+    const redirect = localStorage.getItem('onboarding_redirect');
+    if (redirect === 'import') {
+      setActiveTab('toolbox');
+      localStorage.removeItem('onboarding_redirect');
+    }
+  }, []);
 
 
 
@@ -196,6 +211,7 @@ function MainApp() {
   // Updated p-2 to p-1 as requested
 
 
+  if (isFirstRun && !user) return <OnboardingWizard onComplete={checkFirstRun} />;
   if (!user) return <LoginForm />;
 
   const filteredTasks = user.role === 'press'
@@ -265,6 +281,7 @@ function MainApp() {
                             comment: subtask.comment || '',
                             commentDate: subtask.commentDate,
                             sort_order: subtask.sort_order || 0,
+                            isExternal: subtask.isExternal || false,
                             created: new Date().toISOString(),
                             updated: new Date().toISOString()
                           })));
@@ -286,6 +303,7 @@ function MainApp() {
             )}
 
             {activeTab === 'drukwerken' && <Drukwerken presses={activePresses} />}
+            {activeTab === 'extern' && <ExternalSummary />}
             {activeTab === 'reports' && <Reports tasks={tasks} />}
             {activeTab === 'checklist' && <MaintenanceChecklist tasks={tasks} />}
             {activeTab === 'operators' && <OperatorManagement />}
@@ -294,7 +312,7 @@ function MainApp() {
             {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
             {activeTab === 'logs' && <ActivityLog />}
             {activeTab === 'feedback-list' && <FeedbackList />}
-            {activeTab === 'import' && <ImportTool />}
+            {activeTab === 'toolbox' && <Toolbox />}
           </Suspense>
         )}
 
@@ -377,7 +395,8 @@ function App() {
           assignedTo: 'John Smith',
           comment: 'Completed on schedule.',
           commentDate: new Date('2025-10-15T14:30:00'),
-          sort_order: 0
+          sort_order: 0,
+          isExternal: false
         }
       ]
     },
@@ -401,7 +420,8 @@ function App() {
           assignedTo: 'Sarah Johnson',
           comment: 'All extinguishers passed inspection.',
           commentDate: new Date('2025-09-01T09:15:00'),
-          sort_order: 0
+          sort_order: 0,
+          isExternal: false
         }
       ]
     }

@@ -34,6 +34,7 @@ export interface Subtask {
   commentDate: Date | null;
   sort_order: number;
   opmerkingen?: string;
+  isExternal?: boolean;
 }
 
 export interface MaintenanceTask {
@@ -57,7 +58,8 @@ export interface MaintenanceTask {
   comment: string;
   commentDate: Date | null;
   sort_order: number;
-  subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number }[];
+  subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean }[];
+  isExternal: boolean;
   created: string;
   updated: string;
 }
@@ -187,6 +189,10 @@ interface AuthContextType {
   deleteFeedback?: (id: string) => Promise<boolean>;
   archiveFeedback?: (id: string) => Promise<boolean>;
   fetchParameters: () => Promise<Record<string, any>>;
+  isFirstRun: boolean;
+  testingMode: boolean;
+  setTestingMode: (val: boolean) => Promise<void>;
+  checkFirstRun: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -204,6 +210,55 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const [ploegen, setPloegen] = useState<Ploeg[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
+  const [isFirstRun, setIsFirstRun] = useState<boolean>(false);
+  const [testingMode, setTestingModeState] = useState<boolean>(false);
+
+  // --- Initial Checks ---
+  const checkFirstRun = useCallback(async () => {
+    try {
+      // Check if any users exist
+      const result = await pb.collection('users').getList(1, 1);
+      setIsFirstRun(result.totalItems === 0);
+    } catch (e) {
+      console.error("Check first run failed:", e);
+      // If table doesn't exist, it might be first run or DB error
+      setIsFirstRun(true);
+    }
+  }, []);
+
+  const fetchTestingMode = useCallback(async () => {
+    try {
+      // Try to get setting from app_settings collection
+      const record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
+      setTestingModeState(record.value === true);
+    } catch (e) {
+      // Collection likely doesn't exist yet, default to false
+      setTestingModeState(false);
+    }
+  }, []);
+
+  const setTestingMode = async (val: boolean) => {
+    try {
+      let record;
+      try {
+        record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
+        await pb.collection('app_settings').update(record.id, { value: val });
+      } catch (e) {
+        // Create if doesn't exist
+        await pb.collection('app_settings').create({ key: 'testing_mode', value: val });
+      }
+      setTestingModeState(val);
+      toast.success(`Test modus ${val ? 'ingeschakeld' : 'uitgeschakeld'}`);
+    } catch (e: any) {
+      console.error("Failed to set testing mode:", e);
+      toast.error(`Kon test modus niet instellen: ${e.message}`);
+    }
+  };
+
+  useEffect(() => {
+    checkFirstRun();
+    fetchTestingMode();
+  }, [checkFirstRun, fetchTestingMode]);
 
   // 1. Initialize Auth
   useEffect(() => {
@@ -402,7 +457,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           ],
           comment: record.opmerkingen || record.comment || record.notes || '',
           commentDate: record.commentDate ? new Date(record.commentDate) : (record.updated ? new Date(record.updated) : null),
-          sort_order: record.sort_order || 0
+          sort_order: record.sort_order || 0,
+          isExternal: record.is_external || false
         });
       });
 
@@ -470,7 +526,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
         comment: task.comment || '',
         commentDate: task.commentDate,
-        sort_order: task.sort_order || 0
+        sort_order: task.sort_order || 0,
+        is_external: task.isExternal || false
       };
 
       if (task.subtasks && task.subtasks.length > 0) {
@@ -484,7 +541,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
             subtask_subtext: subtask.subtext,
             opmerkingen: subtask.opmerkingen || task.opmerkingen,
             commentDate: subtask.commentDate || task.commentDate,
-            sort_order: subtask.sort_order || 0
+            sort_order: subtask.sort_order || 0,
+            is_external: subtask.isExternal || task.isExternal || false
           })
         );
         await Promise.all(promises);
@@ -560,6 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         opmerkingen: task.opmerkingen,
         comment: task.comment || '',
         commentDate: task.commentDate,
+        is_external: task.isExternal || false,
         sort_order: task.sort_order || 0
       });
 
@@ -920,9 +979,33 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         status: press.active ? 'actief' : 'niet actief'
       };
       console.log('Creating press with data:', data);
-      await pb.collection('persen').create(data);
+      const createdPress = await pb.collection('persen').create(data);
+
+      // Auto-create user account for this press
+      const pressName = press.name.trim();
+      const username = pressName.toLowerCase().replace(/\s+/g, '_');
+      const password = pressName + '12345';
+
+      try {
+        await pb.collection('users').create({
+          username: username,
+          email: `${username}@press.local`,
+          name: pressName,
+          password: password,
+          passwordConfirm: password,
+          role: 'press',
+          press: pressName,
+          pers: createdPress.id
+        });
+        console.log(`Auto-created account for press: ${pressName}`);
+        toast.success(`Pers "${pressName}" toegevoegd met account (wachtwoord: ${password})`);
+      } catch (userError: any) {
+        console.warn('Failed to auto-create user account:', userError);
+        toast.success('Pers succesvol toegevoegd (account kon niet automatisch aangemaakt worden)');
+      }
+
       await loadData();
-      toast.success('Pers succesvol toegevoegd');
+      await fetchUserAccounts();
     } catch (e: any) {
       console.error('Failed to add press - Full error:', e);
       console.error('Error data:', JSON.stringify(e.data || e.response?.data));
@@ -1122,7 +1205,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
     try {
       const data = {
-        user: log.user || 'Unknown',
+        user: log.user || 'System',
         action: log.action || '',
         entity: log.entity || '',
         entityId: log.entityId || '',
@@ -1360,7 +1443,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       updateFeedback,
       deleteFeedback,
       archiveFeedback,
-      fetchParameters
+      fetchParameters,
+      isFirstRun,
+      testingMode,
+      setTestingMode,
+      checkFirstRun
     }}>
       {children}
     </AuthContext.Provider >

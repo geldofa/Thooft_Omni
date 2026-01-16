@@ -258,8 +258,16 @@ export function CategoryManagement() {
     const handleSaveChanges = async () => {
         const updates = editedCategories.map(async (editedCategory) => {
             const originalCategory = categories.find(cat => cat.id === editedCategory.id);
-            if (originalCategory && JSON.stringify(originalCategory) !== JSON.stringify(editedCategory)) {
-                return await updateCategory(editedCategory);
+            if (originalCategory) {
+                // Compare specific fields instead of full JSON
+                const nameChanged = originalCategory.name !== editedCategory.name;
+                const activeChanged = originalCategory.active !== editedCategory.active;
+                const pressIdsChanged = JSON.stringify(originalCategory.pressIds.sort()) !== JSON.stringify(editedCategory.pressIds.sort());
+
+                if (nameChanged || activeChanged || pressIdsChanged) {
+                    console.log('Updating category:', editedCategory.name, { nameChanged, activeChanged, pressIdsChanged });
+                    return await updateCategory(editedCategory);
+                }
             }
             return null;
         });

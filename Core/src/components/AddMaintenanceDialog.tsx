@@ -137,10 +137,11 @@ export function AddMaintenanceDialog({
     sort_order: 0,
     isGroupTask: false,
     subtaskName: '',
-    subtaskSubtext: ''
+    subtaskSubtext: '',
+    isExternal: false
   };
 
-  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number }[]>([]);
+  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean }[]>([]);
 
   const [taskFormData, setTaskFormData] = useState(initialTaskData);
   const [initialValues, setInitialValues] = useState(initialTaskData);
@@ -169,7 +170,8 @@ export function AddMaintenanceDialog({
           opmerkingen: editTask.opmerkingen,
           commentDate: editTask.commentDate,
           sort_order: editTask.sort_order || 0,
-          isGroupTask: false
+          isGroupTask: false,
+          isExternal: editTask.isExternal || false
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -192,7 +194,8 @@ export function AddMaintenanceDialog({
           sort_order: firstTask.sort_order || 0,
           isGroupTask: true,
           subtaskName: '',
-          subtaskSubtext: ''
+          subtaskSubtext: '',
+          isExternal: firstTask.isExternal || false
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -203,7 +206,8 @@ export function AddMaintenanceDialog({
           subtext: t.subtaskSubtext || t.taskSubtext || '',
           opmerkingen: t.opmerkingen,
           commentDate: t.commentDate,
-          sort_order: t.sort_order || 0
+          sort_order: t.sort_order || 0,
+          isExternal: t.isExternal || false
         })));
       } else {
         // Reset for new task - use activePress if provided
@@ -295,7 +299,8 @@ export function AddMaintenanceDialog({
       subtaskName: taskFormData.subtaskName || taskFormData.task,
       subtaskSubtext: taskFormData.subtaskSubtext || taskFormData.taskSubtext,
       subtasks: taskFormData.isGroupTask ? subtasks.map((st, index) => ({ ...st, sort_order: index })) : [],
-      sort_order: taskFormData.sort_order
+      sort_order: taskFormData.sort_order,
+      isExternal: taskFormData.isExternal
     };
 
     if (onUpdateGroup && initialGroup) {
@@ -325,6 +330,7 @@ export function AddMaintenanceDialog({
           comment: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
           commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
           sort_order: index, // Use current array index as sort order
+          isExternal: taskFormData.isExternal, // Propagation
           created: initialTask?.created || new Date().toISOString(),
           updated: new Date().toISOString()
         } as MaintenanceTask;
@@ -424,6 +430,23 @@ export function AddMaintenanceDialog({
                   Groepstaak
                 </Label>
                 <span className="text-sm text-gray-500">(Aanvinken als dit een groep gerelateerde taken is)</span>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="isExternal">Externe Taak</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isExternal"
+                  checked={taskFormData.isExternal}
+                  onChange={(e) => setTaskFormData({ ...taskFormData, isExternal: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Label htmlFor="isExternal" className="text-sm font-medium leading-none">
+                  Externe Taak
+                </Label>
+                <span className="text-sm text-gray-500">(Zichtbaar in het externe overzicht voor meestergasten)</span>
               </div>
             </div>
 

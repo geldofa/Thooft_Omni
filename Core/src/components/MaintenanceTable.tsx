@@ -89,6 +89,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     opmerkingen: subtask.comment,
     commentDate: subtask.commentDate,
     sort_order: subtask.sort_order || 0,
+    isExternal: subtask.isExternal || false,
+    comment: subtask.comment,
     created: new Date().toISOString(),
     updated: new Date().toISOString()
   });
@@ -624,7 +626,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   <div className="w-6 flex-shrink-0"></div>
 
                   <div className="max-w-xs flex-1">
-                    <div className="line-clamp-2">{subtask.subtaskName}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="line-clamp-2">{subtask.subtaskName}</div>
+                      {subtask.isExternal && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 bg-blue-50 text-blue-700">EXT</Badge>
+                      )}
+                    </div>
                     {subtask.subtext && (
                       <div className="text-gray-500 text-xs line-clamp-1">{subtask.subtext}</div>
                     )}
@@ -744,7 +751,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     </div>
 
                     <div className="flex-1 max-w-xs">
-                      <div className="line-clamp-2 text-gray-700 leading-snug">{subtask.subtaskName}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="line-clamp-2 text-gray-700 leading-snug">{subtask.subtaskName}</div>
+                        {subtask.isExternal && (
+                          <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 bg-blue-50 text-blue-700">EXT</Badge>
+                        )}
+                      </div>
                       {subtask.subtext && (
                         <div className="text-gray-400 text-[10px] leading-tight line-clamp-1 italic">{subtask.subtext}</div>
                       )}
