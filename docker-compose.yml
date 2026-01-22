@@ -1,6 +1,6 @@
 services:
   app:
-    image: geldofa/thooft_omni:latest
+    image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "8080:80"
     environment:
