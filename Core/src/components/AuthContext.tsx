@@ -26,7 +26,7 @@ export interface Subtask {
   lastMaintenance: Date | null;
   nextMaintenance: Date;
   maintenanceInterval: number;
-  maintenanceIntervalUnit: 'days' | 'weeks' | 'months';
+  maintenanceIntervalUnit: 'days' | 'weeks' | 'months' | 'years';
   assignedTo: string;
   assignedToIds?: string[];
   assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
@@ -50,7 +50,7 @@ export interface MaintenanceTask {
   lastMaintenance: Date | null;
   nextMaintenance: Date;
   maintenanceInterval: number;
-  maintenanceIntervalUnit: 'days' | 'weeks' | 'months';
+  maintenanceIntervalUnit: 'days' | 'weeks' | 'months' | 'years';
   assignedTo: string;
   assignedToIds?: string[];
   assignedToTypes?: ('ploeg' | 'operator' | 'external')[];
@@ -190,6 +190,8 @@ interface AuthContextType {
   archiveFeedback?: (id: string) => Promise<boolean>;
   fetchParameters: () => Promise<Record<string, any>>;
   isFirstRun: boolean;
+  onboardingDismissed: boolean;
+  setOnboardingDismissed: (val: boolean) => void;
   testingMode: boolean;
   setTestingMode: (val: boolean) => Promise<void>;
   checkFirstRun: () => Promise<void>;
@@ -211,142 +213,14 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [isFirstRun, setIsFirstRun] = useState<boolean>(false);
+  const [onboardingDismissed, setOnboardingDismissedState] = useState<boolean>(() => {
+    return localStorage.getItem('onboarding_dismissed') === 'true';
+  });
   const [testingMode, setTestingModeState] = useState<boolean>(false);
 
-  // --- Initial Checks ---
-  const checkFirstRun = useCallback(async () => {
-    try {
-      // Check if any users exist
-      const result = await pb.collection('users').getList(1, 1);
-      setIsFirstRun(result.totalItems === 0);
-    } catch (e) {
-      console.error("Check first run failed:", e);
-      // If table doesn't exist, it might be first run or DB error
-      setIsFirstRun(true);
-    }
-  }, []);
-
-  const fetchTestingMode = useCallback(async () => {
-    try {
-      // Try to get setting from app_settings collection
-      const record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
-      setTestingModeState(record.value === true);
-    } catch (e) {
-      // Collection likely doesn't exist yet, default to false
-      setTestingModeState(false);
-    }
-  }, []);
-
-  const setTestingMode = async (val: boolean) => {
-    try {
-      let record;
-      try {
-        record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
-        await pb.collection('app_settings').update(record.id, { value: val });
-      } catch (e) {
-        // Create if doesn't exist
-        await pb.collection('app_settings').create({ key: 'testing_mode', value: val });
-      }
-      setTestingModeState(val);
-      toast.success(`Test modus ${val ? 'ingeschakeld' : 'uitgeschakeld'}`);
-    } catch (e: any) {
-      console.error("Failed to set testing mode:", e);
-      toast.error(`Kon test modus niet instellen: ${e.message}`);
-    }
-  };
-
-  useEffect(() => {
-    checkFirstRun();
-    fetchTestingMode();
-  }, [checkFirstRun, fetchTestingMode]);
-
-  // 1. Initialize Auth
-  useEffect(() => {
-    // Check if valid auth token exists
-    if (pb.authStore.isValid) {
-      const model = pb.authStore.model;
-      if (model) {
-        // Correctly handle press identification
-        let pressId = model.pers;
-        let pressName = model.press;
-
-        // If pressId is missing but we have a name, we'll try to resolve it in loadData
-        // but for now we set what we have.
-
-        setUser({
-          id: model.id,
-          username: model.username,
-          name: model.name,
-          role: model.role ? mapDbRoleToUi(model.role) : 'admin',
-          press: pressName,
-          pressId: pressId
-        });
-      }
-    }
-  }, []);
-
-
-
-
-  const login = async (username: string, password: string): Promise<boolean> => {
-    try {
-      if (!username || !password) return false;
-
-      const isEmail = username.includes('@');
-
-      // 1. Identity is an email -> Try Admin (Superuser) first, then User collection
-      if (isEmail) {
-        try {
-          const authData: any = await pb.admins.authWithPassword(username, password);
-          if (pb.authStore.isValid && authData.admin) {
-            setUser({
-              id: authData.admin.id,
-              username: authData.admin.email,
-              name: 'Admin',
-              role: 'admin'
-            });
-            return true;
-          }
-        } catch (e) {
-          // Admin failed, try user collection as fallback for email-based login
-          try {
-            const authData = await pb.collection('users').authWithPassword(username, password);
-            if (pb.authStore.isValid && authData.record) {
-              setUser({
-                id: authData.record.id,
-                username: authData.record.username,
-                name: authData.record.name,
-                role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
-                press: authData.record.press,
-                pressId: authData.record.pers
-              });
-              return true;
-            }
-          } catch (e2) { /* both failed */ }
-        }
-      } else {
-        // 2. Identity is a username -> ONLY try User collection
-        // (PocketBase Admins MUST use email, so we skip trying them to avoid console noise)
-        try {
-          const authData = await pb.collection('users').authWithPassword(username, password);
-          if (pb.authStore.isValid && authData.record) {
-            setUser({
-              id: authData.record.id,
-              username: authData.record.username,
-              name: authData.record.name,
-              role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
-              press: authData.record.press,
-              pressId: authData.record.pers
-            });
-            return true;
-          }
-        } catch (e) { /* failed */ }
-      }
-
-      return false;
-    } catch (e) {
-      return false;
-    }
+  const setOnboardingDismissed = (val: boolean) => {
+    setOnboardingDismissedState(val);
+    localStorage.setItem('onboarding_dismissed', val ? 'true' : 'false');
   };
 
   const logout = () => {
@@ -354,7 +228,53 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     setUser(null);
   };
 
-  // --- Data Mapping Logic ---
+  const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
+    try {
+      const data = {
+        user: log.user || 'System',
+        action: log.action || '',
+        entity: log.entity || '',
+        entityId: log.entityId || '',
+        entityName: log.entityName || '',
+        press: log.press || '',
+        details: log.details || `${log.action} ${log.entityName || ''}`,
+        oldValue: log.oldValue || '',
+        newValue: log.newValue || ''
+      };
+      await pb.collection('activity_logs').create(data);
+    } catch (e: any) {
+      console.error('Add log failed:', e.response || e);
+    }
+  };
+
+  const mapDbRoleToUi = (dbRole: string): UserRole => {
+    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press' };
+    return roleMap[dbRole] || 'press';
+  };
+
+  const mapUiRoleToDb = (uiRole: UserRole): string => {
+    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator' };
+    return roleMap[uiRole || 'press'] || 'Operator';
+  };
+
+  // --- Data Fetching ---
+  const fetchTestingMode = useCallback(async () => {
+    try {
+      const record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
+      setTestingModeState(record.value === true);
+    } catch (e) {
+      setTestingModeState(false);
+    }
+  }, []);
+
+  const checkFirstRun = useCallback(async () => {
+    try {
+      const result = await pb.collection('users').getList(1, 1);
+      setIsFirstRun(result.totalItems === 0);
+    } catch (e) {
+      setIsFirstRun(true);
+    }
+  }, []);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -428,6 +348,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
               if (unit.includes('maand') || unit.includes('month')) {
                 last.setMonth(last.getMonth() + record.interval);
+              } else if (unit.includes('jaar') || unit.includes('year')) {
+                last.setFullYear(last.getFullYear() + record.interval);
               } else if (unit.includes('week')) {
                 last.setDate(last.getDate() + (record.interval * 7));
               } else {
@@ -436,16 +358,17 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
               }
               return last;
             }
-            if (!record.last_date && !record.next_date) {
-              // Console warning for debugging (only showing once per session usually, but here per fetch)
-              // console.warn(`Task ${record.task} missing last_date, defaulting next to Today.`);
-            }
             return new Date();
           })(),
           maintenanceInterval: record.interval || 0,
-          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
-            record.interval_unit === 'Weken' ? 'weeks' :
-              record.interval_unit === 'Maanden' ? 'months' : 'days',
+          maintenanceIntervalUnit: (() => {
+            const u = (record.interval_unit || '').toLowerCase();
+            if (u === 'dagen' || u === 'days') return 'days';
+            if (u === 'weken' || u === 'weeks') return 'weeks';
+            if (u === 'maanden' || u === 'months') return 'months';
+            if (u === 'jaren' || u === 'years') return 'years';
+            return 'days';
+          })(),
           assignedTo: assignedNamesCombined,
           assignedToIds: [
             ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])),
@@ -473,6 +396,266 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       console.error("Fetch tasks failed:", e);
     }
   }, [user, categories, presses]); // Add user and other data it maps
+
+  const fetchUserAccounts = useCallback(async () => {
+    try {
+      const records = await pb.collection('users').getFullList();
+      records.sort((a: any, b: any) => (a.username || '').localeCompare(b.username || ''));
+      setUserAccounts(records.map((r: any) => ({
+        id: r.id, username: r.username, name: r.name, role: mapDbRoleToUi(r.role), press: r.press, operatorId: r.operatorId, password: r.plain_password
+      })));
+    } catch (e) {
+      console.error("Fetch users failed", e);
+    }
+  }, []);
+
+  const fetchOperators = useCallback(async () => {
+    try {
+      const records = await pb.collection('operatoren').getFullList();
+      const ops: Operator[] = [];
+      const externals: ExternalEntity[] = [];
+      records.forEach((r: any) => {
+        const pressNames = Array.isArray(r.presses) ? r.presses : [];
+        const entity = {
+          id: r.id, name: r.naam, employeeId: r.interne_id?.toString() || '', presses: pressNames as string[], active: r.active !== false, canEditTasks: !!r.can_edit_tasks, canAccessOperatorManagement: !!r.can_access_management
+        };
+        if (r.dienstverband === 'Extern') externals.push(entity as ExternalEntity);
+        else ops.push(entity as Operator);
+      });
+      setOperators(ops);
+      setExternalEntities(externals);
+    } catch (e) {
+      console.error("Fetch operators failed", e);
+    }
+  }, []);
+
+  const fetchPloegen = useCallback(async () => {
+    try {
+      const records = await pb.collection('ploegen').getFullList({ expand: 'pers,leden' });
+      const teams: Ploeg[] = records.map((r: any) => ({
+        id: r.id, name: r.naam, operatorIds: r.leden || [], presses: (r.expand?.pers ? [r.expand.pers.naam] : []), active: r.active !== false
+      }));
+      setPloegen(teams);
+    } catch (e) {
+      console.error("Fetch ploegen failed", e);
+    }
+  }, []);
+
+  const fetchActivityLogs = useCallback(async () => {
+    try {
+      const records = await pb.collection('activity_logs').getFullList();
+      records.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
+      setActivityLogs(records.map((r: any) => ({
+        id: r.id, timestamp: new Date(r.created), user: r.user, action: r.action, entity: r.entity, entityId: r.entityId, entityName: r.entityName, details: r.details, press: r.press
+      })));
+    } catch (e) {
+      console.error("Fetch logs failed", e);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    try {
+      // 0. If user is press-role but missing press info, try to refresh user record first
+      if (user && user.role === 'press' && (!user.press || !user.pressId)) {
+        try {
+          const freshUser = await pb.collection('users').getOne(user.id);
+          if (freshUser.press || freshUser.pers) {
+            setUser(prev => prev ? {
+              ...prev,
+              press: freshUser.press || prev.press,
+              pressId: freshUser.pers || prev.pressId
+            } : null);
+          }
+        } catch (e) {
+          console.error("Failed to auto-refresh user record:", e);
+        }
+      }
+
+      const [pressesResult, categoriesResult] = await Promise.all([
+        pb.collection('persen').getFullList(),
+        pb.collection('categorieen').getFullList()
+      ]);
+
+      setPresses(pressesResult.map((p: any) => {
+        let catOrder = p.category_order;
+        if (typeof catOrder === 'string') {
+          try {
+            catOrder = JSON.parse(catOrder);
+          } catch (e) {
+            console.warn('Failed to parse category_order for press', p.naam);
+          }
+        }
+        return {
+          id: p.id,
+          name: p.naam,
+          active: p.status !== 'niet actief',
+          archived: p.archived || false,
+          category_order: Array.isArray(catOrder) ? catOrder : []
+        };
+      }));
+
+      setCategories(categoriesResult.map((c: any) => ({
+        id: c.id,
+        name: c.naam,
+        pressIds: c.presses || [],
+        active: c.active !== false
+      })));
+
+      // Set category order from current press if available
+      // Set category order from current press if available
+      // Set category order logic:
+      // 1. If user is Press, use their press's order
+      // 2. If user is Admin, use the first active press's order (fallback)
+      const targetPressId = user?.pressId || (user?.role === 'admin' && pressesResult.length > 0 ? (pressesResult.find((p: any) => p.status !== 'niet actief')?.id || pressesResult[0].id) : null);
+
+      if (targetPressId) {
+        const currentPress = pressesResult.find((p: any) => p.id === targetPressId);
+        if (currentPress?.category_order) {
+          let order = currentPress.category_order;
+          // Handle if stored as stringified JSON
+          if (typeof order === 'string') {
+            try {
+              const parsed = JSON.parse(order);
+              if (Array.isArray(parsed)) order = parsed;
+            } catch (e) {
+              console.error("Failed to parse category order", e);
+            }
+          }
+
+          if (Array.isArray(order)) {
+            setCategoryOrder(order);
+          }
+        }
+      }
+
+      await Promise.all([
+        fetchTasks(),
+        fetchUserAccounts(),
+        fetchOperators(),
+        fetchPloegen()
+      ]);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  }, [fetchTasks, fetchUserAccounts, fetchOperators, fetchPloegen]);
+
+  const setTestingMode = async (val: boolean) => {
+    try {
+      let record;
+      try {
+        record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
+        await pb.collection('app_settings').update(record.id, { value: val });
+      } catch (e) {
+        // Create if doesn't exist
+        await pb.collection('app_settings').create({ key: 'testing_mode', value: val });
+      }
+      setTestingModeState(val);
+      toast.success(`Test modus ${val ? 'ingeschakeld' : 'uitgeschakeld'}`);
+    } catch (e: any) {
+      console.error("Failed to set testing mode:", e);
+      toast.error(`Kon test modus niet instellen: ${e.message}`);
+    }
+  };
+
+  useEffect(() => {
+    checkFirstRun();
+    fetchTestingMode();
+  }, [checkFirstRun, fetchTestingMode]);
+
+  // 1. Initialize Auth
+  useEffect(() => {
+    // Check if valid auth token exists
+    if (pb.authStore.isValid) {
+      const model = pb.authStore.model;
+      if (model) {
+        // Correctly handle press identification
+        let pressId = model.pers;
+        let pressName = model.press;
+
+        // If pressId is missing but we have a name, we'll try to resolve it in loadData
+        // but for now we set what we have.
+
+        setUser({
+          id: model.id,
+          username: model.username,
+          name: model.name,
+          role: model.role ? mapDbRoleToUi(model.role) : 'admin',
+          press: pressName,
+          pressId: pressId
+        });
+      }
+    }
+  }, []);
+
+
+
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      if (!username || !password) return false;
+
+      let identity = username;
+
+      // 1. Try to find the user record first
+      try {
+        const records = await pb.collection('users').getList(1, 1, {
+          filter: `username = "${username}" || email = "${username}"`
+        });
+
+        if (records.totalItems > 0) {
+          const record = records.items[0];
+          // Use the record's email if it's a valid-looking email, otherwise use username
+          identity = (record.email && record.email.includes('@') && record.email !== 'undefined')
+            ? record.email
+            : (record.username || username);
+          console.log(`[Auth] Found user record, using identity: ${identity}`);
+        }
+      } catch (findError) {
+        console.warn("[Auth] Pre-auth lookup failed:", findError);
+      }
+
+      // 2. Perform the actual authentication
+      try {
+        const authData = await pb.collection('users').authWithPassword(identity, password);
+        if (pb.authStore.isValid && authData.record) {
+          setUser({
+            id: authData.record.id,
+            username: authData.record.username,
+            name: authData.record.name,
+            role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
+            press: authData.record.press,
+            pressId: authData.record.pers
+          });
+          return true;
+        }
+      } catch (e) {
+        // Fallback for Admin (Superuser) login
+        // In PB 0.23, superusers are in the _superusers collection
+        if (username.includes('@')) {
+          try {
+            const authData: any = await pb.collection('_superusers').authWithPassword(username, password);
+            if (pb.authStore.isValid && authData.record) {
+              setUser({
+                id: authData.record.id,
+                username: authData.record.email,
+                name: 'Admin',
+                role: 'admin'
+              });
+              return true;
+            }
+          } catch (adminError) {
+            console.error("[Auth] Superuser login failed:", adminError);
+          }
+        }
+        console.error("[Auth] User login failed:", e);
+      }
+
+      return false;
+    } catch (e) {
+      console.error("[Auth] Login process error:", e);
+      return false;
+    }
+  };
 
   const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
     try {
@@ -511,6 +694,20 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         } catch (err) {
           console.error(`Failed to create new category '${newName}':`, err);
         }
+      } else if (finalCategoryId && finalPressId) {
+        // Fallback: Ensure existing category is linked to the press
+        try {
+          const catRecord = await pb.collection('categorieen').getOne(finalCategoryId);
+          const existingPresses = Array.isArray(catRecord.presses) ? catRecord.presses : [];
+          if (!existingPresses.includes(finalPressId)) {
+            await pb.collection('categorieen').update(finalCategoryId, {
+              presses: [...existingPresses, finalPressId]
+            });
+            console.log(`[SafetyLink] Linked existing category ${finalCategoryId} to press ${finalPressId}`);
+          }
+        } catch (err) {
+          console.error(`Failed to link existing category ${finalCategoryId} to press ${finalPressId}:`, err);
+        }
       }
 
       const baseData = {
@@ -521,7 +718,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         interval: task.maintenanceInterval,
         interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
           task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-            task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
+              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
         assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
         assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
         comment: task.comment || '',
@@ -612,7 +810,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         interval: task.maintenanceInterval,
         interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
           task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-            task.maintenanceIntervalUnit === 'months' ? 'Maanden' : 'Dagen',
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
+              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
         assigned_operator: operatorIds,
         assigned_team: teamIds,
         opmerkingen: task.opmerkingen,
@@ -1037,98 +1236,6 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   // --- User Account Management ---
 
-  const mapDbRoleToUi = (dbRole: string): UserRole => {
-    const roleMap: Record<string, UserRole> = {
-      'Admin': 'admin',
-      'Meestergast': 'meestergast',
-      'Operator': 'press'
-    };
-    return roleMap[dbRole] || 'press';
-  };
-
-  const mapUiRoleToDb = (uiRole: UserRole): string => {
-    const roleMap: Record<string, string> = {
-      'admin': 'Admin',
-      'meestergast': 'Meestergast',
-      'press': 'Operator'
-    };
-    return roleMap[uiRole || 'press'] || 'Operator';
-  };
-
-  const fetchUserAccounts = useCallback(async () => {
-    try {
-      const records = await pb.collection('users').getFullList();
-      records.sort((a: any, b: any) => (a.username || '').localeCompare(b.username || ''));
-      setUserAccounts(records.map((r: any) => ({
-        id: r.id,
-        username: r.username,
-        name: r.name,
-        role: mapDbRoleToUi(r.role),
-        press: r.press,
-        operatorId: r.operatorId
-      })));
-    } catch (e) {
-      console.error("Fetch users failed", e);
-    }
-  }, []);
-
-  const fetchOperators = useCallback(async () => {
-    try {
-      // No expand needed - presses are stored as names directly
-      const records = await pb.collection('operatoren').getFullList();
-
-      const ops: Operator[] = [];
-      const externals: ExternalEntity[] = [];
-
-      records.forEach((r: any) => {
-        // presses is now a JSON array of names directly
-        const pressNames = Array.isArray(r.presses) ? r.presses : [];
-        console.log('Operator:', r.naam, 'presses:', pressNames);
-
-        const entity = {
-          id: r.id,
-          name: r.naam,
-          employeeId: r.interne_id?.toString() || '',
-          presses: pressNames as string[],
-          active: r.active !== false,
-          canEditTasks: !!r.can_edit_tasks,
-          canAccessOperatorManagement: !!r.can_access_management
-        };
-
-        if (r.dienstverband === 'Extern') {
-          externals.push(entity as ExternalEntity);
-        } else {
-          ops.push(entity as Operator);
-        }
-      });
-
-      setOperators(ops);
-      setExternalEntities(externals);
-    } catch (e) {
-      console.error("Fetch operators failed", e);
-    }
-  }, []);
-
-  const fetchPloegen = useCallback(async () => {
-    try {
-      const records = await pb.collection('ploegen').getFullList({
-        expand: 'pers,leden'
-      });
-
-      const teams: Ploeg[] = records.map((r: any) => ({
-        id: r.id,
-        name: r.naam,
-        operatorIds: r.leden || [],
-        presses: (r.expand?.pers ? [r.expand.pers.naam] : []),
-        active: r.active !== false
-      }));
-
-      setPloegen(teams);
-    } catch (e) {
-      console.error("Fetch ploegen failed", e);
-    }
-  }, []);
-
   const addUserAccount = async (account: UserAccount) => {
     try {
       const pressId = presses.find(p => p.name === account.press)?.id;
@@ -1141,8 +1248,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         passwordConfirm: account.password,
         role: mapUiRoleToDb(account.role),
         press: account.press,
-        pers: pressId // Save the relation
+        pers: pressId, // Save the relation
+        plain_password: account.password // Store for Quick Login in testing
       });
+
       await fetchUserAccounts();
       toast.success(`User ${account.username} created`);
       return true;
@@ -1199,139 +1308,6 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       toast.error(`Failed to change password: ${e.message}`);
     }
   };
-
-  // --- Activity Logs ---
-
-  const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
-    try {
-      const data = {
-        user: log.user || 'System',
-        action: log.action || '',
-        entity: log.entity || '',
-        entityId: log.entityId || '',
-        entityName: log.entityName || '',
-        press: log.press || '',
-        details: log.details || `${log.action} ${log.entityName || ''}`,
-        oldValue: log.oldValue || '',
-        newValue: log.newValue || ''
-      };
-      console.log('Creating activity log with data:', data);
-      await pb.collection('activity_logs').create(data);
-    } catch (e: any) {
-      console.error('Add log failed:', e.response || e);
-    }
-  };
-
-  const fetchActivityLogs = useCallback(async () => {
-    try {
-      const records = await pb.collection('activity_logs').getFullList();
-      // Client-side sort
-      records.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
-      setActivityLogs(records.map((r: any) => ({
-        id: r.id,
-        timestamp: new Date(r.created),
-        user: r.user,
-        action: r.action,
-        entity: r.entity,
-        entityId: r.entityId,
-        entityName: r.entityName,
-        details: r.details,
-        press: r.press
-      })));
-    } catch (e) {
-      console.error("Fetch logs failed", e);
-    }
-  }, []);
-
-
-
-  // --- Initial Loading ---
-
-  const loadData = useCallback(async () => {
-    try {
-      // 0. If user is press-role but missing press info, try to refresh user record first
-      if (user && user.role === 'press' && (!user.press || !user.pressId)) {
-        try {
-          const freshUser = await pb.collection('users').getOne(user.id);
-          if (freshUser.press || freshUser.pers) {
-            setUser(prev => prev ? {
-              ...prev,
-              press: freshUser.press || prev.press,
-              pressId: freshUser.pers || prev.pressId
-            } : null);
-          }
-        } catch (e) {
-          console.error("Failed to auto-refresh user record:", e);
-        }
-      }
-
-      const [pressesResult, categoriesResult] = await Promise.all([
-        pb.collection('persen').getFullList(),
-        pb.collection('categorieen').getFullList()
-      ]);
-
-      setPresses(pressesResult.map((p: any) => {
-        let catOrder = p.category_order;
-        if (typeof catOrder === 'string') {
-          try {
-            catOrder = JSON.parse(catOrder);
-          } catch (e) {
-            console.warn('Failed to parse category_order for press', p.naam);
-          }
-        }
-        return {
-          id: p.id,
-          name: p.naam,
-          active: p.status !== 'niet actief',
-          archived: p.archived || false,
-          category_order: Array.isArray(catOrder) ? catOrder : []
-        };
-      }));
-
-      setCategories(categoriesResult.map((c: any) => ({
-        id: c.id,
-        name: c.naam,
-        pressIds: c.presses || [],
-        active: c.active !== false
-      })));
-
-      // Set category order from current press if available
-      // Set category order from current press if available
-      // Set category order logic:
-      // 1. If user is Press, use their press's order
-      // 2. If user is Admin, use the first active press's order (fallback)
-      const targetPressId = user?.pressId || (user?.role === 'admin' && pressesResult.length > 0 ? (pressesResult.find((p: any) => p.status !== 'niet actief')?.id || pressesResult[0].id) : null);
-
-      if (targetPressId) {
-        const currentPress = pressesResult.find((p: any) => p.id === targetPressId);
-        if (currentPress?.category_order) {
-          let order = currentPress.category_order;
-          // Handle if stored as stringified JSON
-          if (typeof order === 'string') {
-            try {
-              const parsed = JSON.parse(order);
-              if (Array.isArray(parsed)) order = parsed;
-            } catch (e) {
-              console.error("Failed to parse category order", e);
-            }
-          }
-
-          if (Array.isArray(order)) {
-            setCategoryOrder(order);
-          }
-        }
-      }
-
-      await Promise.all([
-        fetchTasks(),
-        fetchUserAccounts(),
-        fetchOperators(),
-        fetchPloegen()
-      ]);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-  }, [fetchTasks, fetchUserAccounts, fetchOperators, fetchPloegen]);
 
   // 4. Initial Data Load
   useEffect(() => {
@@ -1444,7 +1420,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       deleteFeedback,
       archiveFeedback,
       fetchParameters,
-      isFirstRun,
+      isFirstRun: isFirstRun && !onboardingDismissed,
+      onboardingDismissed,
+      setOnboardingDismissed,
       testingMode,
       setTestingMode,
       checkFirstRun

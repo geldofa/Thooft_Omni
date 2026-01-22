@@ -40,6 +40,13 @@ export function ExternalSummary() {
                 }
             });
         });
+        // Sort by nextMaintenance (deadline)
+        result.sort((a, b) => {
+            const dateA = a.nextMaintenance ? new Date(a.nextMaintenance).getTime() : 0;
+            const dateB = b.nextMaintenance ? new Date(b.nextMaintenance).getTime() : 0;
+            return dateA - dateB;
+        });
+
         return result;
     }, [tasks]);
 

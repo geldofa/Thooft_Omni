@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth, pb } from './AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
-import { Lock } from 'lucide-react';
+import { Rocket } from 'lucide-react';
 
 export function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const { login, testingMode, userAccounts, fetchUserAccounts } = useAuth();
 
   useEffect(() => {
@@ -34,77 +35,138 @@ export function LoginForm() {
     }
   };
 
+  const [searchingId, setSearchingId] = useState<string | null>(null);
+
   const handleQuickLogin = async (acc: any) => {
     setError('');
+    setSearchingId(acc.id);
     setUsername(acc.username);
+    setPassword('');
+    console.log(`[QuickLogin] Starting for ${acc.username}...`);
 
-    // Try conventions: username, username123, or {name}12345
-    const passwordsToTry = [
-      acc.username,
-      `${acc.username}123`,
-      `${acc.name}12345`,
-      'admin123'
-    ];
+    let workingPw = acc.password; // Use stored password if available
 
-    for (const pw of passwordsToTry) {
-      if (!pw) continue;
-      const success = await login(acc.username, pw);
-      if (success) {
-        setPassword(pw);
-        return;
+    if (!workingPw) {
+      const passwordsToTry = [
+        acc.username,
+        `${acc.username}123`,
+        `${acc.username}1234`, // 9 chars
+        `${acc.username}12345`,
+        `${acc.name}12345`,
+        `${acc.name}123`,
+        'admin123',
+        'admin1234', // 9 chars
+        'admin12345'
+      ];
+
+      const tempPb = new (pb.constructor as any)(pb.baseUrl);
+
+      for (const pw of passwordsToTry) {
+        if (!pw) continue;
+        try {
+          const records = await tempPb.collection('users').getList(1, 1, {
+            filter: `username = "${acc.username}" || email = "${acc.username}"`
+          });
+
+          let identity = acc.username;
+          if (records.totalItems > 0) {
+            const record = records.items[0];
+            identity = (record.email && record.email.includes('@') && record.email !== 'undefined')
+              ? record.email
+              : (record.username || acc.username);
+          }
+
+          await tempPb.collection('users').authWithPassword(identity, pw);
+          if (tempPb.authStore.isValid) {
+            workingPw = pw;
+            break;
+          }
+        } catch (e) {
+          // Failures here cause the 400 errors in console if no password works
+        }
       }
     }
 
-    setError(`Kon niet automatisch inloggen voor ${acc.username}. Vul handmatig het wachtwoord in.`);
+    setSearchingId(null);
+
+    if (workingPw) {
+      // Typing effect
+      for (let i = 1; i <= workingPw.length; i++) {
+        setPassword(workingPw.substring(0, i));
+        await new Promise(resolve => setTimeout(resolve, 80));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 400));
+      setIsLoggingIn(true);
+      const success = await login(acc.username, workingPw);
+      setIsLoggingIn(false);
+
+      if (!success) {
+        setError(`Automatisch inloggen mislukt voor ${acc.username}. Controleer het wachtwoord.`);
+      }
+    } else {
+      setPassword('');
+      setError(`Kon geen geldig wachtwoord vinden voor ${acc.username}. Vul het handmatig in.`);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
-      <Card className="w-full max-w-md shadow-xl border-none">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-              <Lock className="w-8 h-8 text-white" />
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+      <Card className="w-full max-w-md overflow-hidden rounded-[2.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border-none bg-white">
+        <div className="h-2 bg-blue-600" style={{ backgroundColor: '#2563eb' }} />
+        <CardHeader className="pt-12 pb-6 space-y-4">
+          <div className="flex flex-col items-center justify-center">
+            <div
+              className="p-4 bg-blue-600 rounded-3xl shadow-xl shadow-blue-100 mb-6 rotate-3 hover:rotate-0 transition-transform duration-500"
+              style={{ backgroundColor: '#2563eb' }}
+            >
+              <Rocket className="w-10 h-10 text-white" />
             </div>
+            <h1
+              className="text-4xl font-black italic tracking-tighter text-slate-900 leading-none"
+              style={{ fontWeight: 900 }}
+            >
+              T'HOOFT OMNI
+            </h1>
+            <span className="text-[10px] font-bold text-blue-600 tracking-[0.2em] uppercase mt-2">Maintenance OS</span>
           </div>
-          <CardTitle className="text-2xl text-center font-bold text-gray-900">Omni.Thooft</CardTitle>
-          <CardDescription className="text-center text-gray-500">
+          <CardDescription className="text-center text-slate-500 pt-2">
             Log in op het onderhoudssysteem
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 px-8 pb-8">
             {error && (
-              <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-800">
+              <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-800 rounded-xl">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
             <div className="space-y-2">
-              <Label htmlFor="username">Gebruikersnaam</Label>
+              <Label htmlFor="username" className="text-slate-600 ml-1">Gebruikersnaam</Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Gebruikersnaam"
+                placeholder="Naam"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="h-11"
+                className="h-12 rounded-xl bg-slate-50 border-slate-100 placeholder:text-slate-300"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Wachtwoord</Label>
+              <Label htmlFor="password" className="text-slate-600 ml-1">Wachtwoord</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Wachtwoord"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-11"
+                className="h-12 rounded-xl bg-slate-50 border-slate-100 placeholder:text-slate-300"
               />
             </div>
 
             {testingMode && userAccounts.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">Geregistreerde Accounts (Test Modus):</p>
+              <div className="mt-6 pt-6 border-t border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1 text-center">Quick Access (Test Mode)</p>
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                   {userAccounts.map((acc) => (
                     <Button
@@ -112,22 +174,33 @@ export function LoginForm() {
                       type="button"
                       variant="outline"
                       onClick={() => handleQuickLogin(acc)}
-                      className="justify-start h-auto py-2 px-3 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left block"
+                      disabled={searchingId !== null}
+                      className="justify-start h-auto py-3 px-4 border-slate-100 rounded-xl hover:border-blue-200 hover:bg-blue-50 transition-all text-left block group"
                     >
-                      <div className="font-semibold text-gray-800 text-sm truncate">{acc.username}</div>
-                      <div className="text-[10px] text-gray-500 uppercase tracking-tight">{acc.role || 'user'}</div>
+                      <div className="font-bold text-slate-700 text-xs group-hover:text-blue-700">
+                        {searchingId === acc.id ? 'Zoeken...' : acc.username}
+                      </div>
+                      <div className="text-[9px] text-slate-400 uppercase tracking-tight group-hover:text-blue-400">{acc.role || 'user'}</div>
                     </Button>
                   ))}
                 </div>
               </div>
             )}
           </CardContent>
-          <CardFooter className="pt-2">
-            <Button type="submit" className="w-full h-11 text-lg bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-100 transition-all">
-              Inloggen
+          <CardFooter className="px-8 pb-12">
+            <Button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-xl shadow-blue-100 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              style={{ backgroundColor: '#2563eb', color: 'white' }}
+            >
+              {isLoggingIn ? 'Bezig met inloggen...' : 'Inloggen'}
             </Button>
           </CardFooter>
         </form>
+        <div className="pb-8 text-center">
+          <span className="text-[10px] font-bold text-slate-300 tracking-[0.2em] uppercase">Powered by T'Hooft Engineering</span>
+        </div>
       </Card>
     </div>
   );

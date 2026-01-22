@@ -57,7 +57,7 @@ const TARGET_FIELDS: MappingTarget[] = [
     { id: 'is_external', label: 'Externe Taak', required: false, systemField: 'isExternal' },
 ];
 
-const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months'> = {
+const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
     'dag': 'days',
     'dagen': 'days',
     'day': 'days',
@@ -69,11 +69,13 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months'> = {
     'maanden': 'months',
     'month': 'months',
     'months': 'months',
-    'jaar': 'months', // Map year to months approx? Or irrelevant.
-    'year': 'months',
+    'jaar': 'years',
+    'jaren': 'years',
+    'year': 'years',
+    'years': 'years',
 };
 
-export function ImportTool({ onComplete }: { onComplete?: () => void }) {
+export function ImportTool({ onComplete, minimal = false }: { onComplete?: () => void, minimal?: boolean }) {
     const { categories, presses, operators, externalEntities, addTask, addActivityLog, user } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
@@ -247,19 +249,51 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
                     setCsvData(results.data);
 
                     const initialMappings: Record<string, string | null> = {};
+                    const usedHeaders = new Set<string>();
+
+                    // 1. Tier 1: Exact Matches (Labels, systemField, or ID)
                     TARGET_FIELDS.forEach(target => {
                         const savedCol = savedMappings[target.systemField];
                         if (savedCol && rawHeaders.includes(savedCol)) {
                             initialMappings[target.systemField] = savedCol;
+                            usedHeaders.add(savedCol);
                             return;
                         }
+
                         const match = rawHeaders.find(h => {
                             const cleanedH = h.toLowerCase().trim();
                             const cleanedL = target.label.toLowerCase();
                             const cleanedS = target.systemField.toLowerCase();
-                            return cleanedH === cleanedL || cleanedH === cleanedS || cleanedH.includes(cleanedL) || cleanedL.includes(cleanedH);
+                            const cleanedID = target.id.toLowerCase();
+                            return cleanedH === cleanedL || cleanedH === cleanedS || cleanedH === cleanedID;
                         });
-                        initialMappings[target.systemField] = match || null;
+
+                        if (match) {
+                            initialMappings[target.systemField] = match;
+                            usedHeaders.add(match);
+                        }
+                    });
+
+                    // 2. Tier 2: Partial Matches for remaining fields
+                    TARGET_FIELDS.forEach(target => {
+                        if (initialMappings[target.systemField]) return;
+
+                        const match = rawHeaders.find(h => {
+                            if (usedHeaders.has(h)) return false;
+                            const cleanedH = h.toLowerCase().trim();
+                            const cleanedL = target.label.toLowerCase();
+
+                            // Only allow short headers to match if they are very specific (like 'ID')
+                            // Generally avoid < 3 chars for fuzzy matching
+                            if (cleanedH.length < 3) return false;
+
+                            return cleanedH.includes(cleanedL) || cleanedL.includes(cleanedH);
+                        });
+
+                        if (match) {
+                            initialMappings[target.systemField] = match;
+                            usedHeaders.add(match);
+                        }
                     });
 
                     setMappings(initialMappings);
@@ -435,6 +469,7 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
         let successCount = 0;
 
         try {
+            // 1. Create new categories
             const catMap: Record<string, string> = {};
             for (const [rawName, res] of Object.entries(resolutions.categories)) {
                 if (res.type === 'new') {
@@ -452,15 +487,16 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
                 }
             }
 
+            // 2. Create new presses
             const pressMap: Record<string, string> = {};
             for (const [rawName, res] of Object.entries(resolutions.presses)) {
                 if (res.type === 'new') {
                     try {
-                        const record = await pb.collection('persen').create({ naam: res.value, active: true });
+                        const record = await pb.collection('persen').create({ name: res.value, active: true, archived: false });
                         pressMap[`__NEW_PRESS__${rawName}`] = record.id;
                     } catch (err: any) {
                         try {
-                            const existing = await pb.collection('persen').getFirstListItem(`naam="${res.value}"`);
+                            const existing = await pb.collection('persen').getFirstListItem(`name="${res.value}"`);
                             pressMap[`__NEW_PRESS__${rawName}`] = existing.id;
                         } catch (fetchErr) {
                             console.error(`Failed to create or find press ${res.value}`, err);
@@ -469,7 +505,40 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
                 }
             }
 
-            // 1. Identify all unique presses for each new operator in the validRows
+            // 3. --- CATEGORY-PRESS LINKING LOGIC ---
+            // Identify all unique category-press relationships from validRows
+            const catPressMap: Record<string, Set<string>> = {};
+            validRows.forEach(row => {
+                const finalCatId = row.categoryId.startsWith('__NEW_CAT__') ? catMap[row.categoryId] : row.categoryId;
+                const finalPressId = row.pressId.startsWith('__NEW_PRESS__') ? pressMap[row.pressId] : row.pressId;
+
+                if (finalCatId && finalPressId) {
+                    if (!catPressMap[finalCatId]) catPressMap[finalCatId] = new Set();
+                    catPressMap[finalCatId].add(finalPressId);
+                }
+            });
+
+            // Update category records to include these presses
+            for (const [catId, pressIds] of Object.entries(catPressMap)) {
+                try {
+                    const catRecord = await pb.collection('categorieen').getOne(catId);
+                    const existingPresses = Array.isArray(catRecord.presses) ? catRecord.presses : [];
+                    const pressIdsArray = Array.from(pressIds);
+                    const newPresses = pressIdsArray.filter(id => !existingPresses.includes(id));
+
+                    if (newPresses.length > 0) {
+                        await pb.collection('categorieen').update(catId, {
+                            presses: [...existingPresses, ...newPresses]
+                        });
+                        console.log(`[DynamicImport] Linked category ${catId} to presses: ${newPresses.join(', ')}`);
+                    }
+                } catch (err) {
+                    console.error(`Failed to link category ${catId} to presses:`, err);
+                }
+            }
+            // --- END CATEGORY-PRESS LINKING LOGIC ---
+
+            // 4. Identify all unique presses for each new operator
             const operatorPressMap: Record<string, Set<string>> = {};
             validRows.forEach(row => {
                 if (row.assignedToIds && row.assignedToIds.length > 0) {
@@ -506,6 +575,7 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
                 }
             }
 
+            // 5. Create the tasks
             const groupCounts: Record<string, number> = {};
             validRows.forEach(row => {
                 const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
@@ -579,17 +649,19 @@ export function ImportTool({ onComplete }: { onComplete?: () => void }) {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-gray-900 font-bold">Admin Import Tool</h2>
-                    <p className="text-gray-600 mt-1">Importeer taken vanuit een spreadsheet (CSV of TSV)</p>
+            {!minimal && (
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-gray-900 font-bold">Admin Import Tool</h2>
+                        <p className="text-gray-600 mt-1">Importeer taken vanuit een spreadsheet (CSV of TSV)</p>
+                    </div>
+                    {step !== 'upload' && (
+                        <Button variant="ghost" onClick={() => setStep('upload')} className="text-gray-500">
+                            Opnieuw beginnen
+                        </Button>
+                    )}
                 </div>
-                {step !== 'upload' && (
-                    <Button variant="ghost" onClick={() => setStep('upload')} className="text-gray-500">
-                        Opnieuw beginnen
-                    </Button>
-                )}
-            </div>
+            )}
 
             {step === 'upload' && (
                 <div

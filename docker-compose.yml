@@ -17,7 +17,7 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - pb_data:/pb/pb_data
+      - ./pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -34,6 +34,3 @@ services:
         chmod -R 755 /pb/pb_data &&
         /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
       '
-
-volumes:
-  pb_data:

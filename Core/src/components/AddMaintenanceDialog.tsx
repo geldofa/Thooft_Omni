@@ -130,7 +130,7 @@ export function AddMaintenanceDialog({
     lastMaintenance: null as Date | null,
     nextMaintenance: new Date(),
     maintenanceInterval: 1,
-    maintenanceIntervalUnit: 'months' as 'days' | 'weeks' | 'months',
+    maintenanceIntervalUnit: 'months' as 'days' | 'weeks' | 'months' | 'years',
     assignedTo: '',
     opmerkingen: '',
     commentDate: null as Date | null,
@@ -241,7 +241,7 @@ export function AddMaintenanceDialog({
   const calculateNextMaintenance = (
     lastDate: Date,
     interval: number,
-    unit: 'days' | 'weeks' | 'months'
+    unit: 'days' | 'weeks' | 'months' | 'years'
   ): Date => {
     const next = new Date(lastDate);
 
@@ -254,6 +254,9 @@ export function AddMaintenanceDialog({
         break;
       case 'months':
         next.setMonth(next.getMonth() + interval);
+        break;
+      case 'years':
+        next.setFullYear(next.getFullYear() + interval);
         break;
     }
 
@@ -576,109 +579,108 @@ export function AddMaintenanceDialog({
 
             {/* Only show Date and Interval fields if NOT editing an individual task from a group */}
             {!isSimplifiedView ? (
-              (!editTask || editTask.task === editTask.subtaskName) ? (
-                <>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))' }}>
-
-                    <div className="grid gap-2">
-                      <Label>Laatste onderhoud *</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="justify-start text-left w-full"
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {formatDate(taskFormData.lastMaintenance)}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={taskFormData.lastMaintenance || undefined}
-                            onSelect={(date) => setTaskFormData({ ...taskFormData, lastMaintenance: date || null })}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label>Volgende onderhoud *</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="justify-start text-left w-full"
-                            disabled={!!taskFormData.lastMaintenance || isOperator}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {formatDate(taskFormData.nextMaintenance)}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={taskFormData.nextMaintenance}
-                            onSelect={(date) => setTaskFormData({ ...taskFormData, nextMaintenance: date || new Date() })}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      {taskFormData.lastMaintenance && (
-                        <p className="text-xs text-gray-500">Automatisch berekend op basis van interval</p>
-                      )}
-                      {isOperator && (
-                        <p className="text-xs text-gray-500">Alleen lezen voor operators</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {!isOperator && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="interval">Onderhoudsinterval *</Label>
-                        <Input
-                          id="interval"
-                          type="number"
-                          min="1"
-                          value={taskFormData.maintenanceInterval}
-                          onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
-                        />
-                      </div>
-
-                      <div className="grid gap-2">
-                        <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
-                        <Select
-                          value={taskFormData.maintenanceIntervalUnit}
-                          onValueChange={(value: 'days' | 'weeks' | 'months') =>
-                            setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="days">Dagen</SelectItem>
-                            <SelectItem value="weeks">Weken</SelectItem>
-                            <SelectItem value="months">Maanden</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
+              <>
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))' }}>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="assignedTo">Toegewezen aan</Label>
-                    <Input
-                      id="assignedTo"
-                      placeholder="bijv., Jan Jansen of Ploeg A"
-                      value={taskFormData.assignedTo}
-                      onChange={(e) => setTaskFormData({ ...taskFormData, assignedTo: e.target.value })}
-                    />
+                    <Label>Laatste onderhoud *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="justify-start text-left w-full"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formatDate(taskFormData.lastMaintenance)}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={taskFormData.lastMaintenance || undefined}
+                          onSelect={(date) => setTaskFormData({ ...taskFormData, lastMaintenance: date || null })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
-                </>
-              ) : null
+
+                  <div className="grid gap-2">
+                    <Label>Volgende onderhoud *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="justify-start text-left w-full"
+                          disabled={!!taskFormData.lastMaintenance || isOperator}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formatDate(taskFormData.nextMaintenance)}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={taskFormData.nextMaintenance}
+                          onSelect={(date) => setTaskFormData({ ...taskFormData, nextMaintenance: date || new Date() })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {taskFormData.lastMaintenance && (
+                      <p className="text-xs text-gray-500">Automatisch berekend op basis van interval</p>
+                    )}
+                    {isOperator && (
+                      <p className="text-xs text-gray-500">Alleen lezen voor operators</p>
+                    )}
+                  </div>
+                </div>
+
+                {!isOperator && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="interval">Onderhoudsinterval *</Label>
+                      <Input
+                        id="interval"
+                        type="number"
+                        min="1"
+                        value={taskFormData.maintenanceInterval}
+                        onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
+                      <Select
+                        value={taskFormData.maintenanceIntervalUnit}
+                        onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
+                          setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
+                        }
+                      >
+                        <SelectTrigger id="intervalUnit" className="w-full">
+                          <SelectValue placeholder="Selecteer eenheid" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60 overflow-y-auto">
+                          <SelectItem value="days">Dagen</SelectItem>
+                          <SelectItem value="weeks">Weken</SelectItem>
+                          <SelectItem value="months">Maanden</SelectItem>
+                          <SelectItem value="years">Jaren</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <Label htmlFor="assignedTo">Toegewezen aan</Label>
+                  <Input
+                    id="assignedTo"
+                    placeholder="bijv., Jan Jansen of Ploeg A"
+                    value={taskFormData.assignedTo}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, assignedTo: e.target.value })}
+                  />
+                </div>
+              </>
             ) : (
               /* Group Simplified View - Only Interval and Unit */
               !isOperator && (
@@ -698,17 +700,18 @@ export function AddMaintenanceDialog({
                     <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
                     <Select
                       value={taskFormData.maintenanceIntervalUnit}
-                      onValueChange={(value: 'days' | 'weeks' | 'months') =>
+                      onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
                         setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
                       }
                     >
-                      <SelectTrigger>
-                        <SelectValue />
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Selecteer eenheid" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-h-60 overflow-y-auto">
                         <SelectItem value="days">Dagen</SelectItem>
                         <SelectItem value="weeks">Weken</SelectItem>
                         <SelectItem value="months">Maanden</SelectItem>
+                        <SelectItem value="years">Jaren</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -11,7 +11,7 @@ import { TooltipProvider } from './ui/tooltip';
 export function Toolbox() {
     return (
         <TooltipProvider>
-            <div className="p-6 max-w-7xl mx-auto">
+            <div className="p-6 w-full mx-auto">
                 <div className="flex items-center gap-3 mb-8">
                     <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-200">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -53,6 +53,8 @@ function ToolboxContent() {
                         const expected = new Date(last);
                         if (unit.includes('maand') || unit.includes('month') || unit === 'months') {
                             expected.setMonth(expected.getMonth() + interval);
+                        } else if (unit.includes('jaar') || unit.includes('year') || unit === 'years') {
+                            expected.setFullYear(expected.getFullYear() + interval);
                         } else if (unit.includes('week') || unit.includes('weeks')) {
                             expected.setDate(expected.getDate() + (interval * 7));
                         } else {

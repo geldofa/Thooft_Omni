@@ -115,9 +115,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     return `${year}-${month}-${day} ${hours}:${minutes}`;
   };
 
-  const formatInterval = (interval: number, unit: 'days' | 'weeks' | 'months') => {
-    const unitLabel = unit === 'days' ? 'dagen' : unit === 'weeks' ? 'weken' : 'maanden';
-    return `${formatNumber(interval)} ${unitLabel}`;
+  const formatInterval = (interval: number, unit: 'days' | 'weeks' | 'months' | 'years') => {
+    if (unit === 'days') return `${interval} ${interval === 1 ? 'dag' : 'dagen'}`;
+    if (unit === 'weeks') return `${interval} ${interval === 1 ? 'week' : 'weken'}`;
+    if (unit === 'months') return `${interval} ${interval === 1 ? 'maand' : 'maanden'}`;
+    if (unit === 'years') return `${interval} ${interval === 1 ? 'jaar' : 'jaren'}`;
+    return `${interval} ${unit}`;
   };
 
 
@@ -353,7 +356,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     getStatusInfo: (nextMaintenance: Date) => any;
     formatDate: (date: Date | null) => string;
     formatDateTime: (date: Date | null) => string;
-    formatInterval: (interval: number, unit: 'days' | 'weeks' | 'months') => string;
+    formatInterval: (interval: number, unit: 'days' | 'weeks' | 'months' | 'years') => string;
     handleQuickEdit: (subtask: Subtask, group: GroupedTask, field: 'lastMaintenance' | 'opmerkingen') => void;
     toMaintenanceTask: (subtask: Subtask, group: GroupedTask) => MaintenanceTask;
     onEdit: (task: MaintenanceTask) => void;
@@ -473,6 +476,9 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       <Badge variant="secondary" className="ml-2">
                         {formatNumber(relevantSubtasks.length)} subtaken
                       </Badge>
+                      {relevantSubtasks.some(st => st.isExternal) && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE</Badge>
+                      )}
                     </div>
                     {groupedTask.taskSubtext && (
                       <div className="text-gray-500 text-xs mt-0.5">{groupedTask.taskSubtext}</div>
@@ -614,7 +620,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           return (
             <tr
               key={subtask.id}
-              className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass}`}
+              className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass} ${subtask.isExternal ? 'bg-blue-50/40' : ''}`}
             >
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
@@ -629,7 +635,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     <div className="flex items-center gap-2">
                       <div className="line-clamp-2">{subtask.subtaskName}</div>
                       {subtask.isExternal && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 bg-blue-50 text-blue-700">EXT</Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
                       )}
                     </div>
                     {subtask.subtext && (
@@ -737,7 +743,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           const rowBgClass = statusInfo.label !== 'Scheduled' ? statusInfo.color : '';
 
           return (
-            <tr key={subtask.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass}`}>
+            <tr key={subtask.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass} ${subtask.isExternal ? 'bg-blue-50/40' : ''}`}>
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
                   {user?.role === 'admin' && (
@@ -754,7 +760,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       <div className="flex items-center gap-2">
                         <div className="line-clamp-2 text-gray-700 leading-snug">{subtask.subtaskName}</div>
                         {subtask.isExternal && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 bg-blue-50 text-blue-700">EXT</Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
                         )}
                       </div>
                       {subtask.subtext && (
@@ -1074,9 +1080,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           )}
         </div>
         {onAddTask && (
-          <Button onClick={onAddTask} size="sm" className="gap-2">
+          <Button
+            onClick={onAddTask}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-100 flex items-center gap-2"
+          >
             <Plus className="w-4 h-4" />
-            Taak Toevoegen
+            Nieuwe Taak Toevoegen
           </Button>
         )}
       </div>

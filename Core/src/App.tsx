@@ -5,7 +5,7 @@ import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
 import { ScrollToTop } from './components/ScrollToTop';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
 
@@ -45,8 +45,10 @@ function MainApp() {
   const tasks: MaintenanceTask[] = groupedTasks.flatMap(group =>
     group.subtasks.map(subtask => ({
       ...subtask,
-      task: subtask.subtaskName,
-      taskSubtext: subtask.subtext,
+      task: group.taskName, // Group Name
+      taskSubtext: group.taskSubtext, // Parent Subtext
+      subtaskName: subtask.subtaskName, // Specific item name
+      subtaskSubtext: subtask.subtext, // Specific item subtext
       category: group.category,
       categoryId: group.categoryId,
       press: group.press,
@@ -62,9 +64,6 @@ function MainApp() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<MaintenanceTask | null>(null);
   const [editingGroup, setEditingTaskGroup] = useState<MaintenanceTask[] | null>(null);
-
-  // State initialization
-  // State initialization
   const [selectedPress, setSelectedPress] = useState<string>('Lithoman');
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -89,8 +88,6 @@ function MainApp() {
       localStorage.removeItem('onboarding_redirect');
     }
   }, []);
-
-
 
   // Data fetching based on tab
   useEffect(() => {
@@ -207,48 +204,43 @@ function MainApp() {
     }
   };
 
-  // --- STYLING CONSTANTS ---
-  // Updated p-2 to p-1 as requested
-
-
-  if (isFirstRun && !user) return <OnboardingWizard onComplete={checkFirstRun} />;
-  if (!user) return <LoginForm />;
-
-  const filteredTasks = user.role === 'press'
+  const filteredTasks = user?.role === 'press'
     ? groupedTasks.filter(group => group.press === user.press)
     : groupedTasks;
-
-
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       <Toaster position="bottom-right" />
       <ScrollToTop />
 
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      {isFirstRun && !user ? (
+        <OnboardingWizard onComplete={checkFirstRun} />
+      ) : !user ? (
+        <LoginForm />
+      ) : (
+        <>
+          <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+          <main className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            {(user.role === 'admin' || user.role === 'meestergast') && (
+              <Suspense fallback={<div className="p-4 text-center text-gray-500">Modules laden...</div>}>
+                {activeTab === 'tasks' && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                      <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
+                        <TabsList className="tab-pill-list">
+                          {activePresses.map(press => (
+                            <TabsTrigger
+                              key={press.id}
+                              value={press.name}
+                              className="tab-pill-trigger"
+                            >
+                              {press.name}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+                    </div>
 
-      {/* CHANGED py-8 to py-4 to reduce top gap */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-
-        {(user.role === 'admin' || user.role === 'meestergast') && (
-          <Suspense fallback={<div className="p-4 text-center text-gray-500">Modules laden...</div>}>
-
-            {activeTab === 'tasks' && (
-              <div className="space-y-3">
-                <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="space-y-3">
-                  <TabsList className="tab-pill-list">
-                    {activePresses.map(press => (
-                      <TabsTrigger
-                        key={press.id}
-                        value={press.name}
-                        className="tab-pill-trigger"
-                      >
-                        {press.name}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
-                  <TabsContent value={selectedPress}>
                     <MaintenanceTable
                       tasks={groupedTasks.filter(group => group.press === selectedPress)}
                       onEdit={(task) => {
@@ -297,63 +289,61 @@ function MainApp() {
                         });
                       }}
                     />
-                  </TabsContent>
-                </Tabs>
-              </div>
+                  </div>
+                )}
+
+                {activeTab === 'drukwerken' && <Drukwerken presses={activePresses} />}
+                {activeTab === 'extern' && <ExternalSummary />}
+                {activeTab === 'reports' && <Reports tasks={tasks} />}
+                {activeTab === 'checklist' && <MaintenanceChecklist tasks={tasks} />}
+                {activeTab === 'operators' && <OperatorManagement />}
+                {activeTab === 'categories' && <CategoryManagement />}
+                {activeTab === 'presses' && user.role === 'admin' && <PressManagement />}
+                {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
+                {activeTab === 'logs' && <ActivityLog />}
+                {activeTab === 'feedback-list' && <FeedbackList />}
+                {activeTab === 'toolbox' && <Toolbox />}
+              </Suspense>
             )}
 
-            {activeTab === 'drukwerken' && <Drukwerken presses={activePresses} />}
-            {activeTab === 'extern' && <ExternalSummary />}
-            {activeTab === 'reports' && <Reports tasks={tasks} />}
-            {activeTab === 'checklist' && <MaintenanceChecklist tasks={tasks} />}
-            {activeTab === 'operators' && <OperatorManagement />}
-            {activeTab === 'categories' && <CategoryManagement />}
-            {activeTab === 'presses' && user.role === 'admin' && <PressManagement />}
-            {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
-            {activeTab === 'logs' && <ActivityLog />}
-            {activeTab === 'feedback-list' && <FeedbackList />}
-            {activeTab === 'toolbox' && <Toolbox />}
-          </Suspense>
-        )}
-
-        {user.role === 'press' && (
-          <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
-            {activeTab === 'tasks' && (
-              <MaintenanceTable
-                tasks={filteredTasks}
-                onEdit={(task: MaintenanceTask) => {
-                  startTransition(() => {
-                    setEditingTask(task);
-                    setIsAddDialogOpen(true);
-                  });
-                }}
-                onDelete={handleDeleteTask}
-                onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
-              />
+            {user.role === 'press' && (
+              <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
+                {activeTab === 'tasks' && (
+                  <MaintenanceTable
+                    tasks={filteredTasks}
+                    onEdit={(task: MaintenanceTask) => {
+                      startTransition(() => {
+                        setEditingTask(task);
+                        setIsAddDialogOpen(true);
+                      });
+                    }}
+                    onDelete={handleDeleteTask}
+                    onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
+                  />
+                )}
+                {activeTab === 'drukwerken' && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
+                {activeTab === 'logs' && <ActivityLog />}
+                {activeTab === 'feedback-list' && <FeedbackList />}
+              </Suspense>
             )}
-            {activeTab === 'drukwerken' && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
-            {activeTab === 'logs' && <ActivityLog />}
-            {activeTab === 'feedback-list' && <FeedbackList />}
-          </Suspense>
-        )}
 
-
-
-        <AddMaintenanceDialog
-          open={isAddDialogOpen}
-          onOpenChange={(open) => startTransition(() => setIsAddDialogOpen(open))}
-          onSubmit={async (task) => {
-            await startTransition(async () => {
-              if (editingTask) await handleEditTask({ ...editingTask, ...task } as MaintenanceTask);
-              else await handleAddTask(task);
-            });
-          }}
-          editTask={editingTask}
-          initialGroup={editingGroup || undefined}
-          onUpdateGroup={handleUpdateGroup}
-          activePress={selectedPress}
-        />
-      </main>
+            <AddMaintenanceDialog
+              open={isAddDialogOpen}
+              onOpenChange={(open) => startTransition(() => setIsAddDialogOpen(open))}
+              onSubmit={async (task) => {
+                await startTransition(async () => {
+                  if (editingTask) await handleEditTask({ ...editingTask, ...task } as MaintenanceTask);
+                  else await handleAddTask(task);
+                });
+              }}
+              editTask={editingTask}
+              initialGroup={editingGroup || undefined}
+              onUpdateGroup={handleUpdateGroup}
+              activePress={selectedPress}
+            />
+          </main>
+        </>
+      )}
     </div>
   );
 }

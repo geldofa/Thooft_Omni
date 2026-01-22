@@ -120,7 +120,7 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between no-print">
         <div>
-          <h2 className="text-gray-900">Onderhoud Checklist</h2>
+          <h2 className="text-gray-900 font-bold">Onderhoud Checklist</h2>
           <p className="text-gray-600 mt-1">
             Maak een printbare checklist voor de operators
           </p>
@@ -211,8 +211,16 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                               className="mt-1"
                             />
                             <Label htmlFor={`task-${task.id}`} className="cursor-pointer space-y-0.5 font-normal flex flex-col">
-                              <span className="font-medium text-gray-700">{task.task}</span>
-                              {task.taskSubtext && <span className="text-sm text-gray-500">{task.taskSubtext}</span>}
+                              <span className="font-medium text-gray-700">
+                                {task.subtaskName && task.subtaskName !== task.task
+                                  ? `${task.task} -> ${task.subtaskName}`
+                                  : task.task}
+                              </span>
+                              {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
+                                <span className="text-sm text-gray-500">
+                                  {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
+                                </span>
+                              )}
                             </Label>
                           </div>
                           <div className={`text-right text-sm font-medium shrink-0 ${isTaskOverdue(task) ? 'text-red-500' : 'text-gray-500'}`}>
@@ -318,9 +326,15 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
                           </td>
                           <td className="py-3 px-2 align-top" style={{ width: COL_WIDTHS.task }}>
                             <div>
-                              <div className="mb-1 font-medium">{task.task}</div>
-                              {task.taskSubtext && (
-                                <div className={`text-gray-600 ${FONT_SIZES.label}`}>{task.taskSubtext}</div>
+                              <div className="mb-1 font-medium">
+                                {task.subtaskName && task.subtaskName !== task.task
+                                  ? `${task.task} -> ${task.subtaskName}`
+                                  : task.task}
+                              </div>
+                              {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
+                                <div className={`text-gray-600 ${FONT_SIZES.label}`}>
+                                  {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
+                                </div>
                               )}
                             </div>
                           </td>

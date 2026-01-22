@@ -152,13 +152,21 @@ export function Reports({ tasks }: ReportsProps) {
     const diffTime = Math.abs(today.getTime() - dueDate.getTime());
     const daysDiff = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+    const displayName = task.subtaskName && task.subtaskName !== task.task
+      ? `${task.task} -> ${task.subtaskName}`
+      : task.task;
+
+    const displaySubtext = task.subtaskName && task.subtaskName !== task.task
+      ? task.subtaskSubtext || task.taskSubtext
+      : task.taskSubtext;
+
     return (
       <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${FONT_SIZES.body}`}>
         {/* Task */}
         <td className="py-2 px-2" style={{ width: COL_WIDTHS.task }}>
-          <div className="font-medium text-gray-900 truncate" title={task.task}>{task.task}</div>
-          {task.taskSubtext && (
-            <div className={`text-gray-500 truncate ${FONT_SIZES.label}`} title={task.taskSubtext}>{task.taskSubtext}</div>
+          <div className="font-medium text-gray-900 truncate" title={displayName}>{displayName}</div>
+          {displaySubtext && (
+            <div className={`text-gray-500 truncate ${FONT_SIZES.label}`} title={displaySubtext}>{displaySubtext}</div>
           )}
         </td>
         {/* Due / Status */}

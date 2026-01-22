@@ -189,6 +189,9 @@ export function QuickEditDialog({
                 case 'months':
                   next.setMonth(next.getMonth() + taskToUpdate.maintenanceInterval);
                   break;
+                case 'years':
+                  next.setFullYear(next.getFullYear() + taskToUpdate.maintenanceInterval);
+                  break;
               }
               return next;
             })()
