@@ -28,3 +28,7 @@ pb_data_prod/
 # Other
 *.local
 types.d.ts
+
+# Environment variables
+.env
+stack.env

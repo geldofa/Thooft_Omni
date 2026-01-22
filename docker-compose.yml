@@ -1,7 +1,6 @@
 services:
   app:
-    build:
-      context: ./Core
+    image: ghcr.io/geldofa/thooft_omni:latest
     ports:
       - "8080:80"
     environment:
