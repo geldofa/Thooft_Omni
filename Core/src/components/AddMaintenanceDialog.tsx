@@ -119,7 +119,7 @@ export function AddMaintenanceDialog({
   onUpdateGroup,
   activePress
 }: AddMaintenanceDialogProps) {
-  const { user, presses, categories } = useAuth();
+  const { user, presses, categories, tags } = useAuth();
   const isOperator = user?.role === 'press';
 
   const initialTaskData = {
@@ -138,7 +138,8 @@ export function AddMaintenanceDialog({
     isGroupTask: false,
     subtaskName: '',
     subtaskSubtext: '',
-    isExternal: false
+    isExternal: false,
+    tagIds: [] as string[]
   };
 
   const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean }[]>([]);
@@ -171,7 +172,8 @@ export function AddMaintenanceDialog({
           commentDate: editTask.commentDate,
           sort_order: editTask.sort_order || 0,
           isGroupTask: false,
-          isExternal: editTask.isExternal || false
+          isExternal: editTask.isExternal || false,
+          tagIds: Array.isArray(editTask.tagIds) ? tags.filter(t => editTask.tagIds?.includes(t.naam)).map(t => t.id) : []
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -195,7 +197,8 @@ export function AddMaintenanceDialog({
           isGroupTask: true,
           subtaskName: '',
           subtaskSubtext: '',
-          isExternal: firstTask.isExternal || false
+          isExternal: firstTask.isExternal || false,
+          tagIds: Array.isArray(firstTask.tagIds) ? tags.filter(t => firstTask.tagIds?.includes(t.naam)).map(t => t.id) : []
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -303,7 +306,8 @@ export function AddMaintenanceDialog({
       subtaskSubtext: taskFormData.subtaskSubtext || taskFormData.taskSubtext,
       subtasks: taskFormData.isGroupTask ? subtasks.map((st, index) => ({ ...st, sort_order: index })) : [],
       sort_order: taskFormData.sort_order,
-      isExternal: taskFormData.isExternal
+      isExternal: taskFormData.isExternal,
+      tagIds: taskFormData.tagIds
     };
 
     if (onUpdateGroup && initialGroup) {
@@ -334,6 +338,7 @@ export function AddMaintenanceDialog({
           commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
           sort_order: index, // Use current array index as sort order
           isExternal: taskFormData.isExternal, // Propagation
+          tagIds: taskFormData.tagIds, // Propagation
           created: initialTask?.created || new Date().toISOString(),
           updated: new Date().toISOString()
         } as MaintenanceTask;
@@ -450,6 +455,35 @@ export function AddMaintenanceDialog({
                   Externe Taak
                 </Label>
                 <span className="text-sm text-gray-500">(Zichtbaar in het externe overzicht voor meestergasten)</span>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Tags</Label>
+              <div className="flex flex-wrap gap-2 border rounded-md p-3 min-h-[46px] bg-gray-50/30">
+                {tags.filter(t => t.active).map(tag => (
+                  <Button
+                    key={tag.id}
+                    type="button"
+                    variant={taskFormData.tagIds.includes(tag.id) ? 'default' : 'outline'}
+                    size="sm"
+                    className="gap-2 h-7"
+                    style={taskFormData.tagIds.includes(tag.id) ? { backgroundColor: tag.kleur } : {}}
+                    onClick={() => {
+                      setTaskFormData(prev => ({
+                        ...prev,
+                        tagIds: prev.tagIds.includes(tag.id)
+                          ? prev.tagIds.filter(id => id !== tag.id)
+                          : [...prev.tagIds, tag.id]
+                      }));
+                    }}
+                  >
+                    {tag.naam}
+                  </Button>
+                ))}
+                {tags.filter(t => t.active).length === 0 && (
+                  <span className="text-xs text-gray-500">Geen actieve tags gevonden. Maak ze aan in Categorie Beheer.</span>
+                )}
               </div>
             </div>
 

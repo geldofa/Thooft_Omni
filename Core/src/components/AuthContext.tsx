@@ -35,6 +35,7 @@ export interface Subtask {
   sort_order: number;
   opmerkingen?: string;
   isExternal?: boolean;
+  tagIds?: string[];
 }
 
 export interface MaintenanceTask {
@@ -58,8 +59,9 @@ export interface MaintenanceTask {
   comment: string;
   commentDate: Date | null;
   sort_order: number;
-  subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean }[];
+  subtasks?: { id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean; tagIds?: string[] }[];
   isExternal: boolean;
+  tagIds?: string[];
   created: string;
   updated: string;
 }
@@ -105,6 +107,13 @@ export interface Category {
   id: string;
   name: string;
   pressIds: string[];
+  active: boolean;
+}
+
+export interface Tag {
+  id: string;
+  naam: string;
+  kleur?: string;
   active: boolean;
 }
 
@@ -189,6 +198,10 @@ interface AuthContextType {
   deleteFeedback?: (id: string) => Promise<boolean>;
   archiveFeedback?: (id: string) => Promise<boolean>;
   fetchParameters: () => Promise<Record<string, any>>;
+  tags: Tag[];
+  addTag: (tag: Omit<Tag, 'id'>) => Promise<boolean>;
+  updateTag: (tag: Tag) => Promise<boolean>;
+  deleteTag: (id: string) => Promise<void>;
   isFirstRun: boolean;
   onboardingDismissed: boolean;
   setOnboardingDismissed: (val: boolean) => void;
@@ -204,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const [tasksState, setTasksState] = useState<GroupedTask[]>([]);
   const [presses, setPresses] = useState<Press[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]); // Preserved unused var for now
 
   // Placeholders for things we haven't migrated schemas for yet or are keeping local for now
@@ -284,7 +298,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       }
 
       const records = await pb.collection('onderhoud').getFullList({
-        expand: 'category,pers,assigned_operator,assigned_team',
+        expand: 'category,pers,assigned_operator,assigned_team,tags',
         filter: filter
       });
 
@@ -381,7 +395,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           comment: record.opmerkingen || record.comment || record.notes || '',
           commentDate: record.commentDate ? new Date(record.commentDate) : (record.updated ? new Date(record.updated) : null),
           sort_order: record.sort_order || 0,
-          isExternal: record.is_external || false
+          isExternal: record.is_external || false,
+          tagIds: Array.isArray(record.expand?.tags) ? record.expand.tags.map((t: any) => t.naam) : []
         });
       });
 
@@ -500,6 +515,18 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         pressIds: c.presses || [],
         active: c.active !== false
       })));
+
+      try {
+        const tagsResult = await pb.collection('tags').getFullList();
+        setTags(tagsResult.map((t: any) => ({
+          id: t.id,
+          naam: t.naam,
+          kleur: t.kleur,
+          active: t.active !== false
+        })));
+      } catch (e) {
+        console.warn('Failed to fetch tags:', e);
+      }
 
       // Set category order from current press if available
       // Set category order from current press if available
@@ -725,7 +752,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         comment: task.comment || '',
         commentDate: task.commentDate,
         sort_order: task.sort_order || 0,
-        is_external: task.isExternal || false
+        is_external: task.isExternal || false,
+        tags: task.tagIds || []
       };
 
       if (task.subtasks && task.subtasks.length > 0) {
@@ -818,7 +846,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         comment: task.comment || '',
         commentDate: task.commentDate,
         is_external: task.isExternal || false,
-        sort_order: task.sort_order || 0
+        sort_order: task.sort_order || 0,
+        tags: task.tagIds || []
       });
 
       // 2. Calculate what changed for the log
@@ -1122,6 +1151,45 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   };
 
+  const addTag = async (tag: Omit<Tag, 'id'>) => {
+    try {
+      await pb.collection('tags').create({
+        naam: tag.naam,
+        kleur: tag.kleur,
+        active: tag.active
+      });
+      await loadData();
+      return true;
+    } catch (e: any) {
+      toast.error(`Failed to add tag: ${e.message}`);
+      return false;
+    }
+  };
+
+  const updateTag = async (tag: Tag) => {
+    try {
+      await pb.collection('tags').update(tag.id, {
+        naam: tag.naam,
+        kleur: tag.kleur,
+        active: tag.active
+      });
+      await loadData();
+      return true;
+    } catch (e: any) {
+      toast.error(`Failed to update tag: ${e.message}`);
+      return false;
+    }
+  };
+
+  const deleteTag = async (id: string) => {
+    try {
+      await pb.collection('tags').delete(id);
+      await loadData();
+    } catch (e: any) {
+      toast.error(`Failed to delete tag: ${e.message}`);
+    }
+  };
+
   const updateCategoryOrder = async (order: string[]) => {
     setCategoryOrder(order);
     if (user?.pressId) {
@@ -1342,6 +1410,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           pb.collection('onderhoud').subscribe('*', () => { if (isSubscribed) fetchTasks(); }),
           pb.collection('persen').subscribe('*', () => { if (isSubscribed) loadData(); }),
           pb.collection('categorieen').subscribe('*', () => { if (isSubscribed) loadData(); }),
+          pb.collection('tags').subscribe('*', () => { if (isSubscribed) loadData(); }),
           pb.collection('operatoren').subscribe('*', () => { if (isSubscribed) fetchOperators(); }),
           pb.collection('ploegen').subscribe('*', () => { if (isSubscribed) fetchPloegen(); })
         ]);
@@ -1420,6 +1489,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       deleteFeedback,
       archiveFeedback,
       fetchParameters,
+      tags,
+      addTag,
+      updateTag,
+      deleteTag,
       isFirstRun: isFirstRun && !onboardingDismissed,
       onboardingDismissed,
       setOnboardingDismissed,

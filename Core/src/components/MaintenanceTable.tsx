@@ -637,6 +637,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       {subtask.isExternal && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
                       )}
+                      {subtask.tagIds && subtask.tagIds.map((tagName: string) => {
+                        const tag = (user as any)?.tags?.find((t: any) => t.naam === tagName);
+                        return (
+                          <Badge
+                            key={tagName}
+                            style={tag?.kleur ? { backgroundColor: tag.kleur, color: 'white' } : {}}
+                            className="text-[10px] px-1 py-0 h-auto"
+                          >
+                            {tagName}
+                          </Badge>
+                        );
+                      })}
                     </div>
                     {subtask.subtext && (
                       <div className="text-gray-500 text-xs line-clamp-1">{subtask.subtext}</div>
@@ -762,6 +774,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                         {subtask.isExternal && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
                         )}
+                        {subtask.tagIds && subtask.tagIds.map((tagName: string) => {
+                          const tag = (user as any)?.tags?.find((t: any) => t.naam === tagName);
+                          return (
+                            <Badge
+                              key={tagName}
+                              style={tag?.kleur ? { backgroundColor: tag.kleur, color: 'white' } : {}}
+                              className="text-[10px] px-1 py-0 h-auto"
+                            >
+                              {tagName}
+                            </Badge>
+                          );
+                        })}
                       </div>
                       {subtask.subtext && (
                         <div className="text-gray-400 text-[10px] leading-tight line-clamp-1 italic">{subtask.subtext}</div>
