@@ -6,15 +6,6 @@ migrate((app) => {
         "system": false,
         "fields": [
             {
-                "id": "text3208210256",
-                "name": "id",
-                "type": "text",
-                "system": true,
-                "required": true,
-                "presentable": false,
-                "primaryKey": true
-            },
-            {
                 "id": "text4232952120",
                 "name": "naam",
                 "type": "text",
@@ -37,33 +28,13 @@ migrate((app) => {
                 "system": false,
                 "required": false,
                 "presentable": false
-            },
-            {
-                "id": "autodate2990389176",
-                "name": "created",
-                "type": "autodate",
-                "system": true,
-                "required": false,
-                "presentable": false,
-                "onCreate": true,
-                "onUpdate": false
-            },
-            {
-                "id": "autodate3332085495",
-                "name": "updated",
-                "type": "autodate",
-                "system": true,
-                "required": false,
-                "presentable": false,
-                "onCreate": true,
-                "onUpdate": true
             }
         ],
-        "listRule": "",
-        "viewRule": "",
-        "createRule": "",
-        "updateRule": "",
-        "deleteRule": "",
+        "listRule": "@request.auth.id != \"\"",
+        "viewRule": "@request.auth.id != \"\"",
+        "createRule": "@request.auth.id != \"\"",
+        "updateRule": "@request.auth.id != \"\"",
+        "deleteRule": "@request.auth.id != \"\"",
         "options": {}
     });
 

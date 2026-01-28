@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import PocketBase from 'pocketbase';
 import { toast } from 'sonner';
+import { APP_URL } from '../config';
 
 // Initialize PocketBase Client
-const PB_URL = import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
+const PB_URL = APP_URL || import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
 export const client = new PocketBase(PB_URL);
 export const pb = client;
 pb.autoCancellation(false);
@@ -69,6 +70,31 @@ export interface MaintenanceTask {
 export type UserRole = 'admin' | 'press' | 'meestergast' | null;
 export type PressType = string;
 
+export type Permission =
+  | 'tasks_view'
+  | 'tasks_edit'
+  | 'drukwerken_view'
+  | 'drukwerken_view_all'
+  | 'reports_view'
+  | 'checklist_view'
+  | 'extern_view'
+  | 'management_access'
+  | 'manage_personnel'
+  | 'manage_categories'
+  | 'manage_tags'
+  | 'manage_presses'
+  | 'manage_accounts'
+  | 'manage_permissions'
+  | 'toolbox_access'
+  | 'logs_view'
+  | 'feedback_view'
+  | 'feedback_manage';
+
+export interface RolePermissions {
+  role: UserRole;
+  permissions: Permission[];
+}
+
 interface User {
   id: string;
   username: string;
@@ -106,15 +132,19 @@ export interface Ploeg {
 export interface Category {
   id: string;
   name: string;
+  subtexts?: Record<string, string>; // Maps press ID to subtext
   pressIds: string[];
   active: boolean;
 }
+
+export const EXTERNAL_TAG_NAME = 'Extern';
 
 export interface Tag {
   id: string;
   naam: string;
   kleur?: string;
   active: boolean;
+  system_managed?: boolean;
 }
 
 export interface ActivityLog {
@@ -208,6 +238,9 @@ interface AuthContextType {
   testingMode: boolean;
   setTestingMode: (val: boolean) => Promise<void>;
   checkFirstRun: () => Promise<void>;
+  hasPermission: (permission: Permission) => boolean;
+  rolePermissions: RolePermissions[];
+  updateRolePermissions: (role: UserRole, permissions: Permission[]) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -231,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     return localStorage.getItem('onboarding_dismissed') === 'true';
   });
   const [testingMode, setTestingModeState] = useState<boolean>(false);
+  const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
 
   const setOnboardingDismissed = (val: boolean) => {
     setOnboardingDismissedState(val);
@@ -271,6 +305,17 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     return roleMap[uiRole || 'press'] || 'Operator';
   };
 
+  const hasPermission = (permission: Permission): boolean => {
+    if (!user) return false;
+    // Admins have all permissions by default as a safety net
+    if (user.role === 'admin') return true;
+
+    const roleData = rolePermissions.find(rp => rp.role === user.role);
+    if (!roleData) return false;
+
+    return roleData.permissions.includes(permission);
+  };
+
   // --- Data Fetching ---
   const fetchTestingMode = useCallback(async () => {
     try {
@@ -294,6 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     try {
       let filter = '';
       if (user?.role === 'press' && user.press) {
+        // Use correct casing for relation filter if needed, but naam is usually string
         filter = `pers.naam = "${user.press}"`;
       }
 
@@ -396,7 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           commentDate: record.commentDate ? new Date(record.commentDate) : (record.updated ? new Date(record.updated) : null),
           sort_order: record.sort_order || 0,
           isExternal: record.is_external || false,
-          tagIds: Array.isArray(record.expand?.tags) ? record.expand.tags.map((t: any) => t.naam) : []
+          tagIds: (record.expand?.tags && Array.isArray(record.expand.tags)) ? record.expand.tags.map((t: any) => t.id) : []
         });
       });
 
@@ -512,20 +558,26 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       setCategories(categoriesResult.map((c: any) => ({
         id: c.id,
         name: c.naam,
+        subtexts: c.subtexts || {},
         pressIds: c.presses || [],
         active: c.active !== false
       })));
 
       try {
         const tagsResult = await pb.collection('tags').getFullList();
-        setTags(tagsResult.map((t: any) => ({
+        console.log('[Auth] Tags fetched from DB:', tagsResult);
+        const mappedTags = tagsResult.map((t: any) => ({
           id: t.id,
           naam: t.naam,
           kleur: t.kleur,
+          system_managed: !!t.system_managed,
           active: t.active !== false
-        })));
+        }));
+        console.log('[Auth] Mapped tags:', mappedTags);
+
+        setTags(mappedTags);
       } catch (e) {
-        console.warn('Failed to fetch tags:', e);
+        console.error('Failed to fetch tags:', e);
       }
 
       // Set category order from current press if available
@@ -559,7 +611,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         fetchTasks(),
         fetchUserAccounts(),
         fetchOperators(),
-        fetchPloegen()
+        fetchPloegen(),
+        fetchPermissions()
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -581,6 +634,85 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     } catch (e: any) {
       console.error("Failed to set testing mode:", e);
       toast.error(`Kon test modus niet instellen: ${e.message}`);
+    }
+  };
+
+  const fetchPermissions = useCallback(async () => {
+    try {
+      const records = await pb.collection('role_permissions').getFullList();
+      if (records.length === 0) {
+        // Initialize defaults if empty (Fallback)
+        const defaults: any[] = [
+          {
+            role: 'Admin',
+            permissions: [
+              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+              'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
+              'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
+              'toolbox_access', 'logs_view', 'feedback_view', 'feedback_manage'
+            ]
+          },
+          {
+            role: 'Meestergast',
+            permissions: [
+              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
+              'extern_view', 'logs_view', 'feedback_view'
+            ]
+          },
+          {
+            role: 'Operator',
+            permissions: ['tasks_view', 'drukwerken_view', 'feedback_view']
+          }
+        ];
+
+        // Try to seed initial roles
+        for (const def of defaults) {
+          try {
+            await pb.collection('role_permissions').create(def);
+          } catch (e) {
+            console.warn(`Failed to seed ${def.role}:`, e);
+          }
+        }
+        setRolePermissions(defaults);
+      } else {
+        setRolePermissions(records.map(r => ({
+          role: mapDbRoleToUi(r.role),
+          permissions: r.permissions as Permission[]
+        })));
+      }
+    } catch (e) {
+      console.error("Fetch permissions failed:", e);
+      // Fallback in-memory defaults if collection doesn't exist yet
+      setRolePermissions([
+        { role: 'admin', permissions: ['tasks_view', 'tasks_edit', 'management_access', 'manage_permissions'] },
+        { role: 'meestergast', permissions: ['tasks_view', 'tasks_edit'] },
+        { role: 'press', permissions: ['tasks_view'] }
+      ]);
+    }
+  }, []);
+
+  const updateRolePermissions = async (role: UserRole, permissions: Permission[]) => {
+    try {
+      const dbRole = mapUiRoleToDb(role);
+      const record = await pb.collection('role_permissions').getFirstListItem(`role="${dbRole}"`);
+      await pb.collection('role_permissions').update(record.id, { permissions });
+      setRolePermissions(prev => prev.map(rp => rp.role === role ? { ...rp, permissions } : rp));
+      toast.success(`Rechten bijgewerkt voor ${role}`);
+    } catch (e: any) {
+      console.error("Update permissions failed:", e);
+      // If not found, create
+      try {
+        const dbRole = mapUiRoleToDb(role);
+        await pb.collection('role_permissions').create({ role: dbRole, permissions });
+        setRolePermissions(prev => {
+          const exists = prev.some(rp => rp.role === role);
+          if (exists) return prev.map(rp => rp.role === role ? { ...rp, permissions } : rp);
+          return [...prev, { role, permissions }];
+        });
+        toast.success(`Rechten aangemaakt voor ${role}`);
+      } catch (err: any) {
+        toast.error(`Kon rechten niet bijwerken: ${err.message}`);
+      }
     }
   };
 
@@ -697,7 +829,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         const newName = finalPressId.replace('__NEW_PRESS__', '');
         try {
           const created = await pb.collection('persen').create({
-            name: newName,
+            naam: newName,
             active: true,
             archived: false
           });
@@ -753,7 +885,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         commentDate: task.commentDate,
         sort_order: task.sort_order || 0,
         is_external: task.isExternal || false,
-        tags: task.tagIds || []
+        tags: Array.isArray(task.tagIds) ? task.tagIds : []
       };
 
       if (task.subtasks && task.subtasks.length > 0) {
@@ -847,7 +979,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
         commentDate: task.commentDate,
         is_external: task.isExternal || false,
         sort_order: task.sort_order || 0,
-        tags: task.tagIds || []
+        tags: Array.isArray(task.tagIds) ? task.tagIds : []
       });
 
       // 2. Calculate what changed for the log
@@ -1116,6 +1248,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     try {
       await pb.collection('categorieen').create({
         naam: category.name,
+        subtexts: category.subtexts || {},
         presses: category.pressIds,
         active: category.active
       });
@@ -1131,6 +1264,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     try {
       await pb.collection('categorieen').update(category.id, {
         naam: category.name,
+        subtexts: category.subtexts || {},
         presses: category.pressIds,
         active: category.active
       });
@@ -1168,10 +1302,17 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const updateTag = async (tag: Tag) => {
     try {
+      const existing = tags.find(t => t.id === tag.id);
+      if (existing?.system_managed && tag.naam !== existing.naam) {
+        toast.error('Systeem tags kunnen niet hernoemd worden');
+        return false;
+      }
+
       await pb.collection('tags').update(tag.id, {
         naam: tag.naam,
         kleur: tag.kleur,
-        active: tag.active
+        active: tag.active,
+        system_managed: tag.system_managed
       });
       await loadData();
       return true;
@@ -1183,6 +1324,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
 
   const deleteTag = async (id: string) => {
     try {
+      const tag = tags.find(t => t.id === id);
+      if (tag?.system_managed) {
+        toast.error('Systeem tags kunnen niet verwijderd worden');
+        return;
+      }
+
       await pb.collection('tags').delete(id);
       await loadData();
     } catch (e: any) {
@@ -1493,12 +1640,15 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       addTag,
       updateTag,
       deleteTag,
-      isFirstRun: isFirstRun && !onboardingDismissed,
+      isFirstRun: isFirstRun,
       onboardingDismissed,
       setOnboardingDismissed,
       testingMode,
       setTestingMode,
-      checkFirstRun
+      checkFirstRun,
+      hasPermission,
+      rolePermissions,
+      updateRolePermissions
     }}>
       {children}
     </AuthContext.Provider >

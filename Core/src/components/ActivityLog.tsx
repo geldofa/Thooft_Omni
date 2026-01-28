@@ -16,7 +16,7 @@ import { Search, Calendar } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function ActivityLog() {
-  const { activityLogs, user } = useAuth();
+  const { activityLogs, user, hasPermission } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterPress, setFilterPress] = useState<string>('all');
@@ -58,7 +58,7 @@ export function ActivityLog() {
 
       // Press filter logic
       let matchesPress = true;
-      if (user?.role === 'press' && user.press) {
+      if (!hasPermission('logs_view') && user?.press) {
         // Strict filtering for press users
         matchesPress = log.press === user.press;
       } else {
@@ -121,7 +121,7 @@ export function ActivityLog() {
           </div>
 
           {/* Hide Press Filter for Press Role */}
-          {user?.role !== 'press' && (
+          {hasPermission('logs_view') && (
             <div>
               <Label htmlFor="filterPress" className="mb-2 block">Pers</Label>
               <Select value={filterPress} onValueChange={setFilterPress}>

@@ -10,7 +10,7 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus } from 'lucide-react';
+import { Edit, Trash2, Plus, Lock } from 'lucide-react';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -192,7 +192,10 @@ export function TagManagement() {
                             filteredTags.map((tag) => (
                                 <TableRow key={tag.id} className="hover:bg-gray-50/50">
                                     <TableCell className="border-r border-gray-200 font-medium">
-                                        {tag.naam}
+                                        <div className="flex items-center gap-2">
+                                            {tag.naam}
+                                            {tag.system_managed && <Lock className="w-3 h-3 text-gray-400" />}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="border-r border-gray-200 text-center">
                                         <Badge
@@ -220,7 +223,7 @@ export function TagManagement() {
                                             </Button>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="sm">
+                                                    <Button variant="ghost" size="sm" disabled={tag.system_managed}>
                                                         <Trash2 className="w-4 h-4 text-red-500" />
                                                     </Button>
                                                 </AlertDialogTrigger>
@@ -265,13 +268,16 @@ export function TagManagement() {
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-4 py-4">
                             <div className="grid gap-2">
-                                <Label htmlFor="tagName">Naam *</Label>
                                 <Input
                                     id="tagName"
                                     placeholder="bijv., Prioriteit"
                                     value={formData.naam}
                                     onChange={(e) => setFormData({ ...formData, naam: e.target.value })}
+                                    disabled={editingTag?.system_managed}
                                 />
+                                {editingTag?.system_managed && (
+                                    <p className="text-xs text-gray-500">Systeem tags kunnen niet hernoemd worden.</p>
+                                )}
                             </div>
 
                             <div className="grid gap-2">

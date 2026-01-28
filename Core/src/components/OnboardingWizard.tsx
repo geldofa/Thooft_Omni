@@ -4,9 +4,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
-import { Rocket, ShieldCheck, Database, CheckCircle2, ArrowRight, UserPlus, FileUp } from 'lucide-react';
+import { Rocket, ShieldCheck, Database, ArrowRight, UserPlus, FileUp, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { ImportTool } from './ImportTool';
 import { TooltipProvider } from './ui/tooltip';
 
 interface OnboardingWizardProps {
@@ -14,7 +13,8 @@ interface OnboardingWizardProps {
 }
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
-    const [step, setStep] = useState<'welcome' | 'admin' | 'data' | 'finish'>('welcome');
+    const { setOnboardingDismissed, login } = useAuth();
+    const [step, setStep] = useState<'welcome' | 'admin' | 'data'>('welcome');
     const [adminData, setAdminData] = useState({
         username: '',
         email: '',
@@ -23,42 +23,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         name: ''
     });
     const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
-
-    // Setup animation state
-    const [setupState, setSetupState] = useState<'idle' | 'running' | 'complete'>('idle');
-    const [setupMessage, setSetupMessage] = useState('');
-    const [setupProgress, setSetupProgress] = useState(0);
-
-    // Run setup animation when entering 'finish' step
-    React.useEffect(() => {
-        if (step === 'finish' && setupState === 'idle') {
-            setSetupState('running');
-            const messages = [
-                { msg: 'System configuratie starten...', progress: 10, delay: 0 },
-                { msg: 'Database structuur initialiseren...', progress: 35, delay: 1000 },
-                { msg: 'Beveiligingsinstellingen toepassen...', progress: 60, delay: 2500 },
-                { msg: 'Gebruikersomgeving optimaliseren...', progress: 85, delay: 3800 },
-                { msg: 'Afronden...', progress: 100, delay: 4800 }
-            ];
-
-            let timeoutIds: NodeJS.Timeout[] = [];
-
-            messages.forEach(({ msg, progress, delay }) => {
-                const id = setTimeout(() => {
-                    setSetupMessage(msg);
-                    setSetupProgress(progress);
-                }, delay);
-                timeoutIds.push(id);
-            });
-
-            const completeId = setTimeout(() => {
-                setSetupState('complete');
-            }, 5500);
-            timeoutIds.push(completeId);
-
-            return () => timeoutIds.forEach(clearTimeout);
-        }
-    }, [step, setupState]);
 
     const handleCreateAdmin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -85,6 +49,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 plain_password: adminData.password // Store for Quick Login in testing
             });
 
+            // Auto-login after creation so the token is set for the Import Step
+            await login(adminData.username, adminData.password);
+
             toast.success('Admin account succesvol aangemaakt!');
             setStep('data');
         } catch (err: any) {
@@ -106,16 +73,15 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         }
     };
 
-    const { setOnboardingDismissed } = useAuth();
     const handleFinish = () => {
-        // Clear any redirects and complete
-        localStorage.removeItem('onboarding_redirect');
+        // Complete the onboarding
         setOnboardingDismissed(true);
         onComplete();
     };
 
-    const handleImportComplete = () => {
-        setStep('finish');
+    const handleImportRedirect = () => {
+        localStorage.setItem('onboarding_redirect', 'import');
+        handleFinish();
     };
 
     return (
@@ -159,15 +125,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                         className="w-[67%] rounded-[3rem] shadow-[0_45px_90px_-25px_rgba(0,0,0,0.15)] border-none bg-white flex flex-col relative overflow-hidden"
                         style={{ flex: '1 1 0%', borderRadius: '3rem' }}
                     >
-                        {/* PROGRESS INDICATOR - Hide during setup animation */}
-                        {!(step === 'finish' && setupState !== 'complete') && (
-                            <div className="flex px-16 pt-12 gap-3">
-                                <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'welcome' ? '#2563eb' : '#f1f5f9' }} />
-                                <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'admin' ? '#2563eb' : '#f1f5f9' }} />
-                                <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'data' ? '#2563eb' : '#f1f5f9' }} />
-                                <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'finish' ? '#16a34a' : '#f1f5f9' }} />
-                            </div>
-                        )}
+                        {/* PROGRESS INDICATOR */}
+                        <div className="flex px-16 pt-12 gap-3">
+                            <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'welcome' ? '#2563eb' : '#f1f5f9' }} />
+                            <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'admin' ? '#2563eb' : '#f1f5f9' }} />
+                            <div className={`h-2 flex-1 rounded-full transition-all duration-500`} style={{ backgroundColor: step === 'data' ? '#2563eb' : '#f1f5f9' }} />
+                        </div>
 
                         <div className="flex-1 p-10 flex flex-col justify-center overflow-y-auto custom-scrollbar">
                             {step === 'welcome' && (
@@ -251,92 +214,48 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
                             {step === 'data' && (
                                 <div className="animate-in fade-in slide-in-from-right duration-500 w-full h-full flex flex-col">
-                                    <div className="flex items-center gap-6 mb-4">
+                                    <div className="flex items-center gap-6 mb-8">
                                         <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm" style={{ backgroundColor: '#dbeafe', color: '#2563eb' }}>
                                             <FileUp className="w-8 h-8" />
                                         </div>
                                         <div>
                                             <h2 className="text-4xl font-black text-slate-900 tracking-tight">Data importeren?</h2>
-                                            <p className="text-slate-500 text-lg">Sleep uw CSV-bestanden hieronder.</p>
+                                            <p className="text-slate-500 text-lg">Kies hoe u wilt beginnen.</p>
                                         </div>
                                     </div>
 
-                                    {/* Updated Import Tool Container - Direct integration */}
-                                    <div className="flex-1 bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden relative shadow-inner">
-                                        <div className="absolute inset-0 overflow-y-auto p-4 custom-scrollbar">
-                                            <ImportTool onComplete={handleImportComplete} minimal={true} />
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-6 flex justify-between items-center text-sm border-t border-slate-50 pt-6">
-                                        <Button variant="ghost" onClick={() => setStep('admin')} className="rounded-2xl h-12 px-8 font-bold text-lg">Terug</Button>
-                                        <Button
-                                            variant="ghost"
-                                            onClick={() => {
-                                                setOnboardingDismissed(true);
-                                                onComplete();
-                                            }}
-                                            className="text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-slate-50 px-6 py-4 rounded-xl transition-all"
+                                    <div className="flex-1 flex flex-col gap-6">
+                                        {/* 2/3 Import Button */}
+                                        <div
+                                            className="flex-[2] rounded-[2rem] border-2 border-dashed border-slate-200 bg-slate-50 hover:border-blue-500 hover:bg-blue-50 transition-all duration-300 relative group cursor-pointer overflow-hidden"
+                                            onClick={handleImportRedirect}
                                         >
-                                            Overslaan <ArrowRight className="w-4 h-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {step === 'finish' && (
-                                <div className="w-full h-full flex flex-col justify-center items-center">
-                                    {/* LOADING STATE - 5 second animation */}
-                                    {setupState !== 'complete' && (
-                                        <div className="animate-in fade-in zoom-in duration-500 text-center flex flex-col items-center">
-                                            <div className="relative w-24 h-24 mb-10">
-                                                {/* Spinner Circle */}
-                                                <div className="absolute inset-0 rounded-full border-[6px] border-slate-100"></div>
-                                                <div
-                                                    className="absolute inset-0 rounded-full border-[6px] border-blue-600 border-t-transparent animate-spin"
-                                                    style={{ borderColor: '#2563eb transparent transparent transparent' }}
-                                                ></div>
-                                                {/* Inner Rocket */}
-                                                <div className="absolute inset-0 flex items-center justify-center animate-pulse">
-                                                    <Rocket className="w-8 h-8 text-blue-600" />
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                <div className="w-20 h-20 rounded-full bg-white text-blue-600 shadow-sm flex items-center justify-center mb-6 transition-colors group-hover:bg-blue-200 group-hover:text-blue-700" style={{ backgroundColor: 'white', color: '#2563eb' }}>
+                                                    <Upload className="w-10 h-10" />
                                                 </div>
-                                            </div>
-
-                                            <h2 className="text-3xl font-black text-slate-800 mb-4 tracking-tight animate-pulse">
-                                                {setupMessage}
-                                            </h2>
-
-                                            {/* Progress Bar */}
-                                            <div className="w-64 h-2 bg-slate-100 rounded-full overflow-hidden mt-4">
-                                                <div
-                                                    className="h-full bg-blue-600 transition-all duration-300 ease-out rounded-full"
-                                                    style={{ width: `${setupProgress}%`, backgroundColor: '#2563eb' }}
-                                                />
+                                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Importeren</h3>
+                                                <p className="text-slate-500 max-w-sm mx-auto">
+                                                    Ga naar de Import Wizard in de Toolbox om uw data te uploaden.
+                                                </p>
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* SUCCESS STATE - Shown after animation */}
-                                    {setupState === 'complete' && (
-                                        <div className="text-center animate-in fade-in zoom-in slide-in-from-bottom-10 duration-700 max-w-md mx-auto">
-                                            <div className="w-32 h-32 bg-green-100 rounded-full flex items-center justify-center text-green-600 mx-auto mb-10 shadow-inner ring-[12px] ring-green-50 animate-bounce" style={{ backgroundColor: '#f0fdf4', color: '#16a34a', animationDuration: '2s' }}>
-                                                <CheckCircle2 className="w-16 h-16" />
-                                            </div>
-                                            <h2 className="text-5xl font-black text-slate-900 mb-6 tracking-tight">Klaar!</h2>
-                                            <p className="text-2xl text-slate-500 leading-relaxed mb-12">
-                                                T&apos;Hooft Omni is volledig geconfigureerd.
-                                            </p>
-
+                                        {/* 1/3 Skip Button */}
+                                        <div className="flex-1">
                                             <Button
-                                                onClick={handleFinish}
-                                                className="bg-green-600 hover:bg-green-700 text-white w-full h-20 text-2xl font-black rounded-[2rem] gap-4 shadow-2xl shadow-green-100 transition-all hover:scale-[1.05] active:scale-[0.95] flex items-center justify-center group"
-                                                style={{ backgroundColor: '#16a34a', color: 'white' }}
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    localStorage.setItem('onboarding_redirect', 'home');
+                                                    handleFinish();
+                                                }}
+                                                className="w-full h-full rounded-[2rem] border border-slate-100 bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-all flex flex-col items-center justify-center gap-2 group"
                                             >
-                                                Start T&apos;Hooft Omni
-                                                <ArrowRight className="w-7 h-7 group-hover:translate-x-1 transition-transform" />
+                                                <span className="text-lg font-bold uppercase tracking-widest group-hover:tracking-[0.2em] transition-all">Start App (Overslaan)</span>
+                                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                                             </Button>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             )}
                         </div>

@@ -8,7 +8,7 @@ import { Switch } from './ui/switch';
 import { ImportTool } from './ImportTool';
 import { TooltipProvider } from './ui/tooltip';
 
-export function Toolbox() {
+export function Toolbox({ onNavigateHome }: { onNavigateHome?: () => void }) {
     return (
         <TooltipProvider>
             <div className="p-6 w-full mx-auto">
@@ -25,13 +25,13 @@ export function Toolbox() {
                     </div>
                 </div>
 
-                <ToolboxContent />
+                <ToolboxContent onNavigateHome={onNavigateHome} />
             </div>
         </TooltipProvider>
     );
 }
 
-function ToolboxContent() {
+function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
     const { tasks, updateTask, fetchTasks, testingMode, setTestingMode } = useAuth();
     const [isRecalculating, setIsRecalculating] = useState(false);
 
@@ -139,7 +139,7 @@ function ToolboxContent() {
                 </TabsContent>
 
                 <TabsContent value="import" className="space-y-6">
-                    <ImportTool />
+                    <ImportTool onComplete={onNavigateHome} />
                 </TabsContent>
 
                 <TabsContent value="fixes" className="space-y-6">

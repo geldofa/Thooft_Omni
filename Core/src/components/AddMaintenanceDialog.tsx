@@ -173,7 +173,7 @@ export function AddMaintenanceDialog({
           sort_order: editTask.sort_order || 0,
           isGroupTask: false,
           isExternal: editTask.isExternal || false,
-          tagIds: Array.isArray(editTask.tagIds) ? tags.filter(t => editTask.tagIds?.includes(t.naam)).map(t => t.id) : []
+          tagIds: Array.isArray(editTask.tagIds) ? editTask.tagIds : []
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -198,7 +198,7 @@ export function AddMaintenanceDialog({
           subtaskName: '',
           subtaskSubtext: '',
           isExternal: firstTask.isExternal || false,
-          tagIds: Array.isArray(firstTask.tagIds) ? tags.filter(t => firstTask.tagIds?.includes(t.naam)).map(t => t.id) : []
+          tagIds: Array.isArray(firstTask.tagIds) ? firstTask.tagIds : []
         };
         setTaskFormData(data);
         setInitialValues(data);
@@ -441,22 +441,6 @@ export function AddMaintenanceDialog({
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="isExternal">Externe Taak</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isExternal"
-                  checked={taskFormData.isExternal}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, isExternal: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Label htmlFor="isExternal" className="text-sm font-medium leading-none">
-                  Externe Taak
-                </Label>
-                <span className="text-sm text-gray-500">(Zichtbaar in het externe overzicht voor meestergasten)</span>
-              </div>
-            </div>
 
             <div className="grid gap-2">
               <Label>Tags</Label>
@@ -470,12 +454,14 @@ export function AddMaintenanceDialog({
                     className="gap-2 h-7"
                     style={taskFormData.tagIds.includes(tag.id) ? { backgroundColor: tag.kleur } : {}}
                     onClick={() => {
-                      setTaskFormData(prev => ({
-                        ...prev,
-                        tagIds: prev.tagIds.includes(tag.id)
+                      setTaskFormData(prev => {
+                        const isSelected = prev.tagIds.includes(tag.id);
+                        const newTagIds = isSelected
                           ? prev.tagIds.filter(id => id !== tag.id)
-                          : [...prev.tagIds, tag.id]
-                      }));
+                          : [...prev.tagIds, tag.id];
+
+                        return { ...prev, tagIds: newTagIds };
+                      });
                     }}
                   >
                     {tag.naam}

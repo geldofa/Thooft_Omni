@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Rocket } from 'lucide-react';
-import { APP_VERSION } from '../config';
+import { APP_VERSION, APP_NAME } from '../config';
 
 export function LoginForm() {
   const [username, setUsername] = useState('');
@@ -127,7 +127,7 @@ export function LoginForm() {
               className="text-4xl font-black italic tracking-tighter text-slate-900 leading-none"
               style={{ fontWeight: 900 }}
             >
-              T'HOOFT OMNI
+              {APP_NAME}
             </h1>
             <span className="text-[10px] font-bold text-blue-600 tracking-[0.2em] uppercase mt-2">Maintenance OS</span>
             <span className="text-[8px] font-bold text-blue-600 tracking-[0.2em] uppercase mt-0.5">{APP_VERSION}</span>

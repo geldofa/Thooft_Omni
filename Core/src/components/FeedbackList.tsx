@@ -72,7 +72,7 @@ const FONT_SIZES = {
 };
 
 export function FeedbackList() {
-    const { fetchFeedback, updateFeedback, deleteFeedback, archiveFeedback, user } = useAuth();
+    const { fetchFeedback, updateFeedback, deleteFeedback, archiveFeedback, user, hasPermission } = useAuth();
     const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
@@ -82,8 +82,8 @@ export function FeedbackList() {
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [commentText, setCommentText] = useState('');
 
-    const isAdmin = user?.role === 'admin'; // Only Admin has edit rights now
-    const canSeeArchived = user?.role === 'admin' || user?.role === 'meestergast';
+    const canManage = hasPermission('feedback_manage');
+    const canSeeArchived = hasPermission('feedback_view');
 
     // Split feedback into sections
     const activeFeedback = feedback.filter(f => !f.archived && f.status !== 'completed_success');
@@ -189,17 +189,17 @@ export function FeedbackList() {
                     <TableHead style={{ width: COL_WIDTHS.status }}>Status</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.type }}>Type</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.message }}>Bericht</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.comment }}>{isAdmin ? 'Opmerking Beheer' : 'Reactie'}</TableHead>
+                    <TableHead style={{ width: COL_WIDTHS.comment }}>{canManage ? 'Opmerking Beheer' : 'Reactie'}</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.user }}>Gebruiker</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.date }} className="text-right">Datum</TableHead>
-                    {isAdmin && <TableHead style={{ width: COL_WIDTHS.actions }} className="text-right">Acties</TableHead>}
+                    {canManage && <TableHead style={{ width: COL_WIDTHS.actions }} className="text-right">Acties</TableHead>}
                 </TableRow>
             </TableHeader>
             <TableBody>
                 {items.map((item) => (
                     <TableRow key={item.id} className={`hover:bg-gray-50/50 ${isArchivedTable ? 'opacity-60' : ''}`}>
                         <TableCell>
-                            {isAdmin && !isArchivedTable ? (
+                            {canManage && !isArchivedTable ? (
                                 <Select
                                     value={item.status || 'pending'}
                                     onValueChange={(val) => handleStatusChange(item.id, val)}
@@ -231,14 +231,14 @@ export function FeedbackList() {
                         </TableCell>
                         <TableCell className="align-top py-4">
                             <div className={`font-medium ${FONT_SIZES.body} whitespace-pre-wrap`}>{item.message}</div>
-                            {item.url && isAdmin && (
+                            {item.url && canManage && (
                                 <div className={`${FONT_SIZES.subtext} text-gray-400 mt-1 truncate max-w-[300px]`} title={item.url}>
                                     Op: {item.url}
                                 </div>
                             )}
                         </TableCell>
                         <TableCell className="align-top py-4">
-                            {isAdmin && !isArchivedTable ? (
+                            {canManage && !isArchivedTable ? (
                                 editingCommentId === item.id ? (
                                     <div className="space-y-2">
                                         <Textarea
@@ -273,13 +273,13 @@ export function FeedbackList() {
                                 {item.contact_operator && (
                                     <span className={`${FONT_SIZES.subtext} text-blue-600`}>Contact: {item.contact_operator}</span>
                                 )}
-                                {isAdmin && item.ip && <span className="text-[10px] text-gray-400">{item.ip}</span>}
+                                {canManage && item.ip && <span className="text-[10px] text-gray-400">{item.ip}</span>}
                             </div>
                         </TableCell>
                         <TableCell className={`text-right ${FONT_SIZES.subtext} text-gray-500 whitespace-nowrap`}>
                             {formatDate(item.created)}
                         </TableCell>
-                        {isAdmin && (
+                        {canManage && (
                             <TableCell className="text-right">
                                 <div className="flex gap-1 justify-end">
                                     {!isArchivedTable && (
@@ -319,7 +319,7 @@ export function FeedbackList() {
                         <MessageSquare className="w-5 h-5 text-blue-600" />
                     </div>
                     <CardTitle className={`${FONT_SIZES.title} font-bold`}>
-                        {isAdmin ? 'Feedback Beheer' : 'Feedback Overzicht'}
+                        {canManage ? 'Feedback Beheer' : 'Feedback Overzicht'}
                     </CardTitle>
                 </div>
                 <CardAction>

@@ -47,7 +47,6 @@ interface MaintenanceTableProps {
   onUpdate: (task: MaintenanceTask) => Promise<void>;
   onEditGroup?: (group: GroupedTask) => void;
   onAddTask?: () => void;
-  onUpdateTaskOrder?: (category: string, taskIds: string[]) => Promise<void>;
 }
 
 // --- HELPER INTERFACES ---
@@ -58,8 +57,8 @@ interface SortableColumnHeaderProps {
   style?: React.CSSProperties;
 }
 
-export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, onAddTask, onUpdateTaskOrder }: MaintenanceTableProps) {
-  const { user, categoryOrder, categories } = useAuth();
+export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, onAddTask }: MaintenanceTableProps) {
+  const { user, categoryOrder, categories, tags, hasPermission } = useAuth();
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedGroupedTasks, setCollapsedGroupedTasks] = useState<Set<string>>(new Set());
   const [quickEditTask, setQuickEditTask] = useState<MaintenanceTask | null>(null);
@@ -445,11 +444,11 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
             className={`bg-gray-50 border-b border-gray-100 ${isGroupedTaskCollapsed && summaryRowBgClass ? summaryRowBgClass : ''}`}
           >
             <td
-              colSpan={isGroupedTaskCollapsed ? 1 : (user?.role === 'admin' ? 8 : (user?.role === 'press' ? 6 : 7))}
+              colSpan={isGroupedTaskCollapsed ? 1 : (hasPermission('tasks_edit') ? 8 : (user?.role === 'press' ? 6 : 7))}
               className="px-3 py-1.5"
             >
               <div className="flex items-start">
-                {user?.role === 'admin' && (
+                {hasPermission('tasks_edit') && (
                   <div className="w-6 flex-shrink-0 flex justify-center mt-1">
                     {/* Spacer for Drag Handle space */}
                   </div>
@@ -485,7 +484,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     )}
                   </button>
                 </div>
-                {user?.role === 'admin' && !isGroupedTaskCollapsed && (
+                {hasPermission('tasks_edit') && !isGroupedTaskCollapsed && (
                   <div className="flex items-center gap-1 ml-auto">
                     <Button
                       variant="ghost"
@@ -570,7 +569,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     )}
                   </div>
                 </td>
-                {user?.role === 'admin' && (
+                {hasPermission('tasks_edit') && (
                   <td className="px-3 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button
@@ -624,34 +623,31 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
             >
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
-                  {user?.role === 'admin' && (
+                  {hasPermission('tasks_edit') && (
                     <div className="w-6 flex-shrink-0 flex justify-center mt-1">
                       {/* Spacer */}
                     </div>
                   )}
                   <div className="w-6 flex-shrink-0"></div>
 
-                  <div className="max-w-xs flex-1">
+                  <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <div className="line-clamp-2">{subtask.subtaskName}</div>
-                      {subtask.isExternal && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
-                      )}
-                      {subtask.tagIds && subtask.tagIds.map((tagName: string) => {
-                        const tag = (user as any)?.tags?.find((t: any) => t.naam === tagName);
+                      <div className="">{subtask.subtaskName}</div>
+                      {Array.isArray(subtask.tagIds) && subtask.tagIds.map((tagId: string) => {
+                        const tag = tags?.find((t: any) => t.id === tagId);
                         return (
                           <Badge
-                            key={tagName}
-                            style={tag?.kleur ? { backgroundColor: tag.kleur, color: 'white' } : {}}
-                            className="text-[10px] px-1 py-0 h-auto"
+                            key={tagId}
+                            style={{ backgroundColor: tag?.kleur || '#3b82f6' }}
+                            className="text-[10px] px-1.5 py-0.5 h-auto text-white border-none shadow-sm"
                           >
-                            {tagName}
+                            {tag?.naam || 'Onbekend'}
                           </Badge>
                         );
                       })}
                     </div>
                     {subtask.subtext && (
-                      <div className="text-gray-500 text-xs line-clamp-1">{subtask.subtext}</div>
+                      <div className="text-gray-500 text-xs">{subtask.subtext}</div>
                     )}
                   </div>
                 </div>
@@ -697,10 +693,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   handleQuickEdit(subtask, groupedTask, 'opmerkingen');
                 }}
               >
-                <div className="max-w-xs">
+                <div className="">
                   {subtask.comment ? (
                     <>
-                      <div className="line-clamp-2 text-gray-700">{subtask.comment}</div>
+                      <div className="text-gray-700">{subtask.comment}</div>
                       <div className="text-gray-400 text-xs mt-1">{formatDateTime(subtask.commentDate)}</div>
                     </>
                   ) : (
@@ -708,7 +704,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   )}
                 </div>
               </td>
-              {user?.role === 'admin' && (
+              {hasPermission('tasks_edit') && (
                 <td className="px-3 py-1.5 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button
@@ -758,7 +754,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
             <tr key={subtask.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 ${rowBgClass} ${subtask.isExternal ? 'bg-blue-50/40' : ''}`}>
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
-                  {user?.role === 'admin' && (
+                  {hasPermission('tasks_edit') && (
                     <div className="w-6 flex-shrink-0"></div>
                   )}
                   <div className="w-6 flex-shrink-0"></div>
@@ -768,27 +764,24 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       <CornerDownRight size={15} className="text-gray-400" strokeWidth={1.5} />
                     </div>
 
-                    <div className="flex-1 max-w-xs">
+                    <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="line-clamp-2 text-gray-700 leading-snug">{subtask.subtaskName}</div>
-                        {subtask.isExternal && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE TAAK</Badge>
-                        )}
-                        {subtask.tagIds && subtask.tagIds.map((tagName: string) => {
-                          const tag = (user as any)?.tags?.find((t: any) => t.naam === tagName);
+                        <div className="text-gray-700 leading-snug">{subtask.subtaskName}</div>
+                        {Array.isArray(subtask.tagIds) && subtask.tagIds.map((tagId: string) => {
+                          const tag = tags?.find((t: any) => t.id === tagId);
                           return (
                             <Badge
-                              key={tagName}
-                              style={tag?.kleur ? { backgroundColor: tag.kleur, color: 'white' } : {}}
-                              className="text-[10px] px-1 py-0 h-auto"
+                              key={tagId}
+                              style={{ backgroundColor: tag?.kleur || '#3b82f6' }}
+                              className="text-[10px] px-1.5 py-0.5 h-auto text-white border-none shadow-sm"
                             >
-                              {tagName}
+                              {tag?.naam || 'Onbekend'}
                             </Badge>
                           );
                         })}
                       </div>
                       {subtask.subtext && (
-                        <div className="text-gray-400 text-[10px] leading-tight line-clamp-1 italic">{subtask.subtext}</div>
+                        <div className="text-gray-400 text-[10px] leading-tight italic">{subtask.subtext}</div>
                       )}
                     </div>
                   </div>
@@ -829,7 +822,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 style={{ pointerEvents: 'auto' }}
                 onClick={(e) => { e.stopPropagation(); handleQuickEdit(subtask, groupedTask, 'opmerkingen'); }}
               >
-                <div className="max-w-xs">
+                <div className="">
                   {subtask.comment ? (
                     <div className="text-gray-700 mt-0.5">
                       <span className="line-clamp-2">{subtask.comment}</span>
@@ -890,6 +883,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     onToggle: (categoryId: string, e?: React.MouseEvent) => void;
     isCollapsed: boolean;
     user: any;
+    pressId: string | null;  // [NEW]
     categoryGroupedTasks: GroupedTask[];
     statusFilter: string | null;
     getStatusInfo: (nextMaintenance: Date) => any;
@@ -913,6 +907,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     onToggle,
     isCollapsed,
     user,
+    pressId, // [NEW]
     categoryGroupedTasks,
     statusFilter,
     getStatusInfo,
@@ -956,6 +951,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           </div>
           <div className="flex-1 flex items-center">
             <span className={`text-gray-900 font-medium ${FONT_SIZES.section}`}>{categoryName}</span>
+            {/* [NEW] Subtext Rendering */}
+            {pressId && categories.find(c => c.id === categoryId)?.subtexts?.[pressId] && (
+              <span className="ml-3 text-gray-500 text-sm font-normal italic">
+                {categories.find(c => c.id === categoryId)?.subtexts?.[pressId]}
+              </span>
+            )}
             <Badge variant="secondary" className="ml-auto">
               {filteredCount}
             </Badge>
@@ -972,7 +973,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     label="Taak / Subtaak"
                     sortKey="task"
                     className={`px-3 py-2 text-left text-gray-700`}
-                    style={{ width: COL_WIDTHS.task, paddingLeft: user?.role === 'admin' ? '60px' : '36px' }}
+                    style={{ width: COL_WIDTHS.task, paddingLeft: hasPermission('tasks_edit') ? '60px' : '36px' }}
                   />
                   <SortableColumnHeader
                     label="Laatst Onderhoud"
@@ -1002,7 +1003,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     style={{ width: COL_WIDTHS.assigned }}
                   />
                   <th className="px-3 py-2 text-left text-gray-700" style={{ width: COL_WIDTHS.remarks }}>Opmerkingen</th>
-                  {user?.role === 'admin' && (
+                  {hasPermission('tasks_edit') && (
                     <th className="px-3 py-2 text-right text-gray-700" style={{ width: COL_WIDTHS.actions }}>Acties</th>
                   )}
                 </tr>
@@ -1126,6 +1127,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 key={categoryId}
                 categoryId={categoryId}
                 categoryName={categories.find(c => c.id === categoryId)?.name || 'Unknown Category'}
+                pressId={tasks.length > 0 ? tasks[0].pressId : null} // [NEW] Pass derived PressID
                 onToggle={(id, e) => toggleCategory(id, e)}
                 isCollapsed={collapsedCategories.has(categoryId)}
                 user={user}

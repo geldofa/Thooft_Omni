@@ -144,9 +144,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return acc;
     }, {} as Record<string, string>);
 
-    const { user } = useAuth();
+    const { user, hasPermission } = useAuth();
 
-    const [activeTab, setActiveTab] = useState(user?.role === 'press' ? 'werkorders' : 'finished');
+    const [activeTab, setActiveTab] = useState(hasPermission('drukwerken_view_all') ? 'finished' : 'werkorders');
 
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
@@ -355,7 +355,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const handleSaveOrderToFinished = async (werkorder: Werkorder) => {
-        if (user?.role === 'press' && !user.pressId) {
+        if (!hasPermission('drukwerken_view_all') && !user?.pressId) {
             toast.error("Kan niet opslaan: Persgegevens nog niet geladen. Probeer het over enkele seconden opnieuw.");
             return;
         }
@@ -662,7 +662,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const fetchFinishedJobs = useCallback(async () => {
         try {
             let filter = '';
-            if (user?.role === 'press' && user.press) {
+            if (!hasPermission('drukwerken_view_all') && user?.press) {
                 // If the migration used 'pers' relation, we filter by that
                 // If it's a relation, we should use the ID if possible, but the name is also available in some contexts.
                 // Given I added 'pressId' to user, I'll use that.
@@ -684,7 +684,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             console.log("Logged in user:", { role: user?.role, press: user?.press, pressId: user?.pressId });
 
             // Strict filtering: only keep records that definitely belong to this press
-            const filteredRecords = (user?.role === 'press' && user.press)
+            const filteredRecords = (!hasPermission('drukwerken_view_all') && user?.press)
                 ? records.filter((r: any) => {
                     const hasMatch = (user.pressId && r.pers === user.pressId) ||
                         (user.press && r.expand?.pers?.naam === user.press);
@@ -718,7 +718,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 delta: r.delta || 0,
                 performance: '100%',
                 pressId: r.pers,
-                pressName: (user?.role === 'press' && user.pressId === r.pers) ? user.press : (r.expand?.pers?.naam || '')
+                pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || '')
             })));
         } catch (error) {
             console.error("Error fetching finished jobs:", error);
@@ -757,7 +757,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const filteredJobs = finishedJobs.filter(job => {
         // Press filter (for admins)
-        if (user?.role?.toLowerCase() === 'admin' && pressFilter !== 'all') {
+        if (hasPermission('drukwerken_view_all') && pressFilter !== 'all') {
             if (job.pressName !== pressFilter) return false;
         }
 
@@ -1338,15 +1338,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="tab-pill-list">
-                    {user?.role === 'press' && (
-                        <TabsTrigger value="werkorders" className="tab-pill-trigger">Werkorders</TabsTrigger>
-                    )}
-                    <TabsTrigger value="finished" className="tab-pill-trigger">Finished</TabsTrigger>
-                    {user?.role !== 'press' && (
+                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                    <TabsList className="tab-pill-list">
+                        <TabsTrigger value="finished" className="tab-pill-trigger">Finished</TabsTrigger>
                         <TabsTrigger value="parameters" className="tab-pill-trigger">Parameters</TabsTrigger>
-                    )}
-                </TabsList>
+                    </TabsList>
+                )}
 
                 {user?.role === 'press' && (
                     <TabsContent value="werkorders">
@@ -1393,7 +1390,25 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                 </div>
                                             </div>
                                         </div>
-                                        <Table className={`w-full ${FONT_SIZES.body}`}>
+                                        <Table className={`table-fixed w-full ${FONT_SIZES.body}`}>
+                                            <colgroup>
+                                                <col style={{ width: COL_WIDTHS.version }} />
+                                                <col style={{ width: COL_WIDTHS.pages }} />
+                                                <col style={{ width: COL_WIDTHS.exOmw }} />
+                                                <col style={{ width: COL_WIDTHS.netRun }} />
+                                                <col style={{ width: COL_WIDTHS.startup }} />
+                                                <col style={{ width: COL_WIDTHS.c4_4 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_1 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_1 }} />
+                                                <col style={{ width: COL_WIDTHS.maxGross }} />
+                                                <col style={{ width: COL_WIDTHS.green }} />
+                                                <col style={{ width: COL_WIDTHS.red }} />
+                                                <col style={{ width: COL_WIDTHS.delta }} />
+                                                <col style={{ width: COL_WIDTHS.deltaPercent }} />
+                                                <col style={{ width: COL_WIDTHS.actions }} />
+                                            </colgroup>
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead colSpan={4} className="text-center bg-blue-100" style={{ borderRight: '2px solid #e5e7eb' }}>Data</TableHead>
@@ -1559,6 +1574,27 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <Table className={`table-fixed w-full ${FONT_SIZES.body}`}>
+                                    <colgroup>
+                                        {user?.role?.toLowerCase() === 'admin' && <col style={{ width: COL_WIDTHS.press }} />}
+                                        <col style={{ width: COL_WIDTHS.date }} />
+                                        <col style={{ width: COL_WIDTHS.orderNr }} />
+                                        <col style={{ width: COL_WIDTHS.orderName }} />
+                                        <col style={{ width: COL_WIDTHS.pages }} />
+                                        <col style={{ width: COL_WIDTHS.exOmw }} />
+                                        <col style={{ width: COL_WIDTHS.netRun }} />
+                                        <col style={{ width: COL_WIDTHS.startup }} />
+                                        <col style={{ width: COL_WIDTHS.c4_4 }} />
+                                        <col style={{ width: COL_WIDTHS.c4_0 }} />
+                                        <col style={{ width: COL_WIDTHS.c1_0 }} />
+                                        <col style={{ width: COL_WIDTHS.c1_1 }} />
+                                        <col style={{ width: COL_WIDTHS.c4_1 }} />
+                                        <col style={{ width: COL_WIDTHS.maxGross }} />
+                                        <col style={{ width: COL_WIDTHS.green }} />
+                                        <col style={{ width: COL_WIDTHS.red }} />
+                                        <col style={{ width: COL_WIDTHS.delta }} />
+                                        <col style={{ width: COL_WIDTHS.deltaPercent }} />
+                                        <col style={{ width: COL_WIDTHS.actions }} />
+                                    </colgroup>
                                     <TableHeader>
                                         <TableRow>
                                             {user?.role?.toLowerCase() === 'admin' && <TableHead rowSpan={2} style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-b">Pers</TableHead>}
@@ -1572,7 +1608,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Date {getSortIcon('date')}</div></TableHead>
                                             {/* Datum removed */}
                                             <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
-                                            <TableHead onClick={() => requestSort('orderName')} style={{ minWidth: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
                                             <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r"><div className="flex items-center justify-center">Blz {getSortIcon('pages')}</div></TableHead>
                                             <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center leading-3 border-r"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
                                             <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r"><div className="flex items-center justify-center">Oplage netto {getSortIcon('netRun')}</div></TableHead>
@@ -1584,14 +1620,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             <TableHead onClick={() => requestSort('c4_1')} style={{ width: COL_WIDTHS.c4_1 }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border border-black border-r"><div className="flex items-center justify-center">4/1 {getSortIcon('c4_1')}</div></TableHead>
                                             <TableHead style={{ width: COL_WIDTHS.maxGross }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
-                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('maxGross'), 'maxGross')}
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
                                                         title={getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
                                                     >
                                                         {getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
-                                                    </Button>
+                                                    </span>
                                                     <div onClick={() => requestSort('maxGross')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
                                                         {getSortIcon('maxGross')}
                                                     </div>
@@ -1599,14 +1633,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             </TableHead>
                                             <TableHead style={{ width: COL_WIDTHS.green }} className="text-center border-r">
                                                 <div className="flex items-center gap-1 justify-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
-                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('green'), 'green')}
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
                                                         title={getFormulaForColumn('green')?.name || 'Groen'}
                                                     >
                                                         {getFormulaForColumn('green')?.name || 'Groen'}
-                                                    </Button>
+                                                    </span>
                                                     <div onClick={() => requestSort('green')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
                                                         {getSortIcon('green')}
                                                     </div>
@@ -1614,14 +1646,12 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                             </TableHead>
                                             <TableHead style={{ width: COL_WIDTHS.red, borderRight: '1px solid black' }} className="text-center">
                                                 <div className="flex items-center gap-1 justify-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-auto p-0 font-bold hover:bg-transparent hover:text-blue-600 truncate max-w-[60px]"
-                                                        onClick={() => handleOpenFormulaDialog(getFormulaForColumn('red'), 'red')}
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
                                                         title={getFormulaForColumn('red')?.name || 'Rood'}
                                                     >
                                                         {getFormulaForColumn('red')?.name || 'Rood'}
-                                                    </Button>
+                                                    </span>
                                                     <div onClick={() => requestSort('red')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
                                                         {getSortIcon('red')}
                                                     </div>
@@ -1905,7 +1935,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
             {/* Formula Builder Dialog */}
             < Dialog open={isFormulaDialogOpen} onOpenChange={setIsFormulaDialogOpen} >
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-5xl sm:max-w-[1200px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Calculator className="w-5 h-5" />

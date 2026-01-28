@@ -39,7 +39,8 @@ export function PasswordManagement() {
     updateUserAccount,
     deleteUserAccount,
     addActivityLog,
-    presses
+    presses,
+    hasPermission
   } = useAuth();
 
   // --- DELETE CONFIRMATION STATE ---
@@ -261,7 +262,7 @@ export function PasswordManagement() {
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
                     {/* EDIT DETAILS */}
-                    {user?.role === 'admin' && (
+                    {hasPermission('manage_accounts') && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -273,7 +274,7 @@ export function PasswordManagement() {
                     )}
 
                     {/* CHANGE PASSWORD */}
-                    {(user?.role === 'admin' || user?.username === account.username) && (
+                    {(hasPermission('manage_accounts') || user?.username === account.username) && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -285,7 +286,7 @@ export function PasswordManagement() {
                     )}
 
                     {/* DELETE USER */}
-                    {user?.role === 'admin' && account.username !== user.username && (
+                    {hasPermission('manage_accounts') && account.username !== user?.username && (
                       <Button
                         variant="ghost"
                         size="icon"

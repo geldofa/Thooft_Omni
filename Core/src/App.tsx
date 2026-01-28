@@ -8,20 +8,19 @@ import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { APP_TITLE } from './config';
 
 // Lazy Imports
 const MaintenanceTable = lazy(() => import('./components/MaintenanceTable').then(m => ({ default: m.MaintenanceTable })));
-const OperatorManagement = lazy(() => import('./components/OperatorManagement').then(m => ({ default: m.OperatorManagement })));
-const CategoryManagement = lazy(() => import('./components/CategoryManagement').then(m => ({ default: m.CategoryManagement })));
 const ActivityLog = lazy(() => import('./components/ActivityLog').then(m => ({ default: m.ActivityLog })));
-const PasswordManagement = lazy(() => import('./components/PasswordManagement').then(m => ({ default: m.PasswordManagement })));
-const PressManagement = lazy(() => import('./components/PressManagement').then(m => ({ default: m.PressManagement })));
 const Reports = lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
 const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
 const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({ default: m.FeedbackList })));
 const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: m.Toolbox })));
+const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
 const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
+import { Home } from './components/Home';
 
 function MainApp() {
   const {
@@ -36,10 +35,22 @@ function MainApp() {
     fetchActivityLogs,
     fetchUserAccounts,
     isFirstRun,
-    checkFirstRun
+    checkFirstRun,
+    hasPermission
   } = useAuth();
 
-  const activePresses = presses.filter(p => p.active && !p.archived);
+  useEffect(() => {
+    document.title = APP_TITLE;
+  }, []);
+
+  const activePresses = presses
+    .filter(p => p.active && !p.archived)
+    .filter(p => {
+      if (user?.role === 'press' && user.press) {
+        return p.name === user.press;
+      }
+      return true;
+    });
 
   // Flatten grouped tasks for specific views (like Reports)
   const tasks: MaintenanceTask[] = groupedTasks.flatMap(group =>
@@ -68,9 +79,9 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof sessionStorage !== 'undefined') {
-      return sessionStorage.getItem('activeTab') || 'tasks';
+      return sessionStorage.getItem('activeTab') || 'home';
     }
-    return 'tasks';
+    return 'home';
   });
 
   // Effects for persistence
@@ -85,6 +96,9 @@ function MainApp() {
     const redirect = localStorage.getItem('onboarding_redirect');
     if (redirect === 'import') {
       setActiveTab('toolbox');
+      localStorage.removeItem('onboarding_redirect');
+    } else if (redirect === 'home') {
+      setActiveTab('home');
       localStorage.removeItem('onboarding_redirect');
     }
   }, []);
@@ -204,42 +218,46 @@ function MainApp() {
     }
   };
 
-  const filteredTasks = user?.role === 'press'
-    ? groupedTasks.filter(group => group.press === user.press)
-    : groupedTasks;
+  const filteredTasks = hasPermission('tasks_view')
+    ? groupedTasks
+    : groupedTasks.filter(group => group.press === user?.press);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       <Toaster position="bottom-right" />
       <ScrollToTop />
 
-      {isFirstRun && !user ? (
+      {isFirstRun ? (
         <OnboardingWizard onComplete={checkFirstRun} />
       ) : !user ? (
         <LoginForm />
+      ) : user && activeTab === 'home' ? (
+        <Home setActiveTab={setActiveTab} />
       ) : (
         <>
           <Header activeTab={activeTab} setActiveTab={setActiveTab} />
           <main className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            {(user.role === 'admin' || user.role === 'meestergast') && (
+            {hasPermission('tasks_view') ? (
               <Suspense fallback={<div className="p-4 text-center text-gray-500">Modules laden...</div>}>
                 {activeTab === 'tasks' && (
                   <div className="space-y-6">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-                      <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
-                        <TabsList className="tab-pill-list">
-                          {activePresses.map(press => (
-                            <TabsTrigger
-                              key={press.id}
-                              value={press.name}
-                              className="tab-pill-trigger"
-                            >
-                              {press.name}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                      </Tabs>
-                    </div>
+                    {activePresses.length > 1 && (
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                        <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
+                          <TabsList className="tab-pill-list">
+                            {activePresses.map(press => (
+                              <TabsTrigger
+                                key={press.id}
+                                value={press.name}
+                                className="tab-pill-trigger"
+                              >
+                                {press.name}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </Tabs>
+                      </div>
+                    )}
 
                     <MaintenanceTable
                       tasks={groupedTasks.filter(group => group.press === selectedPress)}
@@ -292,21 +310,18 @@ function MainApp() {
                   </div>
                 )}
 
-                {activeTab === 'drukwerken' && <Drukwerken presses={activePresses} />}
-                {activeTab === 'extern' && <ExternalSummary />}
-                {activeTab === 'reports' && <Reports tasks={tasks} />}
-                {activeTab === 'checklist' && <MaintenanceChecklist tasks={tasks} />}
-                {activeTab === 'operators' && <OperatorManagement />}
-                {activeTab === 'categories' && <CategoryManagement />}
-                {activeTab === 'presses' && user.role === 'admin' && <PressManagement />}
-                {activeTab === 'passwords' && user.role === 'admin' && <PasswordManagement />}
-                {activeTab === 'logs' && <ActivityLog />}
-                {activeTab === 'feedback-list' && <FeedbackList />}
-                {activeTab === 'toolbox' && <Toolbox />}
+                {(activeTab === 'drukwerken' && hasPermission('drukwerken_view')) && <Drukwerken presses={activePresses} />}
+                {(activeTab === 'extern' && hasPermission('extern_view')) && <ExternalSummary />}
+                {['operators', 'categories', 'tags', 'presses', 'passwords', 'permissions'].includes(activeTab) && hasPermission('management_access') && (
+                  <ManagementLayout activeTab={activeTab} setActiveTab={setActiveTab} user={user} />
+                )}
+                {(activeTab === 'reports' && hasPermission('reports_view')) && <Reports tasks={tasks} />}
+                {(activeTab === 'checklist' && hasPermission('checklist_view')) && <MaintenanceChecklist tasks={tasks} />}
+                {(activeTab === 'logs' && hasPermission('logs_view')) && <ActivityLog />}
+                {(activeTab === 'feedback-list' && hasPermission('feedback_view')) && <FeedbackList />}
+                {(activeTab === 'toolbox' && hasPermission('toolbox_access')) && <Toolbox onNavigateHome={() => setActiveTab('home')} />}
               </Suspense>
-            )}
-
-            {user.role === 'press' && (
+            ) : (
               <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
                 {activeTab === 'tasks' && (
                   <MaintenanceTable
@@ -321,9 +336,9 @@ function MainApp() {
                     onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
                   />
                 )}
-                {activeTab === 'drukwerken' && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
-                {activeTab === 'logs' && <ActivityLog />}
-                {activeTab === 'feedback-list' && <FeedbackList />}
+                {(activeTab === 'drukwerken' && hasPermission('drukwerken_view')) && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
+                {(activeTab === 'logs' && hasPermission('logs_view')) && <ActivityLog />}
+                {(activeTab === 'feedback-list' && hasPermission('feedback_view')) && <FeedbackList />}
               </Suspense>
             )}
 

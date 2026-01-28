@@ -1,19 +1,20 @@
 import { useMemo } from 'react';
-import { useAuth, MaintenanceTask } from './AuthContext';
+import { useAuth, MaintenanceTask, EXTERNAL_TAG_NAME } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
 import { Calendar, User, Factory } from 'lucide-react';
 
 export function ExternalSummary() {
-    const { tasks } = useAuth();
+    const { tasks, tags } = useAuth();
 
     // Flatten all subtasks and filter those marked as external
     const externalTasks = useMemo(() => {
         const result: MaintenanceTask[] = [];
         tasks.forEach(group => {
             group.subtasks.forEach(sub => {
-                if (sub.isExternal) {
+                const isTagExternal = tags.some(t => t.naam === EXTERNAL_TAG_NAME && sub.tagIds?.includes(t.id));
+                if (sub.isExternal || isTagExternal) {
                     result.push({
                         id: sub.id,
                         task: group.taskName,
@@ -34,6 +35,7 @@ export function ExternalSummary() {
                         commentDate: sub.commentDate,
                         sort_order: sub.sort_order || 0,
                         isExternal: true,
+                        tagIds: sub.tagIds,
                         created: '',
                         updated: ''
                     });

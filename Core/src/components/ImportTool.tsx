@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAuth, pb } from './AuthContext';
+import { useAuth, pb, EXTERNAL_TAG_NAME } from './AuthContext';
 import {
     Table,
     TableBody,
@@ -40,21 +40,20 @@ interface MappingTarget {
 }
 
 const TARGET_FIELDS: MappingTarget[] = [
-    { id: 'task', label: 'Taak Naam', required: true, systemField: 'task' },
-    { id: 'task_subtext', label: 'Taak Subtekst', required: false, systemField: 'taskSubtext' },
-    { id: 'subtask', label: 'Subtaak Naam (alleen bij groepen)', required: false, systemField: 'subtaskName' },
-    { id: 'subtask_subtext', label: 'Subtaak Subtekst', required: false, systemField: 'subtaskSubtext' },
+    { id: 'task', label: 'Taak', required: true, systemField: 'task' },
+    { id: 'task_subtext', label: 'Taak_subtext', required: false, systemField: 'taskSubtext' },
+    { id: 'subtask', label: 'Subtaak', required: false, systemField: 'subtaskName' },
+    { id: 'subtask_subtext', label: 'Subtaak_subtext', required: false, systemField: 'subtaskSubtext' },
     { id: 'category', label: 'Categorie', required: true, systemField: 'category' },
-    { id: 'press', label: 'Machine/Pers', required: true, systemField: 'press' },
-    { id: 'interval', label: 'Herhalingsinterval', required: false, systemField: 'maintenanceInterval' },
+    { id: 'press', label: 'Pers', required: true, systemField: 'press' },
+    { id: 'interval', label: 'HerhalingsInterval', required: false, systemField: 'maintenanceInterval' },
     { id: 'unit', label: 'Herhalings-eenheid', required: false, systemField: 'maintenanceIntervalUnit' },
-    { id: 'last_date', label: 'Laatste Onderhoud', required: false, systemField: 'lastMaintenance' },
-    { id: 'next_date', label: 'Volgende Herinnering', required: false, systemField: 'nextMaintenance' },
+    { id: 'last_date', label: 'Laatste', required: false, systemField: 'lastMaintenance' },
+    { id: 'next_date', label: 'Volgende', required: false, systemField: 'nextMaintenance' },
     { id: 'assigned', label: 'Toegewezen aan', required: false, systemField: 'assignedTo' },
-    { id: 'opmerkingen', label: 'Interne Opmerkingen', required: false, systemField: 'opmerkingen' },
-    { id: 'comment', label: 'Laatste Verslag (Tekst)', required: false, systemField: 'comment' },
-    { id: 'commentDate', label: 'Datum Laatste Verslag', required: false, systemField: 'commentDate' },
-    { id: 'is_external', label: 'Externe Taak', required: false, systemField: 'isExternal' },
+    { id: 'comment', label: 'comment', required: false, systemField: 'comment' },
+    { id: 'commentDate', label: 'last-comment date', required: false, systemField: 'commentDate' },
+    { id: 'tags', label: 'tags', required: false, systemField: 'tagIds' },
 ];
 
 const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
@@ -75,8 +74,8 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
     'years': 'years',
 };
 
-export function ImportTool({ onComplete, minimal = false }: { onComplete?: () => void, minimal?: boolean }) {
-    const { categories, presses, operators, externalEntities, addTask, addActivityLog, user } = useAuth();
+export function ImportTool({ onComplete, minimal = false, initialFile }: { onComplete?: () => void, minimal?: boolean, initialFile?: File }) {
+    const { categories, presses, operators, externalEntities, addTask, addActivityLog, user, tags } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
     const [headers, setHeaders] = useState<string[]>([]);
@@ -309,6 +308,12 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
         });
     };
 
+    useEffect(() => {
+        if (initialFile) {
+            processFile(initialFile);
+        }
+    }, [initialFile]);
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) processFile(file);
@@ -375,13 +380,7 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                     val = parseImportDate(val);
                 }
 
-                if (target.systemField === 'isExternal') {
-                    if (val === null || val === undefined) val = false;
-                    else {
-                        const s = val.toString().toLowerCase().trim();
-                        val = s === 'ja' || s === 'yes' || s === 'true' || s === '1' || s === 'x' || s === 'v';
-                    }
-                }
+                // isExternal is now determined by tags, not a separate column
 
                 item[target.systemField] = val;
             });
@@ -453,7 +452,8 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                 assignedToIds: resolvedOpIds,
                 assignedToTypes: resolvedOpTypes,
                 isValid: errors.length === 0,
-                errors
+                errors,
+                rawTags: item.tagIds?.toString() || ''
             };
         });
     }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions]);
@@ -492,11 +492,11 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
             for (const [rawName, res] of Object.entries(resolutions.presses)) {
                 if (res.type === 'new') {
                     try {
-                        const record = await pb.collection('persen').create({ name: res.value, active: true, archived: false });
+                        const record = await pb.collection('persen').create({ naam: res.value, active: true, archived: false });
                         pressMap[`__NEW_PRESS__${rawName}`] = record.id;
                     } catch (err: any) {
                         try {
-                            const existing = await pb.collection('persen').getFirstListItem(`name="${res.value}"`);
+                            const existing = await pb.collection('persen').getFirstListItem(`naam="${res.value}"`);
                             pressMap[`__NEW_PRESS__${rawName}`] = existing.id;
                         } catch (fetchErr) {
                             console.error(`Failed to create or find press ${res.value}`, err);
@@ -541,8 +541,9 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
             // 4. Identify all unique presses for each new operator
             const operatorPressMap: Record<string, Set<string>> = {};
             validRows.forEach(row => {
-                if (row.assignedToIds && row.assignedToIds.length > 0) {
-                    row.assignedToIds.forEach((id: string) => {
+                const ids = Array.isArray(row.assignedToIds) ? row.assignedToIds : [];
+                if (ids.length > 0) {
+                    ids.forEach((id: string) => {
                         if (id.startsWith('__NEW_OP__')) {
                             const opName = id.replace('__NEW_OP__', '');
                             if (!operatorPressMap[opName]) operatorPressMap[opName] = new Set();
@@ -575,7 +576,35 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                 }
             }
 
-            // 5. Create the tasks
+            // 5. Create new tags correctly if needed
+            const finalTagMap: Record<string, string> = {};
+            for (const row of validRows) {
+                if (row.rawTags) {
+                    const tagNames = row.rawTags.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    for (const tagName of tagNames) {
+                        if (!finalTagMap[tagName]) {
+                            const existing = tags.find((t: any) => t.naam.toLowerCase() === tagName.toLowerCase());
+                            if (existing) {
+                                finalTagMap[tagName] = existing.id;
+                            } else {
+                                try {
+                                    const created = await pb.collection('tags').create({
+                                        naam: tagName,
+                                        kleur: tagName.toLowerCase() === EXTERNAL_TAG_NAME.toLowerCase() ? '#ef4444' : '#3b82f6',
+                                        active: true
+                                    });
+                                    finalTagMap[tagName] = created.id;
+                                    console.log(`[Import] Created new tag: ${tagName} (${created.id})`);
+                                } catch (err) {
+                                    console.error(`Failed to create tag ${tagName}`, err);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Create the tasks
             const groupCounts: Record<string, number> = {};
             validRows.forEach(row => {
                 const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
@@ -585,7 +614,8 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
             for (const row of validRows) {
                 const finalCatId = row.categoryId.startsWith('__NEW_CAT__') ? catMap[row.categoryId] : row.categoryId;
                 const finalPressId = row.pressId.startsWith('__NEW_PRESS__') ? pressMap[row.pressId] : row.pressId;
-                const finalAssignedToIds = row.assignedToIds.map((id: string) => {
+                const assignedIds = Array.isArray(row.assignedToIds) ? row.assignedToIds : [];
+                const finalAssignedToIds = assignedIds.map((id: string) => {
                     if (id.startsWith('__NEW_OP__')) {
                         const opName = id.replace('__NEW_OP__', '');
                         return opMap[opName] || id;
@@ -616,12 +646,13 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                     assignedTo: row.assignedTo || '',
                     assignedToIds: finalAssignedToIds,
                     assignedToTypes: row.assignedToTypes,
-                    opmerkingen: row.opmerkingen || '',
+                    opmerkingen: row.comment || '',
                     comment: row.comment || '',
                     commentDate: row.commentDate || null,
                     sort_order: 0,
                     isGroupTask: !isSingleTask,
-                    isExternal: !!row.isExternal
+                    isExternal: row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false,
+                    tagIds: (row.rawTags?.split(',').map((s: string) => s.trim()).filter(Boolean).map((n: string) => finalTagMap[n]).filter(Boolean)) || []
                 } as any);
                 successCount++;
             }
@@ -1062,7 +1093,7 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                                                             <TooltipContent className="bg-white border-red-200 text-red-900 p-3 shadow-xl max-w-xs">
                                                                 <p className="font-bold mb-1">Verbeter de volgende punten:</p>
                                                                 <ul className="list-disc pl-4 space-y-1">
-                                                                    {row.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                                                                    {Array.isArray(row.errors) && row.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
                                                                 </ul>
                                                             </TooltipContent>
                                                         </Tooltip>
@@ -1098,19 +1129,20 @@ export function ImportTool({ onComplete, minimal = false }: { onComplete?: () =>
                             <div className="text-sm text-gray-500">
                                 <span className="font-bold text-gray-900">{processedData.filter(d => d.isValid).length}</span> taken worden toegevoegd.
                             </div>
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <button
+                            <div className="flex flex-row items-center justify-end gap-3 w-auto ml-auto">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setStep('resolve')}
+                                    className="text-blue-700 hover:bg-blue-100/50 font-semibold h-12 px-6 shrink-0 order-1"
+                                >
+                                    Koppelingen Aanpassen
+                                </Button>
+                                <Button
                                     onClick={handleImport}
-                                    disabled={isImporting || !processedData.some(d => d.isValid)}
-                                    className={`h-12 px-8 rounded-md font-bold text-base shadow-md transition-all active:scale-95 w-full sm:w-auto flex items-center justify-center order-1 sm:order-2 ${isImporting || !processedData.some(d => d.isValid)
-                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                        }`}
+                                    disabled={isImporting || !processedData.some(d => d.isValid || rowModifications[d.originalIndex])}
+                                    className="h-12 px-8 font-bold text-base shadow-md shrink-0 order-2"
                                 >
                                     {isImporting ? 'BEZIG MET IMPORT...' : 'START IMPORT NU'}
-                                </button>
-                                <Button variant="ghost" onClick={() => setStep('resolve')} className="text-blue-700 hover:bg-blue-100/50 font-semibold w-full sm:w-auto order-2 sm:order-1">
-                                    Koppelingen Aanpassen
                                 </Button>
                             </div>
                         </div>

@@ -33,7 +33,7 @@ const FONT_SIZES = {
 };
 
 export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
-  const { presses } = useAuth();
+  const { presses, categories } = useAuth();
   const [selectedPress, setSelectedPress] = useState<PressType | ''>('');
   const printRef = useRef<HTMLDivElement>(null);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]); // State for task IDs to print
@@ -62,6 +62,16 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
   };
 
   const activePresses = presses.filter(p => p.active && !p.archived);
+
+  // Helper to get subtext for the current press and category
+  const getCategorySubtext = (categoryName: string) => {
+    if (!selectedPress) return null;
+    const press = activePresses.find(p => p.name === selectedPress);
+    if (!press) return null;
+
+    const category = categories.find(c => c.name === categoryName);
+    return category?.subtexts?.[press.id] || null;
+  };
 
   // Tasks for the currently selected press (unfiltered)
   const allPressTasks = selectedPress
@@ -188,12 +198,17 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
             {allCategories.map((category) => {
               const categoryTasks = allTasksGrouped[category];
               const overdueCount = categoryTasks.filter(isTaskOverdue).length;
+              const subtext = getCategorySubtext(category);
 
               return (
                 <AccordionItem key={category} value={category} className="border-b">
                   <AccordionTrigger className="font-bold py-3 hover:no-underline">
                     <div className="flex justify-between w-full pr-4">
-                      <span>{category} ({formatNumber(categoryTasks.length)} taken)</span>
+                      <div className="flex items-center gap-2">
+                        <span>{category}</span>
+                        {subtext && <span className="text-gray-500 font-normal text-sm">({subtext})</span>}
+                        <span className="text-gray-400 font-normal text-sm ml-2">({formatNumber(categoryTasks.length)} taken)</span>
+                      </div>
                       {overdueCount > 0 && (
                         <span className="text-red-500 font-normal text-sm ml-4">({formatNumber(overdueCount)} Te laat)</span>
                       )}
@@ -300,12 +315,15 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
 
             {categoriesForPrint.map((category) => {
               const categoryTasks = selectedTasksForPrint[category];
+              const subtext = getCategorySubtext(category);
 
               return (
                 <div key={category} className="mb-6 break-inside-avoid">
-                  <h2 className={`bg-gray-100 px-3 py-2 mb-3 border border-gray-300 ${FONT_SIZES.section}`}>
-                    {category}
+                  <h2 className={`bg-gray-100 px-3 py-2 mb-3 border border-gray-300 ${FONT_SIZES.section} flex justify-between items-center`}>
+                    <span>{category}</span>
+                    {subtext && <span className="text-gray-500 text-sm font-normal italic">{subtext}</span>}
                   </h2>
+
 
                   <table className={`w-full border-collapse table-fixed ${FONT_SIZES.body}`}>
                     <thead>
