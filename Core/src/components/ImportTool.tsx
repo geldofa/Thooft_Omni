@@ -74,7 +74,7 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
     'years': 'years',
 };
 
-export function ImportTool({ onComplete, minimal = false, initialFile }: { onComplete?: () => void, minimal?: boolean, initialFile?: File }) {
+export function ImportTool({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'preview') => void }) {
     const { categories, presses, operators, externalEntities, addTask, addActivityLog, user, tags } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
@@ -83,6 +83,10 @@ export function ImportTool({ onComplete, minimal = false, initialFile }: { onCom
     const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [isImporting, setIsImporting] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+
+    useEffect(() => {
+        if (onStepChange) onStepChange(step);
+    }, [step, onStepChange]);
 
     // Persistence for field labels (friendly names)
     const [fieldLabels, setFieldLabels] = useState<Record<string, string>>(() => {
@@ -699,18 +703,17 @@ export function ImportTool({ onComplete, minimal = false, initialFile }: { onCom
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
-                    className="min-h-[40vh]"
+                    className={minimal ? "min-h-[200px]" : "min-h-[40vh]"}
                 >
                     <Card className={`border-2 transition-all duration-200 h-full ${isDragOver ? 'border-blue-500 bg-blue-50 border-solid' : 'border-gray-300 bg-gray-50/50 hover:bg-gray-50 border-dashed'
                         }`}>
-                        <CardContent className="flex flex-col items-center justify-center py-24 h-full">
-                            <Upload className={`h-16 w-16 mb-6 transition-colors ${isDragOver ? 'text-blue-500' : 'text-gray-400'}`} />
-                            <CardTitle className="mb-3 text-xl">
-                                {isDragOver ? 'Bestand Loslaten' : 'Excel/CSV/TSV Bestand Uploaden'}
+                        <CardContent className={`flex flex-col items-center justify-center h-full ${minimal ? 'py-8' : 'py-16'}`}>
+                            <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragOver ? 'text-blue-500' : 'text-gray-400'}`} />
+                            <CardTitle className="mb-2">
+                                Onderhoudstaken Bestand Uploaden
                             </CardTitle>
-                            <CardDescription className="mb-8 text-center text-base">
-                                Sleep uw bestand hierheen of klik om te bladeren.<br />
-                                Ondersteunt .csv en .tsv formaten.
+                            <CardDescription className="mb-6 text-center">
+                                Sleep uw .csv of .tsv bestand hierheen.<br />
                             </CardDescription>
                             <Input
                                 type="file"
@@ -720,7 +723,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile }: { onCom
                                 id="csv-upload"
                             />
                             <Label htmlFor="csv-upload">
-                                <span className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-medium cursor-pointer transition-colors inline-block text-lg">
+                                <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium cursor-pointer transition-colors inline-block">
                                     Bestand Selecteren
                                 </span>
                             </Label>

@@ -790,7 +790,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
               <td
                 className="px-3 py-1.5 cursor-pointer"
                 style={{ pointerEvents: 'auto' }}
-                onClick={(e) => { e.stopPropagation(); handleQuickEdit(subtask, groupedTask, 'lastMaintenance'); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickEdit(subtask, groupedTask, 'lastMaintenance');
+                }}
               >
                 <div className="flex items-center gap-2 text-gray-600">
                   <Calendar className="w-4 h-4" />
@@ -820,7 +823,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
               <td
                 className="px-3 py-1.5 cursor-pointer"
                 style={{ pointerEvents: 'auto' }}
-                onClick={(e) => { e.stopPropagation(); handleQuickEdit(subtask, groupedTask, 'opmerkingen'); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickEdit(subtask, groupedTask, 'opmerkingen');
+                }}
               >
                 <div className="">
                   {subtask.comment ? (
@@ -833,7 +839,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   )}
                 </div>
               </td>
-              {user?.role === 'admin' && (
+              {hasPermission('tasks_edit') && (
                 <td className="px-3 py-1.5 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button

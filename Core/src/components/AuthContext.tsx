@@ -161,6 +161,32 @@ export interface ActivityLog {
   press?: PressType;
 }
 
+export interface BackupInfo {
+  key: string;
+  size: number;
+  modified: string;
+}
+
+export interface BackupSettings {
+  enabled: boolean;
+  cron: string;
+  cronMaxKeep: number;
+  s3: {
+    enabled: boolean;
+    bucket: string;
+    region: string;
+    endpoint: string;
+    accessKey: string;
+    secretKey: string;
+    forcePathStyle: boolean;
+  };
+}
+
+export interface CloudSyncStatus {
+  configured: boolean;
+  path?: string;
+}
+
 export interface Press {
   id: string;
   name: PressType;
@@ -241,6 +267,22 @@ interface AuthContextType {
   hasPermission: (permission: Permission) => boolean;
   rolePermissions: RolePermissions[];
   updateRolePermissions: (role: UserRole, permissions: Permission[]) => Promise<void>;
+  // Backup functions
+  listBackups: () => Promise<BackupInfo[]>;
+  createBackup: (name?: string) => Promise<boolean>;
+  downloadBackup: (key: string) => Promise<string>;
+  deleteBackup: (key: string) => Promise<boolean>;
+  restoreBackup: (key: string) => Promise<boolean>;
+  uploadBackup: (file: File) => Promise<boolean>;
+  getBackupSettings: () => Promise<BackupSettings | null>;
+  updateBackupSettings: (settings: Partial<BackupSettings>) => Promise<boolean>;
+  getCloudSyncStatus: () => Promise<CloudSyncStatus | null>;
+  cloudSyncStatus: CloudSyncStatus | null;
+  refreshCloudSyncStatus: () => Promise<void>;
+  configureCloudSync: (type: 'gdrive' | 'onedrive' | 'local', config: any) => Promise<boolean>;
+  verifyCloudBackups: (filenames: string[]) => Promise<Record<string, boolean>>;
+  isSuperuser: boolean;
+  authenticateSuperuser: (email: string, password: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -265,6 +307,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   });
   const [testingMode, setTestingModeState] = useState<boolean>(false);
   const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
+  const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus | null>(null);
 
   const setOnboardingDismissed = (val: boolean) => {
     setOnboardingDismissedState(val);
@@ -274,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   const logout = () => {
     pb.authStore.clear();
     setUser(null);
+    setIsSuperuser(false);
   };
 
   const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
@@ -716,10 +761,313 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   };
 
+  // --- Backup Functions ---
+  const listBackups = async (): Promise<BackupInfo[]> => {
+    try {
+      const backups = await pb.backups.getFullList();
+      return backups.map((b: any) => ({
+        key: b.key,
+        size: b.size,
+        modified: b.modified
+      }));
+    } catch (e: any) {
+      console.error("List backups failed:", e);
+      toast.error(`Kon backups niet ophalen: ${e.message}`);
+      return [];
+    }
+  };
+
+  const createBackup = async (name?: string): Promise<boolean> => {
+    try {
+      // PocketBase requires format: [a-z0-9_-].zip
+      // We'll clean the name and ensure it's lowercase
+      const timestamp = new Date().toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '')
+        .toLowerCase();
+
+      const cleanName = (name || `backup_${timestamp}`)
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .toLowerCase();
+
+      const backupName = `${cleanName}.zip`;
+
+      await pb.backups.create(backupName);
+
+      // Also backup rclone config alongside database
+      try {
+        await fetch(`${pb.baseUrl}/api/config-backup/save`, {
+          method: 'POST',
+          body: JSON.stringify({ backupName: cleanName }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': pb.authStore.token
+          }
+        });
+      } catch (configErr) {
+        console.warn('Config backup failed (non-critical):', configErr);
+      }
+
+      // Automatically sync to cloud after backup
+      try {
+        await fetch(`${pb.baseUrl}/api/cloud-sync/sync-now`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': pb.authStore.token
+          }
+        });
+      } catch (syncErr) {
+        console.warn('Auto-sync failed (non-critical):', syncErr);
+      }
+
+      toast.success(`Backup "${backupName}" aangemaakt en gesynchroniseerd`);
+      return true;
+    } catch (e: any) {
+      console.error("Create backup failed:", e);
+      toast.error(`Backup aanmaken mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const downloadBackup = async (key: string): Promise<string> => {
+    try {
+      const token = await pb.files.getToken();
+      const url = pb.backups.getDownloadUrl(token, key);
+      return url;
+    } catch (e: any) {
+      console.error("Get backup URL failed:", e);
+      toast.error(`Backup URL ophalen mislukt: ${e.message}`);
+      return '';
+    }
+  };
+
+  const deleteBackup = async (key: string): Promise<boolean> => {
+    try {
+      await pb.backups.delete(key);
+      toast.success(`Backup "${key}" verwijderd`);
+      return true;
+    } catch (e: any) {
+      console.error("Delete backup failed:", e);
+      toast.error(`Backup verwijderen mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const restoreBackup = async (key: string): Promise<boolean> => {
+    try {
+      // First restore rclone config (before server restart)
+      const cleanName = key.replace('.zip', '');
+      try {
+        await fetch(`${pb.baseUrl}/api/config-backup/restore`, {
+          method: 'POST',
+          body: JSON.stringify({ backupName: cleanName }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': pb.authStore.token
+          }
+        });
+      } catch (configErr) {
+        console.warn('Config restore failed (non-critical):', configErr);
+      }
+
+      await pb.backups.restore(key);
+      toast.success(`Systeem wordt hersteld van backup "${key}". De server start nu opnieuw op.`);
+      // The server will restart, so connection will be lost.
+      // We might want to reload the page or logout after a short delay.
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+      return true;
+    } catch (e: any) {
+      console.error("Restore backup failed:", e);
+      toast.error(`Herstel mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const uploadBackup = async (file: File): Promise<boolean> => {
+    try {
+      await pb.backups.upload({ file: file });
+      toast.success(`Backup "${file.name}" succesvol geüpload`);
+      return true;
+    } catch (e: any) {
+      console.error("Upload backup failed:", e);
+      toast.error(`Upload mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const getBackupSettings = async (): Promise<BackupSettings | null> => {
+    try {
+      // 1. Get standard PB system settings for cron
+      const settings = await pb.settings.getAll();
+      const pbBackups = settings.backups || {};
+
+      // 2. Get custom S3 config from app_settings collection
+      let s3Config = {
+        enabled: false,
+        bucket: '',
+        region: '',
+        endpoint: '',
+        accessKey: '',
+        secretKey: '',
+        forcePathStyle: false
+      };
+
+      try {
+        const record = await pb.collection('app_settings').getFirstListItem('key="backup_s3_config"');
+        if (record.value) {
+          s3Config = { ...s3Config, ...record.value };
+        }
+      } catch (e) {
+        // Not found, use defaults
+      }
+
+      return {
+        // enabled: pbBackups.cron !== '', // Removed duplicate
+        // Actually PB backups are always "enabled" if cron is valid.
+        // Let's assume we store the "enabled" state by whether cron is empty or not in standard PB, 
+        // OR we just obey the `enabled` boolean from our UI state which might be stored in app_settings too?
+        // Let's store a separate `backup_config` in app_settings for enabled state if PB doesn't have it.
+        // For now, let's map: 
+        enabled: !!pbBackups.cron,
+        cron: pbBackups.cron || '',
+        cronMaxKeep: pbBackups.cronMaxKeep || 3,
+        s3: s3Config
+      };
+    } catch (e: any) {
+      console.error("Get backup settings failed:", e);
+      toast.error(`Instellingen ophalen mislukt: ${e.message}`);
+      return null;
+    }
+  };
+
+  const updateBackupSettings = async (settings: Partial<BackupSettings>): Promise<boolean> => {
+    try {
+      // 1. Update PB System Settings (Cron)
+      // Only update if these changed or present
+      const cronSettings: any = {};
+      if (settings.cron !== undefined) cronSettings.cron = settings.enabled ? settings.cron : '';
+      if (settings.cronMaxKeep !== undefined) cronSettings.cronMaxKeep = settings.cronMaxKeep;
+
+      // Update S3 settings inside PB backups config for the internal runner
+      if (settings.s3) {
+        cronSettings.s3 = {
+          enabled: settings.s3.enabled,
+          bucket: settings.s3.bucket,
+          region: settings.s3.region,
+          endpoint: settings.s3.endpoint,
+          accessKey: settings.s3.accessKey,
+          secretKey: settings.s3.secretKey,
+          forcePathStyle: settings.s3.forcePathStyle
+        };
+      }
+
+      // If "enabled" is false, we might want to clear cron to stop it?
+      if (settings.enabled === false) {
+        cronSettings.cron = '';
+      }
+
+      await pb.settings.update({ backups: cronSettings });
+
+      // 2. Update Custom S3 Config in app_settings
+      if (settings.s3) {
+        try {
+          const record = await pb.collection('app_settings').getFirstListItem('key="backup_s3_config"');
+          await pb.collection('app_settings').update(record.id, { value: settings.s3 });
+        } catch (e) {
+          await pb.collection('app_settings').create({ key: 'backup_s3_config', value: settings.s3 });
+        }
+      }
+
+      toast.success('Backup instellingen succesvol bijgewerkt');
+      return true;
+    } catch (e: any) {
+      console.error("Update backup settings failed:", e);
+      // Detailed error log
+      if (e.data) console.error("Validation errors:", e.data);
+      toast.error(`Instellingen bijwerken mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const getCloudSyncStatus = async (): Promise<CloudSyncStatus | null> => {
+    try {
+      const status = await pb.send("/api/cloud-sync/status", { method: "GET" });
+      setCloudSyncStatus(status);
+      return status;
+    } catch (e: any) {
+      console.error("Get cloud sync status failed:", e);
+      return null;
+    }
+  };
+
+  const refreshCloudSyncStatus = async () => {
+    await getCloudSyncStatus();
+  };
+
+  const verifyCloudBackups = async (filenames: string[]): Promise<Record<string, boolean>> => {
+    if (!isSuperuser || filenames.length === 0) return {};
+    try {
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:8090/api/cloud-sync/verify-batch?token=${encodeURIComponent(pb.authStore.token)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ filenames })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Verification failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (e) {
+      console.error('Cloud verification failed:', e);
+      return {};
+    }
+  };
+
+  const configureCloudSync = async (type: 'gdrive' | 'onedrive' | 'local', config: any): Promise<boolean> => {
+    try {
+      await pb.send("/api/cloud-sync/configure", {
+        method: "POST",
+        body: { type, config }
+      });
+      toast.success("Opslag succesvol gekoppeld");
+      return true;
+    } catch (e: any) {
+      console.error("Configure cloud sync failed:", e);
+      toast.error(`Koppeling mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
+  const authenticateSuperuser = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const authData = await pb.collection('_superusers').authWithPassword(email, password);
+      if (pb.authStore.isValid && authData.record) {
+        setIsSuperuser(true);
+        toast.success('Superuser authenticatie succesvol');
+        return true;
+      }
+      return false;
+    } catch (e: any) {
+      console.error("Superuser auth failed:", e);
+      toast.error(`Authenticatie mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
   useEffect(() => {
     checkFirstRun();
     fetchTestingMode();
-  }, [checkFirstRun, fetchTestingMode]);
+    if (user && hasPermission('toolbox_access')) {
+      getCloudSyncStatus();
+    }
+  }, [checkFirstRun, fetchTestingMode, user]);
 
   // 1. Initialize Auth
   useEffect(() => {
@@ -727,6 +1075,17 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     if (pb.authStore.isValid) {
       const model = pb.authStore.model;
       if (model) {
+        // Detect if we are a superuser (for Backup tab persistence)
+        const isSuper = model.collectionName === "_superusers" ||
+          model.collectionId === "_superusers" ||
+          model.role === "Admin" ||
+          model.role === "admin" ||
+          (!model.pers && !model.press && model.email);
+
+        if (isSuper) {
+          setIsSuperuser(true);
+        }
+
         // Correctly handle press identification
         let pressId = model.pers;
         let pressName = model.press;
@@ -800,6 +1159,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
                 name: 'Admin',
                 role: 'admin'
               });
+              setIsSuperuser(true);
               return true;
             }
           } catch (adminError) {
@@ -1648,7 +2008,22 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       checkFirstRun,
       hasPermission,
       rolePermissions,
-      updateRolePermissions
+      updateRolePermissions,
+      listBackups,
+      createBackup,
+      downloadBackup,
+      deleteBackup,
+      restoreBackup,
+      uploadBackup,
+      getBackupSettings,
+      updateBackupSettings,
+      getCloudSyncStatus,
+      cloudSyncStatus,
+      refreshCloudSyncStatus,
+      configureCloudSync,
+      verifyCloudBackups,
+      isSuperuser,
+      authenticateSuperuser
     }}>
       {children}
     </AuthContext.Provider >

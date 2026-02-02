@@ -146,8 +146,19 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const { user, hasPermission } = useAuth();
 
-    const [activeTab, setActiveTab] = useState(hasPermission('drukwerken_view_all') ? 'finished' : 'werkorders');
+    const [activeTab, setActiveTab] = useState(() => {
+        if (typeof sessionStorage !== 'undefined') {
+            const saved = sessionStorage.getItem('drukwerken_activeTab');
+            if (saved) return saved;
+        }
+        return hasPermission('drukwerken_view_all') ? 'finished' : 'werkorders';
+    });
 
+    useEffect(() => {
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem('drukwerken_activeTab', activeTab);
+        }
+    }, [activeTab]);
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
@@ -730,9 +741,24 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     }, [fetchFinishedJobs]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(() => {
+        if (typeof sessionStorage !== 'undefined') return sessionStorage.getItem('drukwerken_searchQuery') || '';
+        return '';
+    });
+
+    useEffect(() => {
+        if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('drukwerken_searchQuery', searchQuery);
+    }, [searchQuery]);
+
     const [searchField] = useState('all');
-    const [pressFilter, setPressFilter] = useState('all');
+    const [pressFilter, setPressFilter] = useState(() => {
+        if (typeof sessionStorage !== 'undefined') return sessionStorage.getItem('drukwerken_pressFilter') || 'all';
+        return 'all';
+    });
+
+    useEffect(() => {
+        if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('drukwerken_pressFilter', pressFilter);
+    }, [pressFilter]);
 
     const requestSort = (key: string) => { // Renamed handleSort to requestSort
         setSortConfig(current => {

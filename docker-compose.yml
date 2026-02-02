@@ -19,11 +19,14 @@ services:
     volumes:
       - ./pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations:ro
+      - ./pb_hooks:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
     restart: unless-stopped
     container_name: thooft_db
+    depends_on:
+      - rclone
     command: >
       sh -c '
         apk add --no-cache curl unzip ca-certificates &&
@@ -32,5 +35,17 @@ services:
         /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" &&
         chown -R root:root /pb/pb_data &&
         chmod -R 755 /pb/pb_data &&
-        /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
+        /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations --hooksDir=/pb/pb_hooks
       '
+
+  rclone:
+    image: rclone/rclone:latest
+    container_name: thooft_rclone
+    volumes:
+      - ./pb_data/rclone:/config/rclone
+      - ./pb_data/backups:/backups
+    # Run rclone as a daemon with Remote Control enabled.
+    # The "cloud" remote will be configured via the app UI.
+    # Sync is triggered via the RC API (no need for serve s3).
+    command: "rcd --rc-addr :5572 --rc-no-auth"
+    restart: unless-stopped

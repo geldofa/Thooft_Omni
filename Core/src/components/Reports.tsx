@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MaintenanceTask } from './AuthContext';
 import { useAuth, PressType } from './AuthContext';
 import { Button } from './ui/button';
@@ -15,8 +15,30 @@ type OverdueFilter = 'all' | '1m' | '3m' | '1y';
 
 export function Reports({ tasks }: ReportsProps) {
   const { presses } = useAuth();
-  const [selectedPress, setSelectedPress] = useState<PressType | 'all'>('all');
-  const [overdueFilter, setOverdueFilter] = useState<OverdueFilter>('all');
+  const [selectedPress, setSelectedPress] = useState<PressType | 'all'>(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      return (sessionStorage.getItem('reports_selectedPress') as PressType | 'all') || 'all';
+    }
+    return 'all';
+  });
+  const [overdueFilter, setOverdueFilter] = useState<OverdueFilter>(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      return (sessionStorage.getItem('reports_overdueFilter') as OverdueFilter) || 'all';
+    }
+    return 'all';
+  });
+
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('reports_selectedPress', selectedPress);
+    }
+  }, [selectedPress]);
+
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('reports_overdueFilter', overdueFilter);
+    }
+  }, [overdueFilter]);
   const printRef = useRef<HTMLDivElement>(null);
 
   // --- CONFIGURATION CONSTANTS ---

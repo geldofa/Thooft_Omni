@@ -97,7 +97,22 @@ export function OperatorManagement() {
   });
   const [showInactivePloegen, setShowInactivePloegen] = useState(false);
   const [ploegEditMode, setPloegEditMode] = useState(false);
+
   const [selectedPressForPloeg, setSelectedPressForPloeg] = useState<string | null>(null);
+
+  // Tab Persistence
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      return sessionStorage.getItem('operator_management_activeTab') || 'operators';
+    }
+    return 'operators';
+  });
+
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('operator_management_activeTab', activeTab);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (isPloegDialogOpen) {
@@ -397,7 +412,7 @@ export function OperatorManagement() {
         </div>
       </div>
 
-      <Tabs defaultValue="operators" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="tab-pill-list">
           <TabsTrigger value="operators" className="tab-pill-trigger">Operators</TabsTrigger>
           <TabsTrigger value="external" className="tab-pill-trigger">Externe Entiteiten</TabsTrigger>

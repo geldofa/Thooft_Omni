@@ -1,4 +1,5 @@
 import { useEffect, useState, Profiler, lazy, Suspense, startTransition } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, MaintenanceTask } from './components/AuthContext';
 import { GroupedTask } from './components/AuthContext';
 import { LoginForm } from './components/LoginForm';
@@ -75,33 +76,39 @@ function MainApp() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<MaintenanceTask | null>(null);
   const [editingGroup, setEditingTaskGroup] = useState<MaintenanceTask[] | null>(null);
-  const [selectedPress, setSelectedPress] = useState<string>('Lithoman');
-
-  const [activeTab, setActiveTab] = useState(() => {
+  const [selectedPress, setSelectedPress] = useState<string>(() => {
     if (typeof sessionStorage !== 'undefined') {
-      return sessionStorage.getItem('activeTab') || 'home';
+      return sessionStorage.getItem('tasks_selectedPress') || 'Lithoman';
     }
-    return 'home';
+    return 'Lithoman';
   });
 
-  // Effects for persistence
   useEffect(() => {
     if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('activeTab', activeTab);
+      sessionStorage.setItem('tasks_selectedPress', selectedPress);
     }
-  }, [activeTab]);
+  }, [selectedPress]);
+
+  // --- Router Hooks ---
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = location.pathname === '/' ? 'home' : location.pathname.substring(1);
+
+  const setActiveTab = (tab: string) => {
+    navigate(tab === 'home' ? '/' : `/${tab}`);
+  };
 
   // Handle post-onboarding redirect
   useEffect(() => {
     const redirect = localStorage.getItem('onboarding_redirect');
     if (redirect === 'import') {
-      setActiveTab('toolbox');
+      navigate('/toolbox');
       localStorage.removeItem('onboarding_redirect');
     } else if (redirect === 'home') {
-      setActiveTab('home');
+      navigate('/');
       localStorage.removeItem('onboarding_redirect');
     }
-  }, []);
+  }, [navigate]);
 
   // Data fetching based on tab
   useEffect(() => {
@@ -124,7 +131,7 @@ function MainApp() {
 
   // Scroll position handling
   useEffect(() => {
-    const scrollKey = 'scrollPosition';
+    const scrollKey = 'scrollPosition_' + activeTab; // Per-tab scroll
     if (typeof sessionStorage !== 'undefined') {
       try {
         const savedPosition = sessionStorage.getItem(scrollKey);
@@ -137,7 +144,7 @@ function MainApp() {
         console.warn('Session storage error:', e);
       }
     }
-  }, []);
+  }, [activeTab]);
 
   // --- Handlers ---
 
@@ -231,117 +238,128 @@ function MainApp() {
         <OnboardingWizard onComplete={checkFirstRun} />
       ) : !user ? (
         <LoginForm />
-      ) : user && activeTab === 'home' ? (
-        <Home setActiveTab={setActiveTab} />
       ) : (
         <>
-          <Header activeTab={activeTab} setActiveTab={setActiveTab} />
-          <main className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            {hasPermission('tasks_view') ? (
-              <Suspense fallback={<div className="p-4 text-center text-gray-500">Modules laden...</div>}>
-                {activeTab === 'tasks' && (
-                  <div className="space-y-6">
-                    {activePresses.length > 1 && (
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-                        <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
-                          <TabsList className="tab-pill-list">
-                            {activePresses.map(press => (
-                              <TabsTrigger
-                                key={press.id}
-                                value={press.name}
-                                className="tab-pill-trigger"
-                              >
-                                {press.name}
-                              </TabsTrigger>
-                            ))}
-                          </TabsList>
-                        </Tabs>
-                      </div>
-                    )}
+          {activeTab !== 'home' && <Header activeTab={activeTab} setActiveTab={setActiveTab} />}
+          <main className={activeTab === 'home' ? "" : "w-full mx-auto px-4 sm:px-6 lg:px-8 py-4"}>
+            <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
+              <Routes>
+                <Route path="/" element={<Home setActiveTab={setActiveTab} />} />
+                <Route path="/home" element={<Navigate to="/" replace />} />
 
-                    <MaintenanceTable
-                      tasks={groupedTasks.filter(group => group.press === selectedPress)}
-                      onEdit={(task) => {
-                        startTransition(() => {
-                          setEditingTask(task);
-                          setEditingTaskGroup(null);
-                          setIsAddDialogOpen(true);
-                        });
-                      }}
-                      onDelete={handleDeleteTask}
-                      onUpdate={async (task) => await startTransition(() => handleEditTask(task))}
-                      onEditGroup={(groupTasks) => {
-                        startTransition(() => {
-                          setEditingTaskGroup(groupTasks.subtasks.map(subtask => ({
-                            id: subtask.id,
-                            task: groupTasks.taskName, // Parent Group Name
-                            subtaskName: subtask.subtaskName, // Child Task Name
-                            taskSubtext: groupTasks.taskSubtext, // Parent Subtext
-                            subtaskSubtext: subtask.subtext, // Child Subtext
-                            category: groupTasks.category,
-                            categoryId: groupTasks.categoryId,
-                            press: groupTasks.press,
-                            pressId: groupTasks.pressId,
-                            lastMaintenance: subtask.lastMaintenance,
-                            nextMaintenance: subtask.nextMaintenance,
-                            maintenanceInterval: subtask.maintenanceInterval,
-                            maintenanceIntervalUnit: subtask.maintenanceIntervalUnit,
-                            assignedTo: subtask.assignedTo,
-                            opmerkingen: subtask.opmerkingen || subtask.comment || '',
-                            comment: subtask.comment || '',
-                            commentDate: subtask.commentDate,
-                            sort_order: subtask.sort_order || 0,
-                            isExternal: subtask.isExternal || false,
-                            created: new Date().toISOString(),
-                            updated: new Date().toISOString()
-                          })));
-                          setEditingTask(null);
-                          setIsAddDialogOpen(true);
-                        });
-                      }}
-                      onAddTask={() => {
-                        startTransition(() => {
-                          setEditingTask(null);
-                          setEditingTaskGroup(null);
-                          setIsAddDialogOpen(true);
-                        });
-                      }}
-                    />
-                  </div>
-                )}
+                <Route path="/tasks" element={
+                  hasPermission('tasks_view') ? (
+                    <div className="space-y-6">
+                      {activePresses.length > 1 && (
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                          <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
+                            <TabsList className="tab-pill-list">
+                              {activePresses.map(press => (
+                                <TabsTrigger
+                                  key={press.id}
+                                  value={press.name}
+                                  className="tab-pill-trigger"
+                                >
+                                  {press.name}
+                                </TabsTrigger>
+                              ))}
+                            </TabsList>
+                          </Tabs>
+                        </div>
+                      )}
+                      <MaintenanceTable
+                        tasks={groupedTasks.filter(group => group.press === selectedPress)}
+                        onEdit={(task) => {
+                          startTransition(() => {
+                            setEditingTask(task);
+                            setEditingTaskGroup(null);
+                            setIsAddDialogOpen(true);
+                          });
+                        }}
+                        onDelete={handleDeleteTask}
+                        onUpdate={async (task) => await startTransition(() => handleEditTask(task))}
+                        onEditGroup={(groupTasks) => {
+                          startTransition(() => {
+                            setEditingTaskGroup(groupTasks.subtasks.map(subtask => ({
+                              id: subtask.id,
+                              task: groupTasks.taskName, // Parent Group Name
+                              subtaskName: subtask.subtaskName, // Child Task Name
+                              taskSubtext: groupTasks.taskSubtext, // Parent Subtext
+                              subtaskSubtext: subtask.subtext, // Child Subtext
+                              category: groupTasks.category,
+                              categoryId: groupTasks.categoryId,
+                              press: groupTasks.press,
+                              pressId: groupTasks.pressId,
+                              lastMaintenance: subtask.lastMaintenance,
+                              nextMaintenance: subtask.nextMaintenance,
+                              maintenanceInterval: subtask.maintenanceInterval,
+                              maintenanceIntervalUnit: subtask.maintenanceIntervalUnit,
+                              assignedTo: subtask.assignedTo,
+                              opmerkingen: subtask.opmerkingen || subtask.comment || '',
+                              comment: subtask.comment || '',
+                              commentDate: subtask.commentDate,
+                              sort_order: subtask.sort_order || 0,
+                              isExternal: subtask.isExternal || false,
+                              created: new Date().toISOString(),
+                              updated: new Date().toISOString()
+                            })));
+                            setEditingTask(null);
+                            setIsAddDialogOpen(true);
+                          });
+                        }}
+                        onAddTask={hasPermission('tasks_edit') ? () => {
+                          startTransition(() => {
+                            setEditingTask(null);
+                            setEditingTaskGroup(null);
+                            setIsAddDialogOpen(true);
+                          });
+                        } : undefined}
+                      />
+                    </div>
+                  ) : (
+                    hasPermission('tasks_view') ? ( // This condition seems redundant here, but keeping it as per original logic for non-admin
+                      <MaintenanceTable
+                        tasks={filteredTasks}
+                        onEdit={(task: MaintenanceTask) => {
+                          startTransition(() => {
+                            setEditingTask(task);
+                            setIsAddDialogOpen(true);
+                          });
+                        }}
+                        onDelete={handleDeleteTask}
+                        onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
+                      />
+                    ) : <Navigate to="/" replace />
+                  )
+                } />
 
-                {(activeTab === 'drukwerken' && hasPermission('drukwerken_view')) && <Drukwerken presses={activePresses} />}
-                {(activeTab === 'extern' && hasPermission('extern_view')) && <ExternalSummary />}
-                {['operators', 'categories', 'tags', 'presses', 'passwords', 'permissions'].includes(activeTab) && hasPermission('management_access') && (
-                  <ManagementLayout activeTab={activeTab} setActiveTab={setActiveTab} user={user} />
-                )}
-                {(activeTab === 'reports' && hasPermission('reports_view')) && <Reports tasks={tasks} />}
-                {(activeTab === 'checklist' && hasPermission('checklist_view')) && <MaintenanceChecklist tasks={tasks} />}
-                {(activeTab === 'logs' && hasPermission('logs_view')) && <ActivityLog />}
-                {(activeTab === 'feedback-list' && hasPermission('feedback_view')) && <FeedbackList />}
-                {(activeTab === 'toolbox' && hasPermission('toolbox_access')) && <Toolbox onNavigateHome={() => setActiveTab('home')} />}
-              </Suspense>
-            ) : (
-              <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
-                {activeTab === 'tasks' && (
-                  <MaintenanceTable
-                    tasks={filteredTasks}
-                    onEdit={(task: MaintenanceTask) => {
-                      startTransition(() => {
-                        setEditingTask(task);
-                        setIsAddDialogOpen(true);
-                      });
-                    }}
-                    onDelete={handleDeleteTask}
-                    onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
-                  />
-                )}
-                {(activeTab === 'drukwerken' && hasPermission('drukwerken_view')) && <Drukwerken presses={presses.filter(p => p.name === user.press)} />}
-                {(activeTab === 'logs' && hasPermission('logs_view')) && <ActivityLog />}
-                {(activeTab === 'feedback-list' && hasPermission('feedback_view')) && <FeedbackList />}
-              </Suspense>
-            )}
+                <Route path="/drukwerken" element={
+                  hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />
+                } />
 
+                <Route path="/extern" element={
+                  hasPermission('extern_view') ? <ExternalSummary /> : <Navigate to="/" replace />
+                } />
+
+                <Route path="/management" element={
+                  hasPermission('management_access') ? <ManagementLayout activeTab={activeTab} setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />
+                } />
+                <Route path="/operators" element={hasPermission('management_access') ? <ManagementLayout activeTab="operators" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+                <Route path="/categories" element={hasPermission('management_access') ? <ManagementLayout activeTab="categories" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+                <Route path="/tags" element={hasPermission('management_access') ? <ManagementLayout activeTab="tags" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+                <Route path="/presses" element={hasPermission('management_access') ? <ManagementLayout activeTab="presses" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+                <Route path="/passwords" element={hasPermission('management_access') ? <ManagementLayout activeTab="passwords" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+                <Route path="/permissions" element={hasPermission('management_access') ? <ManagementLayout activeTab="permissions" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
+
+                <Route path="/reports" element={hasPermission('reports_view') ? <Reports tasks={tasks} /> : <Navigate to="/" replace />} />
+                <Route path="/checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} /> : <Navigate to="/" replace />} />
+                <Route path="/logs" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
+                <Route path="/feedback-list" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
+                <Route path="/toolbox" element={hasPermission('toolbox_access') ? <Toolbox onNavigateHome={() => navigate('/')} /> : <Navigate to="/" replace />} />
+
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
             <AddMaintenanceDialog
               open={isAddDialogOpen}
               onOpenChange={(open) => startTransition(() => setIsAddDialogOpen(open))}

@@ -770,6 +770,20 @@ migrate((app) => {
           "required": false,
           "system": false,
           "type": "relation"
+        },
+        {
+          "autogeneratePattern": "",
+          "hidden": false,
+          "id": "text_plain_password",
+          "max": 0,
+          "min": 0,
+          "name": "plain_password",
+          "pattern": "",
+          "presentable": false,
+          "primaryKey": false,
+          "required": false,
+          "system": false,
+          "type": "text"
         }
       ],
       "indexes": [
@@ -777,8 +791,8 @@ migrate((app) => {
         "CREATE UNIQUE INDEX `idx_email_users000000000001` ON `users` (`email`) WHERE `email` != ''",
         "CREATE UNIQUE INDEX `idx_username_users000000000001` ON `users` (`username`)"
       ],
-      "listRule": "@request.auth.id != ''",
-      "viewRule": "@request.auth.id != ''",
+      "listRule": "",
+      "viewRule": "",
       "createRule": "",
       "updateRule": "@request.auth.id != ''",
       "deleteRule": "@request.auth.id != ''",
@@ -1246,6 +1260,16 @@ migrate((app) => {
           "presentable": false,
           "system": true,
           "type": "autodate"
+        },
+        {
+          "hidden": false,
+          "id": "json_subtexts_001",
+          "maxSize": 0,
+          "name": "subtexts",
+          "presentable": false,
+          "required": false,
+          "system": false,
+          "type": "json"
         }
       ],
       "indexes": [],
@@ -1506,6 +1530,28 @@ migrate((app) => {
           "required": false,
           "system": false,
           "type": "number"
+        },
+        {
+          "hidden": false,
+          "id": "bool_is_external",
+          "name": "is_external",
+          "presentable": false,
+          "required": false,
+          "system": false,
+          "type": "bool"
+        },
+        {
+          "cascadeDelete": false,
+          "collectionId": "tags00000000001",
+          "hidden": false,
+          "id": "relation_tags",
+          "maxSelect": null,
+          "minSelect": 0,
+          "name": "tags",
+          "presentable": false,
+          "required": false,
+          "system": false,
+          "type": "relation"
         }
       ],
       "indexes": [],
@@ -2168,10 +2214,181 @@ migrate((app) => {
       "options": {},
       "created": "2025-12-26 09:46:32.609Z",
       "updated": "2026-01-05 11:04:11.181Z"
+    },
+    {
+      "id": "tags00000000001",
+      "name": "tags",
+      "type": "base",
+      "system": false,
+      "fields": [
+        {
+          "autogeneratePattern": "[a-z0-9]{15}",
+          "hidden": false,
+          "id": "text3208210256",
+          "max": 15,
+          "min": 15,
+          "name": "id",
+          "pattern": "^[a-z0-9]+$",
+          "presentable": false,
+          "primaryKey": true,
+          "required": true,
+          "system": true,
+          "type": "text"
+        },
+        {
+          "id": "text4232952120",
+          "name": "naam",
+          "type": "text",
+          "system": false,
+          "required": true,
+          "presentable": true
+        },
+        {
+          "id": "text1184577734",
+          "name": "kleur",
+          "type": "text",
+          "system": false,
+          "required": false,
+          "presentable": false
+        },
+        {
+          "id": "bool1260321794",
+          "name": "active",
+          "type": "bool",
+          "system": false,
+          "required": false,
+          "presentable": false
+        },
+        {
+          "id": "bool_system_managed",
+          "name": "system_managed",
+          "type": "bool",
+          "system": false,
+          "required": false,
+          "presentable": false
+        },
+        {
+          "hidden": false,
+          "id": "autodate2990389176",
+          "name": "created",
+          "onCreate": true,
+          "onUpdate": false,
+          "presentable": false,
+          "system": true,
+          "type": "autodate"
+        },
+        {
+          "hidden": false,
+          "id": "autodate3332085495",
+          "name": "updated",
+          "onCreate": true,
+          "onUpdate": true,
+          "presentable": false,
+          "system": true,
+          "type": "autodate"
+        }
+      ],
+      "indexes": [],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\"",
+      "options": {}
+    },
+    {
+      "id": "app_settings001",
+      "name": "app_settings",
+      "type": "base",
+      "system": false,
+      "fields": [
+        {
+          "autogeneratePattern": "[a-z0-9]{15}",
+          "hidden": false,
+          "id": "text3208210256",
+          "max": 15,
+          "min": 15,
+          "name": "id",
+          "pattern": "^[a-z0-9]+$",
+          "presentable": false,
+          "primaryKey": true,
+          "required": true,
+          "system": true,
+          "type": "text"
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": "json",
+          "required": false
+        },
+        {
+          "hidden": false,
+          "id": "autodate2990389176",
+          "name": "created",
+          "onCreate": true,
+          "onUpdate": false,
+          "presentable": false,
+          "system": true,
+          "type": "autodate"
+        },
+        {
+          "hidden": false,
+          "id": "autodate3332085495",
+          "name": "updated",
+          "onCreate": true,
+          "onUpdate": true,
+          "presentable": false,
+          "system": true,
+          "type": "autodate"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_app_settings_key` ON `app_settings` (`key`)"
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "@request.auth.id != ''",
+      "updateRule": "@request.auth.id != ''",
+      "deleteRule": "@request.auth.id != ''",
+      "options": {}
     }
   ];
 
-  return app.importCollections(collections, true);
+  app.importCollections(collections, true);
+
+  // Seed default testing_mode record in app_settings
+  try {
+    const appSettingsCollection = app.findCollectionByNameOrId("app_settings");
+    try {
+      app.findFirstRecordByFilter("app_settings", "key = 'testing_mode'");
+    } catch (_) {
+      const record = new Record(appSettingsCollection);
+      record.set("key", "testing_mode");
+      record.set("value", false);
+      app.save(record);
+    }
+  } catch (_) { /* ignore if collection not found */ }
+
+  // Seed Extern tag
+  try {
+    const tagsCollection = app.findCollectionByNameOrId("tags");
+    try {
+      app.findFirstRecordByFilter("tags", "naam = 'Extern'");
+    } catch (_) {
+      const record = new Record(tagsCollection);
+      record.set("naam", "Extern");
+      record.set("kleur", "#ef4444");
+      record.set("active", true);
+      record.set("system_managed", true);
+      app.save(record);
+    }
+  } catch (_) { /* ignore if collection not found */ }
+
 }, (app) => {
   return null;
 });

@@ -9,7 +9,6 @@ import {
   FileText,
   MessageSquarePlus,
   Wrench,
-  Rocket,
   FileBarChart
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
@@ -44,10 +43,9 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             className="flex items-center gap-3 flex-shrink-0 group cursor-pointer hover:opacity-80 transition-opacity focus:outline-none"
           >
             <div
-              className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-100 group-hover:rotate-6 transition-transform duration-300"
-              style={{ backgroundColor: '#2563eb' }}
+              className="p-1 bg-white rounded-xl shadow-lg ring-1 ring-slate-100 group-hover:rotate-6 transition-transform duration-300 overflow-hidden"
             >
-              <Rocket className="w-5 h-5 text-white" />
+              <img src="/favicon.png" alt="Omni Logo" className="w-8 h-8 object-contain" />
             </div>
             <div className="flex flex-col text-left">
               <h1

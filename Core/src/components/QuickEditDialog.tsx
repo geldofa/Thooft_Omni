@@ -316,11 +316,10 @@ export function QuickEditDialog({
 
               <div className="grid gap-2">
                 <Label>Toegewezen aan</Label>
-                <div className="border rounded-md p-4 max-h-[300px] overflow-y-auto space-y-4">
+                <div className="border rounded-md p-4 space-y-4">
 
                   {/* PLOEGEN SECTION - Full Width, 3 Columns */}
                   <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Ploegen</h4>
                     {assignees.ploegen.length > 0 ? (
                       <div className="flex flex-wrap gap-4">
                         {assignees.ploegen.map(ploeg => (
@@ -328,7 +327,6 @@ export function QuickEditDialog({
                             <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200 truncate" title={ploeg.name}>
                               {ploeg.name}
                             </div>
-
                             {/* Individual Members */}
                             <div className="space-y-2">
                               {ploeg.operatorIds.map(opId => {
@@ -343,7 +341,8 @@ export function QuickEditDialog({
                                     />
                                     <label
                                       htmlFor={`ploeg-member-${member.id}`}
-                                      className="text-sm text-gray-600 cursor-pointer select-none"
+                                      className="text-sm text-gray-600 cursor-pointer select-none truncate"
+                                      title={member.name}
                                     >
                                       {member.name}
                                     </label>
@@ -354,18 +353,16 @@ export function QuickEditDialog({
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 italic">Geen ploegen beschikbaar</p>
-                    )}
+                    ) : null}
                   </div>
 
-                  {/* INDIVIDUALS & EXTERNAL - 2 Columns */}
-                  <div className="flex flex-wrap gap-4">
-                    {/* INDIVIDUAL OPERATORS */}
-                    <div className="border rounded-md p-3 bg-gray-50/50" style={{ flex: '1 1 calc(50% - 0.5rem)', minWidth: '200px' }}>
+                  {/* INDIVIDUALS & EXTERNAL - 3 Column Grid */}
+                  <div className="grid grid-cols-3 gap-4">
+                    {/* INDIVIDUAL OPERATORS - 1 Column */}
+                    <div className="border rounded-md p-3 bg-gray-50/50 col-span-1 min-w-[150px]">
                       <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200">Operators</div>
                       {assignees.operators.length > 0 ? (
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           {assignees.operators.map(op => (
                             <div key={op.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-md">
                               <Checkbox
@@ -375,7 +372,8 @@ export function QuickEditDialog({
                               />
                               <label
                                 htmlFor={`op-${op.id}`}
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer truncate"
+                                title={op.name}
                               >
                                 {op.name}
                               </label>
@@ -383,15 +381,15 @@ export function QuickEditDialog({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-400 italic">Geen operators beschikbaar</p>
+                        <p className="text-sm text-gray-400 italic">Geen operators</p>
                       )}
                     </div>
 
-                    {/* EXTERNAL ENTITIES */}
-                    <div className="border rounded-md p-3 bg-gray-50/50" style={{ flex: '1 1 calc(50% - 0.5rem)', minWidth: '200px' }}>
+                    {/* EXTERNAL ENTITIES - 2 Columns */}
+                    <div className="border rounded-md p-3 bg-gray-50/50 col-span-2 min-w-[200px]">
                       <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200">Extern</div>
                       {assignees.externalEntities.length > 0 ? (
-                        <div className="space-y-1">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                           {assignees.externalEntities.map(entity => (
                             <div key={entity.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-md">
                               <Checkbox
@@ -401,7 +399,8 @@ export function QuickEditDialog({
                               />
                               <label
                                 htmlFor={`ext-${entity.id}`}
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer truncate"
+                                title={entity.name}
                               >
                                 {entity.name}
                               </label>
