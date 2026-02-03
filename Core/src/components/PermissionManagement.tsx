@@ -22,6 +22,7 @@ const ALL_PERMISSIONS: { key: Permission; label: string; description: string }[]
     { key: 'tasks_edit', label: 'Taken Bewerken', description: 'Mogelijkheid om taken aan te maken, te bewerken en te verwijderen.' },
     { key: 'drukwerken_view', label: 'Drukwerken Bekijken', description: 'Toegang tot de Drukwerken sectie.' },
     { key: 'drukwerken_view_all', label: 'Alle Drukwerken Zien', description: 'Mogelijkheid om drukwerken van alle persen te zien in plaats van alleen de eigen pers.' },
+    { key: 'drukwerken_create', label: 'Drukwerken Aanmaken', description: 'Mogelijkheid om nieuwe werkorders toe te voegen.' },
     { key: 'reports_view', label: 'Rapporten Bekijken', description: 'Toegang tot de Rapportage sectie.' },
     { key: 'checklist_view', label: 'Checklist Bekijken', description: 'Toegang tot de Checklist sectie.' },
     { key: 'extern_view', label: 'Extern Bekijken', description: 'Toegang tot het Extern overzicht.' },

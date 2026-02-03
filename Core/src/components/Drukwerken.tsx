@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { PressType, useAuth, pb } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'; // Added useEffect
@@ -151,7 +151,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             const saved = sessionStorage.getItem('drukwerken_activeTab');
             if (saved) return saved;
         }
-        return hasPermission('drukwerken_view_all') ? 'finished' : 'werkorders';
+        return user?.role === 'press' ? 'werkorders' : 'finished';
     });
 
     useEffect(() => {
@@ -213,6 +213,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     useEffect(() => {
         localStorage.setItem('thooft_werkorders', JSON.stringify(werkorders));
     }, [werkorders]);
+
 
     const handleAddKaternClick = (werkorderId: string) => {
         handleKaternSubmit(defaultKaternToAdd, werkorderId);
@@ -427,11 +428,13 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
                 // Prepare data for PocketBase
                 const pbData: any = {
+                    date: formattedDate,
+                    datum: formattedDatum,
                     order_nummer: parseInt(werkorder.orderNr),
                     klant_order_beschrijving: werkorder.orderName,
                     versie: katern.version,
                     blz: katern.pages,
-                    ex_omw: katern.exOmw, // Assuming string like "2", check collection type if number
+                    ex_omw: parseFloat(katern.exOmw) || 0,
                     netto_oplage: katern.netRun,
                     opstart: katern.startup,
                     k_4_4: katern.c4_4,
@@ -522,47 +525,47 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return initial;
     });
 
-    // Fetch parameters from PocketBase on mount
-    useEffect(() => {
-        const fetchParameters = async () => {
-            try {
-                // Fetch all press parameters (expand press relation if needed, but we rely on linking by press ID)
-                const records = await pb.collection('press_parameters').getFullList();
+    // Fetch parameters from PocketBase
+    const fetchParameters = useCallback(async () => {
+        try {
+            // Fetch all press parameters (expand press relation if needed, but we rely on linking by press ID)
+            const records = await pb.collection('press_parameters').getFullList();
 
-                setParameters(prev => {
-                    const updated = { ...prev };
+            setParameters(prev => {
+                const updated = { ...prev };
 
-                    activePresses.forEach(pressName => {
-                        const pressId = pressMap[pressName];
-                        // Find parameter record for this press
-                        const record = records.find((r: any) => r.press === pressId);
+                activePresses.forEach(pressName => {
+                    const pressId = pressMap[pressName];
+                    // Find parameter record for this press
+                    const record = records.find((r: any) => r.press === pressId);
 
-                        if (record) {
-                            updated[pressName] = {
-                                id: record.id,
-                                marge: parseFloat(record.margePercentage?.replace(',', '.') || '0') / 100 || 0, // derived logic might need adjustment if storing both
-                                margePercentage: record.marge || '4,2', // Mapping 'marge' from DB to 'margePercentage' text in UI based on schema
-                                opstart: record.opstart || 6000,
-                                param_4_4: record.param_4_4 || 4000,
-                                param_4_0: record.param_4_0 || 3000,
-                                param_1_0: record.param_1_0 || 1500,
-                                param_1_1: record.param_1_1 || 2000,
-                                param_4_1: record.param_4_1 || 3500
-                            };
-                        }
-                    });
-
-                    return updated;
+                    if (record) {
+                        updated[pressName] = {
+                            id: record.id,
+                            marge: parseFloat(record.margePercentage?.replace(',', '.') || '0') / 100 || 0,
+                            margePercentage: record.marge || '4,2',
+                            opstart: record.opstart || 6000,
+                            param_4_4: record.k_4_4 || 4000,
+                            param_4_0: record.k_4_0 || 3000,
+                            param_1_0: record.k_1_0 || 1500,
+                            param_1_1: record.k_1_1 || 2000,
+                            param_4_1: record.k_4_1 || 3500
+                        };
+                    }
                 });
-            } catch (error) {
-                console.error("Error fetching parameters:", error);
-            }
-        };
 
+                return updated;
+            });
+        } catch (error) {
+            console.error("Error fetching parameters:", error);
+        }
+    }, [activePresses, pressMap]);
+
+    useEffect(() => {
         if (activePresses.length > 0) {
             fetchParameters();
         }
-    }, [activePresses.join(',')]); // Dependency on active presses list
+    }, [fetchParameters, activePresses.length]);
 
     // Helper to get formula for a specific column
     const getFormulaForColumn = (col: 'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage') => calculatedFields.find(f => f.targetColumn === col);
@@ -599,8 +602,15 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
         // Map UI fields to DB fields
         const dbData: any = {};
-        if (field === 'margePercentage') dbData.marge = val;
-        else dbData[field] = val;
+        if (field === 'margePercentage') {
+            dbData.marge = val;
+        } else if (field.startsWith('param_')) {
+            // Map param_X_Y to k_X_Y for database
+            const dbField = field.replace('param_', 'k_');
+            dbData[dbField] = val;
+        } else {
+            dbData[field] = val;
+        }
 
         try {
             const currentParams = parameters[pressName];
@@ -672,73 +682,111 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const fetchFinishedJobs = useCallback(async () => {
         try {
+            const currentYear = new Date().getFullYear();
             let filter = '';
             if (!hasPermission('drukwerken_view_all') && user?.press) {
-                // If the migration used 'pers' relation, we filter by that
-                // If it's a relation, we should use the ID if possible, but the name is also available in some contexts.
-                // Given I added 'pressId' to user, I'll use that.
                 if (user.pressId) {
                     filter = `pers = "${user.pressId}"`;
                 } else {
-                    // Fallback to name if ID not yet available (shouldn't happen with updated AuthContext)
                     filter = `pers.naam = "${user.press}"`;
                 }
             }
 
-            const records = await pb.collection('drukwerken').getFullList({
-                sort: '-created',
-                filter: filter,
-                expand: 'pers'
+            // Phase 1: Load current year only (Fast load)
+            const yearFilterStr = `date ~ "${currentYear}-" || datum ~ ".${currentYear}" || date ~ "${currentYear}/"`;
+            const currentYearFilter = filter ? `(${filter}) && (${yearFilterStr})` : yearFilterStr;
+
+            const firstBatch = await pb.collection('drukwerken').getFullList({
+                sort: '-date,-created',
+                expand: 'pers',
+                filter: currentYearFilter
             });
 
-            console.log("Fetched records count:", records.length, "Filter used:", filter);
-            console.log("Logged in user:", { role: user?.role, press: user?.press, pressId: user?.pressId });
+            const mapJob = (r: any) => {
+                const jobDate = r.date ? r.date.split(' ')[0] : (r.created ? r.created.split('T')[0] : '');
+                return {
+                    id: r.id,
+                    date: jobDate,
+                    datum: jobDate ? jobDate.split('-').reverse().join('.') : '',
+                    orderNr: String(r.order_nummer || ''),
+                    orderName: r.klant_order_beschrijving || '',
+                    version: r.versie || '',
+                    pages: r.blz,
+                    exOmw: String(r.ex_omw || ''),
+                    netRun: r.netto_oplage,
+                    startup: !!r.opstart,
+                    c4_4: r.k_4_4,
+                    c4_0: r.k_4_0,
+                    c1_0: r.k_1_0,
+                    c1_1: r.k_1_1,
+                    c4_1: r.k_4_1,
+                    maxGross: r.max_bruto || 0,
+                    green: r.groen,
+                    red: r.rood,
+                    delta_number: r.delta || 0,
+                    delta_percentage: r.delta_percent || 0,
+                    delta: r.delta || 0,
+                    performance: '100%',
+                    pressId: r.pers,
+                    pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || '')
+                };
+            };
 
-            // Strict filtering: only keep records that definitely belong to this press
-            const filteredRecords = (!hasPermission('drukwerken_view_all') && user?.press)
-                ? records.filter((r: any) => {
-                    const hasMatch = (user.pressId && r.pers === user.pressId) ||
-                        (user.press && r.expand?.pers?.naam === user.press);
-                    return hasMatch;
-                })
-                : records;
+            const initialJobs = firstBatch.map(mapJob);
+            setFinishedJobs(initialJobs);
 
-            console.log("Filtered records count:", filteredRecords.length);
+            // Phase 2: Load historical data silently in background
+            // PocketBase doesn't support negation of a group like !(a || b). 
+            // We must rewrite as (!a && !b).
+            const historicalYearFilter = `date !~ "${currentYear}-" && datum !~ ".${currentYear}" && date !~ "${currentYear}/"`;
+            const historicalFilter = filter ? `(${filter}) && (${historicalYearFilter})` : historicalYearFilter;
 
-            setFinishedJobs(filteredRecords.map((r: any) => ({
-                id: r.id,
-                date: r.created.split('T')[0],
-                datum: r.created.split('T')[0].split('-').slice(1).reverse().join('-'), // simple format
-                orderNr: String(r.order_nummer || ''),
-                orderName: r.klant_order_beschrijving || '',
-                version: r.versie || '',
-                pages: r.blz,
-                exOmw: String(r.ex_omw || ''),
-                netRun: r.netto_oplage,
-                startup: !!r.opstart,
-                c4_4: r.k_4_4,
-                c4_0: r.k_4_0,
-                c1_0: r.k_1_0,
-                c1_1: r.k_1_1,
-                c4_1: r.k_4_1,
-                maxGross: r.max_bruto || 0,
-                green: r.groen,
-                red: r.rood,
-                delta_number: r.delta || 0,
-                delta_percentage: r.delta_percent || 0,
-                delta: r.delta || 0,
-                performance: '100%',
-                pressId: r.pers,
-                pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || '')
-            })));
+            const secondBatch = await pb.collection('drukwerken').getFullList({
+                sort: '-date,-created',
+                expand: 'pers',
+                filter: historicalFilter
+            });
+
+            if (secondBatch.length > 0) {
+                const historicalJobs = secondBatch.map(mapJob);
+                setFinishedJobs(prev => {
+                    // Combine and re-sort
+                    const combined = [...prev, ...historicalJobs];
+                    return combined.sort((a, b) => {
+                        const dateA = a.date || '';
+                        const dateB = b.date || '';
+                        return dateB.localeCompare(dateA);
+                    });
+                });
+            }
         } catch (error) {
             console.error("Error fetching finished jobs:", error);
         }
-    }, [user]);
+    }, [user, hasPermission]);
 
     useEffect(() => {
         fetchFinishedJobs();
     }, [fetchFinishedJobs]);
+
+    // Real-time refresh listeners
+    useEffect(() => {
+        const handleDrukwerkenChange = () => {
+            console.log("Real-time update: refreshing finished jobs");
+            fetchFinishedJobs();
+        };
+        const handleParametersChange = () => {
+            console.log("Real-time update: refreshing parameters");
+            fetchParameters();
+        };
+
+        window.addEventListener('pb-drukwerken-changed', handleDrukwerkenChange);
+        window.addEventListener('pb-parameters-changed', handleParametersChange);
+
+        return () => {
+            window.removeEventListener('pb-drukwerken-changed', handleDrukwerkenChange);
+            window.removeEventListener('pb-parameters-changed', handleParametersChange);
+        };
+    }, [fetchFinishedJobs, fetchParameters]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState(() => {
@@ -756,9 +804,19 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return 'all';
     });
 
+    const [yearFilter, setYearFilter] = useState(() => {
+        const currentYear = new Date().getFullYear().toString();
+        if (typeof sessionStorage !== 'undefined') return sessionStorage.getItem('drukwerken_yearFilter') || currentYear;
+        return currentYear;
+    });
+
     useEffect(() => {
         if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('drukwerken_pressFilter', pressFilter);
     }, [pressFilter]);
+
+    useEffect(() => {
+        if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('drukwerken_yearFilter', yearFilter);
+    }, [yearFilter]);
 
     const requestSort = (key: string) => { // Renamed handleSort to requestSort
         setSortConfig(current => {
@@ -781,7 +839,39 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             : <ArrowDown className="w-4 h-4 ml-1 text-blue-600" />;
     };
 
+    const yearOptions = useMemo(() => {
+        const years = Array.from(new Set(
+            finishedJobs.map(job => {
+                const datePart = job.date || '';
+                return datePart.split('-')[0] || datePart.split('/')[0] || job.datum?.split('.')[2];
+            }).filter(Boolean)
+        )).sort((a, b) => b!.localeCompare(a!)) as string[];
+
+        const now = new Date();
+        const curY = now.getFullYear().toString();
+
+        const options = [{ value: 'all', label: 'Volledige Lijst' }];
+
+        years.forEach(y => {
+            options.push({ value: y, label: y });
+        });
+
+        // Ensure current year is always an option even if no data yet
+        if (!years.includes(curY)) {
+            options.splice(1, 0, { value: curY, label: curY });
+        }
+
+        return options;
+    }, [finishedJobs]);
+
     const filteredJobs = finishedJobs.filter(job => {
+        // Year filter
+        if (yearFilter !== 'all') {
+            const datePart = job.date || '';
+            const jobYear = datePart.split('-')[0] || datePart.split('/')[0] || job.datum?.split('.')[2];
+            if (jobYear !== yearFilter) return false;
+        }
+
         // Press filter (for admins)
         if (hasPermission('drukwerken_view_all') && pressFilter !== 'all') {
             if (job.pressName !== pressFilter) return false;
@@ -826,7 +916,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                     klant_order_beschrijving: job.orderName,
                     versie: job.version,
                     blz: job.pages,
-                    ex_omw: job.exOmw,
+                    ex_omw: parseFloat(job.exOmw) || 0,
                     netto_oplage: job.netRun,
                     opstart: job.startup,
                     k_4_4: job.c4_4,
@@ -979,7 +1069,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         { key: 'maxGross', label: 'Max Bruto' },
         { key: 'green', label: 'Groen' },
         { key: 'red', label: 'Rood' },
-        { key: 'delta', label: 'Delta' }
+        { key: 'delta_number', label: 'Delta' }
     ];
 
     const parameterFields = [
@@ -1013,7 +1103,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             const jobPressName = (job as any).pressName;
             const pressParams = (jobPressName && parameters[jobPressName])
                 ? parameters[jobPressName]
-                : (activePresses.length > 0 ? parameters[activePresses[0]] : {});
+                : (activePresses.length > 0 ? (parameters[activePresses[0]] || {}) : {});
+
+            // Final fallback to empty object to prevent "reading property of undefined"
+            const safeParams = pressParams || {};
 
             // Helper function to escape regex special characters
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1031,7 +1124,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 if (field.key === 'startup') {
                     // If startup is checked (true), use the Opstart parameter value
                     // If unchecked (false), use 0
-                    value = value ? (pressParams['opstart'] || 0) : 0;
+                    value = value ? (safeParams['opstart'] || 0) : 0;
                 }
 
                 // Sanitize value: replace comma with dot for formula evaluation
@@ -1074,11 +1167,11 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 if (field.key === 'Marge') paramKey = 'marge';
                 if (field.key === 'Opstart') paramKey = 'opstart';
 
-                let value = pressParams[paramKey] || 0;
+                let value = safeParams[paramKey] || 0;
 
                 // Special handling for Marge percentage parsing (e.g., "4,2" -> 0.042)
                 if (paramKey === 'marge') {
-                    const sMarge = String(pressParams['margePercentage'] || '0');
+                    const sMarge = String(safeParams['margePercentage'] || '0');
                     const cleanMarge = sMarge.includes(',') ? sMarge.replace(/\./g, '').replace(',', '.') : sMarge;
                     value = (parseFloat(cleanMarge) || 0) / 100;
                 }
@@ -1154,7 +1247,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         if (!formula || !formula.trim()) return null;
 
         const activePressName = activePresses.length > 0 ? activePresses[0] : '';
-        const pressParams = activePressName ? parameters[activePressName] : {};
+        const pressParams = (activePressName && parameters[activePressName]) ? parameters[activePressName] : {};
+        const safeParams = pressParams || {};
 
         const substitutions: { key: string; label: string; value: string | number; color: { bg: string; text: string } }[] = [];
 
@@ -1163,7 +1257,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             if (formula.includes(field.key)) {
                 let value: any = (job as any)[field.key];
                 if (field.key === 'startup') {
-                    value = value ? (pressParams['opstart'] || 0) : 0;
+                    value = value ? (safeParams['opstart'] || 0) : 0;
                 }
                 substitutions.push({
                     key: field.key,
@@ -1181,9 +1275,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 if (field.key === 'Marge') paramKey = 'marge';
                 if (field.key === 'Opstart') paramKey = 'opstart';
 
-                let value = pressParams[paramKey] || 0;
+                let value = safeParams[paramKey] || 0;
                 if (paramKey === 'marge') {
-                    value = (parseFloat((pressParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
+                    value = (parseFloat((safeParams['margePercentage'] || '0').replace(',', '.')) || 0) / 100;
                 }
 
                 substitutions.push({
@@ -1364,12 +1458,17 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                    <TabsList className="tab-pill-list">
+                <TabsList className="tab-pill-list">
+                    {user?.role === 'press' && (
+                        <TabsTrigger value="werkorders" className="tab-pill-trigger">Nieuw Order</TabsTrigger>
+                    )}
+                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast' || (user?.role === 'press' && hasPermission('drukwerken_view'))) && (
                         <TabsTrigger value="finished" className="tab-pill-trigger">Finished</TabsTrigger>
+                    )}
+                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
                         <TabsTrigger value="parameters" className="tab-pill-trigger">Parameters</TabsTrigger>
-                    </TabsList>
-                )}
+                    )}
+                </TabsList>
 
                 {user?.role === 'press' && (
                     <TabsContent value="werkorders">
@@ -1377,7 +1476,9 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             <CardHeader>
                                 <CardTitle className="pl-4">Werkorders</CardTitle>
                                 <CardAction>
-                                    <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
+                                    {hasPermission('drukwerken_create') && (
+                                        <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}><Plus className="w-4 h-4 mr-2" /> Werkorder</Button>
+                                    )}
                                 </CardAction>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -1570,9 +1671,22 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
                 <TabsContent value="finished">
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
                             <CardTitle className={FONT_SIZES.title}>Afgewerkte Drukwerken</CardTitle>
-                            <div className="flex gap-2 items-center">
+                            <div className="flex gap-2 items-center flex-wrap">
+                                <Tabs value={yearFilter} onValueChange={setYearFilter} className="w-auto">
+                                    <TabsList className="bg-gray-100/50 border h-9 p-1">
+                                        {yearOptions.map(opt => (
+                                            <TabsTrigger
+                                                key={opt.value}
+                                                value={opt.value}
+                                                className="px-3 py-1 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                                            >
+                                                {opt.label}
+                                            </TabsTrigger>
+                                        ))}
+                                    </TabsList>
+                                </Tabs>
                                 {user?.role?.toLowerCase() === 'admin' && (
                                     <Select value={pressFilter} onValueChange={setPressFilter}>
                                         <SelectTrigger className="w-[140px]">
@@ -1587,10 +1701,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                     </Select>
                                 )}
                                 <div className="relative">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                                     <Input
                                         placeholder="Zoeken..."
-                                        className="pl-8 w-[200px]"
+                                        className="pl-10 w-[200px] bg-white border-gray-200 focus:border-blue-500 transition-colors"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
@@ -1947,7 +2061,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                         </div>
                     </TabsContent>
                 )}
-            </Tabs >
+            </Tabs>
 
             <AddFinishedJobDialog
                 open={isAddJobDialogOpen}

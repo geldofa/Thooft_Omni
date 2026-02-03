@@ -24,6 +24,7 @@ routerAdd("GET", "/api/cloud-sync/status", (c) => {
             if (!isS && c.auth) {
                 authSource = "Context(Auth:" + c.auth.collection().name + ")";
                 if (c.auth.collection().name === "_superusers") isS = true;
+                if (c.auth.collection().name === "users" && (c.auth.get("role") === "admin" || c.auth.get("role") === "Admin")) isS = true;
             }
             if (!isS) {
                 const info = c.requestInfo();
@@ -33,7 +34,9 @@ routerAdd("GET", "/api/cloud-sync/status", (c) => {
                     const rec = pb.findAuthRecordByToken(token, "auth");
                     if (rec) {
                         authSource = "QueryToken(" + rec.collection().name + ")";
-                        if (rec.collection().name === "_superusers" || rec.collection().name === "admins") isS = true;
+                        const colName = rec.collection().name;
+                        if (colName === "_superusers" || colName === "admins") isS = true;
+                        if (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin")) isS = true;
                     }
                 }
             }
@@ -85,9 +88,9 @@ routerAdd("GET", "/api/cloud-sync/auth/gdrive", (c) => {
                     const rec = pb.findAuthRecordByToken(token, "auth");
                     if (rec) {
                         const colName = rec.collection().name;
-                        if (colName === "_superusers" || colName === "admins") {
+                        if (colName === "_superusers" || colName === "_admins" || colName === "admins") {
                             isS = true;
-                        } else if (colName === "users" && rec.get("role") === "admin") {
+                        } else if (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin")) {
                             isS = true;
                         }
                     }
@@ -139,7 +142,7 @@ routerAdd("GET", "/api/cloud-sync/auth/onedrive", (c) => {
                         const colName = rec.collection().name;
                         if (colName === "_superusers" || colName === "admins") {
                             isS = true;
-                        } else if (colName === "users" && rec.get("role") === "admin") {
+                        } else if (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin")) {
                             isS = true;
                         }
                     }
@@ -260,10 +263,21 @@ routerAdd("POST", "/api/cloud-sync/verify-batch", (c) => {
         let isS = false;
         try {
             if (typeof c.hasSuperuserAuth === 'function' && c.hasSuperuserAuth()) isS = true;
-            if (!isS && c.auth && c.auth.collection().name === "_superusers") isS = true;
+            if (!isS && c.auth) {
+                if (c.auth.collection().name === "_superusers") isS = true;
+                if (c.auth.collection().name === "users" && (c.auth.get("role") === "admin" || c.auth.get("role") === "Admin")) isS = true;
+            }
             if (!isS) {
                 const token = c.requestInfo().query["token"];
-                if (token && (typeof $app !== 'undefined' ? $app : app).findAuthRecordByToken(token, "auth")) isS = true;
+                if (token) {
+                    const pb = (typeof $app !== 'undefined' ? $app : app);
+                    const rec = pb.findAuthRecordByToken(token, "auth");
+                    if (rec) {
+                        const colName = rec.collection().name;
+                        if (colName === "_superusers" || colName === "admins") isS = true;
+                        if (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin")) isS = true;
+                    }
+                }
             }
         } catch (e) { }
         if (!isS) return c.json(403, { message: "Forbidden" });
@@ -330,10 +344,21 @@ routerAdd("POST", "/api/cloud-sync/sync-now", (c) => {
         let isS = false;
         try {
             if (typeof c.hasSuperuserAuth === 'function' && c.hasSuperuserAuth()) isS = true;
-            if (!isS && c.auth && c.auth.collection().name === "_superusers") isS = true;
+            if (!isS && c.auth) {
+                if (c.auth.collection().name === "_superusers") isS = true;
+                if (c.auth.collection().name === "users" && (c.auth.get("role") === "admin" || c.auth.get("role") === "Admin")) isS = true;
+            }
             if (!isS) {
                 const token = c.requestInfo().query["token"];
-                if (token && (typeof $app !== 'undefined' ? $app : app).findAuthRecordByToken(token, "auth")) isS = true;
+                if (token) {
+                    const pb = (typeof $app !== 'undefined' ? $app : app);
+                    const rec = pb.findAuthRecordByToken(token, "auth");
+                    if (rec) {
+                        const colName = rec.collection().name;
+                        if (colName === "_superusers" || colName === "admins") isS = true;
+                        if (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin")) isS = true;
+                    }
+                }
             }
         } catch (e) { }
         if (!isS) return c.json(403, { message: "Forbidden" });
@@ -382,7 +407,7 @@ routerAdd("POST", "/api/config-backup/save", (c) => {
                     if (rec) {
                         const colName = rec.collection().name;
                         if (colName === "_superusers" || colName === "admins" ||
-                            (colName === "users" && rec.get("role") === "admin")) {
+                            (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin"))) {
                             isS = true;
                         }
                     }
@@ -429,7 +454,7 @@ routerAdd("POST", "/api/config-backup/restore", (c) => {
                     if (rec) {
                         const colName = rec.collection().name;
                         if (colName === "_superusers" || colName === "admins" ||
-                            (colName === "users" && rec.get("role") === "admin")) {
+                            (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin"))) {
                             isS = true;
                         }
                     }

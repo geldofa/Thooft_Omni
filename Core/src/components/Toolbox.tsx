@@ -151,7 +151,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                 settingsToSave.s3 = {
                     ...settingsToSave.s3,
                     enabled: true, // Force enable if using cloud sync
-                    endpoint: 'http://rclone:8081',
+                    endpoint: 'http://rclone:5572',
                     bucket: 'backups',
                     region: 'us-east-1', // Dummy
                     accessKey: 'minio',  // Dummy
@@ -426,10 +426,11 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                 </TabsContent>
 
                 <TabsContent value="import" className="space-y-6">
-                    {tasksStep === 'upload' && drukwerkenStep === 'upload' ? (
-                        <div className="overflow-x-auto pb-6">
-                            <div className="grid grid-cols-2 gap-8 min-w-[1100px]">
-                                <Card className="border-blue-100 bg-blue-50/10 shadow-sm hover:shadow-md transition-shadow">
+                    <div className={(tasksStep === 'upload' && drukwerkenStep === 'upload') ? "grid grid-cols-2 gap-8 min-w-[1100px]" : "block"}>
+                        {/* 1. Onderhoudstaken */}
+                        <div className={drukwerkenStep !== 'upload' ? 'hidden' : ''}>
+                            <Card className={`${tasksStep === 'upload' ? 'border-blue-100 bg-blue-50/10 shadow-sm hover:shadow-md transition-shadow' : 'border-none p-0 bg-transparent shadow-none'}`}>
+                                {tasksStep === 'upload' && (
                                     <CardHeader className="pb-4">
                                         <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mb-4 shadow-blue-200 shadow-lg">
                                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -441,12 +442,23 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                             Upload hier de lijst met periodieke onderhoudstaken (Excel/CSV).
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent>
-                                        <ImportTool minimal onComplete={onNavigateHome} onStepChange={setTasksStep} />
-                                    </CardContent>
-                                </Card>
+                                )}
+                                <CardContent className={tasksStep === 'upload' ? '' : 'p-0'}>
+                                    <div className={tasksStep !== 'upload' ? 'animate-in fade-in duration-500' : ''}>
+                                        <ImportTool
+                                            minimal={tasksStep === 'upload'}
+                                            onComplete={onNavigateHome}
+                                            onStepChange={setTasksStep}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
 
-                                <Card className="border-slate-100 bg-slate-50/10 shadow-sm hover:shadow-md transition-shadow">
+                        {/* 2. Drukwerken */}
+                        <div className={tasksStep !== 'upload' ? 'hidden' : ''}>
+                            <Card className={`${drukwerkenStep === 'upload' ? 'border-slate-100 bg-slate-50/10 shadow-sm hover:shadow-md transition-shadow' : 'border-none p-0 bg-transparent shadow-none'}`}>
+                                {drukwerkenStep === 'upload' && (
                                     <CardHeader className="pb-4">
                                         <div className="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center mb-4 shadow-slate-200 shadow-lg">
                                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -458,21 +470,19 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                             Upload hier de gerealiseerde orders voor rapportage.
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent>
-                                        <ImportToolDrukwerken minimal onComplete={onNavigateHome} onStepChange={setDrukwerkenStep} />
-                                    </CardContent>
-                                </Card>
-                            </div>
+                                )}
+                                <CardContent className={drukwerkenStep === 'upload' ? '' : 'p-0'}>
+                                    <div className={drukwerkenStep !== 'upload' ? 'animate-in fade-in duration-500' : ''}>
+                                        <ImportToolDrukwerken
+                                            minimal={drukwerkenStep === 'upload'}
+                                            onComplete={onNavigateHome}
+                                            onStepChange={setDrukwerkenStep}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
-                    ) : tasksStep !== 'upload' ? (
-                        <div className="animate-in fade-in duration-500">
-                            <ImportTool onComplete={onNavigateHome} onStepChange={setTasksStep} />
-                        </div>
-                    ) : (
-                        <div className="animate-in fade-in duration-500">
-                            <ImportToolDrukwerken onComplete={onNavigateHome} onStepChange={setDrukwerkenStep} />
-                        </div>
-                    )}
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="fixes" className="space-y-6">

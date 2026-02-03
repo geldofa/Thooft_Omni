@@ -75,6 +75,7 @@ export type Permission =
   | 'tasks_edit'
   | 'drukwerken_view'
   | 'drukwerken_view_all'
+  | 'drukwerken_create'
   | 'reports_view'
   | 'checklist_view'
   | 'extern_view'
@@ -316,6 +317,12 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   };
 
   const logout = () => {
+    // Unsubscribe from all to prevent 403 mismatch errors during token clearing
+    try {
+      pb.realtime.unsubscribe();
+    } catch (e) {
+      console.warn("[Auth] Unsubscribe during logout failed:", e);
+    }
     pb.authStore.clear();
     setUser(null);
     setIsSuperuser(false);
@@ -691,7 +698,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           {
             role: 'Admin',
             permissions: [
-              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
               'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
               'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
               'toolbox_access', 'logs_view', 'feedback_view', 'feedback_manage'
@@ -706,7 +713,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           },
           {
             role: 'Operator',
-            permissions: ['tasks_view', 'drukwerken_view', 'feedback_view']
+            permissions: ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view']
           }
         ];
 
@@ -718,7 +725,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
             console.warn(`Failed to seed ${def.role}:`, e);
           }
         }
-        setRolePermissions(defaults);
+        const mappedDefaults = defaults.map(d => ({
+          role: mapDbRoleToUi(d.role),
+          permissions: d.permissions as Permission[]
+        }));
+        setRolePermissions(mappedDefaults);
       } else {
         setRolePermissions(records.map(r => ({
           role: mapDbRoleToUi(r.role),
@@ -731,7 +742,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       setRolePermissions([
         { role: 'admin', permissions: ['tasks_view', 'tasks_edit', 'management_access', 'manage_permissions'] },
         { role: 'meestergast', permissions: ['tasks_view', 'tasks_edit'] },
-        { role: 'press', permissions: ['tasks_view'] }
+        { role: 'press', permissions: ['tasks_view', 'drukwerken_create'] }
       ]);
     }
   }, []);
@@ -1919,7 +1930,9 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           pb.collection('categorieen').subscribe('*', () => { if (isSubscribed) loadData(); }),
           pb.collection('tags').subscribe('*', () => { if (isSubscribed) loadData(); }),
           pb.collection('operatoren').subscribe('*', () => { if (isSubscribed) fetchOperators(); }),
-          pb.collection('ploegen').subscribe('*', () => { if (isSubscribed) fetchPloegen(); })
+          pb.collection('ploegen').subscribe('*', () => { if (isSubscribed) fetchPloegen(); }),
+          pb.collection('drukwerken').subscribe('*', () => { if (isSubscribed) window.dispatchEvent(new CustomEvent('pb-drukwerken-changed')); }),
+          pb.collection('press_parameters').subscribe('*', () => { if (isSubscribed) window.dispatchEvent(new CustomEvent('pb-parameters-changed')); })
         ]);
         if (isSubscribed) {
           console.log("Realtime subscriptions established");
@@ -1941,6 +1954,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       try { pb.collection('categorieen').unsubscribe('*'); } catch (e) { /* ignore */ }
       try { pb.collection('operatoren').unsubscribe('*'); } catch (e) { /* ignore */ }
       try { pb.collection('ploegen').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('drukwerken').unsubscribe('*'); } catch (e) { /* ignore */ }
+      try { pb.collection('press_parameters').unsubscribe('*'); } catch (e) { /* ignore */ }
       console.log("Realtime subscriptions cleared");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
