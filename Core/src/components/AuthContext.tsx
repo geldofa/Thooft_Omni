@@ -84,6 +84,7 @@ export type Permission =
   | 'manage_categories'
   | 'manage_tags'
   | 'manage_presses'
+  | 'manage_parameters'
   | 'manage_accounts'
   | 'manage_permissions'
   | 'toolbox_access'

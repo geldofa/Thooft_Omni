@@ -10,7 +10,7 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus, Check } from 'lucide-react';
+import { Edit, Trash2, Plus, Check, Users } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,7 @@ import { Switch } from './ui/switch';
 import { Checkbox } from './ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner';
+import { PageHeader } from './PageHeader';
 
 export function OperatorManagement() {
   const {
@@ -403,14 +404,12 @@ export function OperatorManagement() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-gray-900">Personeelsbeheer</h2>
-          <p className="text-gray-600 mt-1">
-            Beheer operators en externe entiteiten
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Personeelsbeheer"
+        description="Beheer operators en externe entiteiten"
+        icon={Users}
+        className="mb-2"
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="tab-pill-list">

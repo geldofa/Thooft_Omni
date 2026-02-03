@@ -12,8 +12,9 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
-import { Search, Calendar } from 'lucide-react';
+import { Search, Calendar, Activity } from 'lucide-react';
 import { Button } from './ui/button';
+import { PageHeader } from './PageHeader';
 
 export function ActivityLog() {
   const { activityLogs, user, hasPermission } = useAuth();
@@ -81,12 +82,11 @@ export function ActivityLog() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-gray-900">Activiteitenlogboek</h2>
-        <p className="text-gray-600 mt-1">
-          Volg alle wijzigingen en activiteiten in het systeem
-        </p>
-      </div>
+      <PageHeader
+        title="Activiteitenlogboek"
+        description="Volg alle wijzigingen en activiteiten in het systeem"
+        icon={Activity}
+      />
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
@@ -100,7 +100,7 @@ export function ActivityLog() {
                 placeholder="Zoeken op gebruiker, taak of details..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="mb-2 pl-10"
               />
             </div>
           </div>

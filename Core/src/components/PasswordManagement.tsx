@@ -13,6 +13,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Key, Plus, Pencil, Trash2 } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 import {
   Dialog,
   DialogContent,
@@ -220,20 +221,20 @@ export function PasswordManagement() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-gray-900 font-bold text-xl">Accountbeheer</h2>
-          <p className="text-gray-600 mt-1">
-            Beheer gebruikers, rollen en wachtwoorden
-          </p>
-        </div>
-        {user?.role === 'admin' && (
-          <Button onClick={() => handleOpenUserDialog()} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Account Toevoegen
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Accountbeheer"
+        description="Beheer gebruikers, rollen en wachtwoorden"
+        icon={Key}
+        className="mb-2"
+        actions={
+          user?.role === 'admin' && (
+            <Button onClick={() => handleOpenUserDialog()} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Account Toevoegen
+            </Button>
+          )
+        }
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <Table>

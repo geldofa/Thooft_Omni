@@ -5,7 +5,8 @@ import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
 import { formatNumber } from '../utils/formatNumber';
-import { Printer } from 'lucide-react';
+import { Printer, FileText } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 
 interface ReportsProps {
   tasks: MaintenanceTask[];
@@ -213,54 +214,52 @@ export function Reports({ tasks }: ReportsProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* HEADER ROW - LEFT ALIGNED TITLE, RIGHT ALIGNED BUTTON */}
-      <div className="flex items-center justify-between py-4 no-print">
+    <div className="w-full mx-auto">
+      <div className="no-print">
+        {/* HEADER ROW - LEFT ALIGNED TITLE, RIGHT ALIGNED BUTTON */}
+        <PageHeader
+          title="Onderhoudsrapportages"
+          description="Overzicht van de onderhoudsstatus"
+          icon={FileText}
+          actions={
+            <Button onClick={handlePrint} className="gap-2 shadow-sm">
+              <Printer className="w-4 h-4" />
+              Printen
+            </Button>
+          }
+          className="mb-1"
+        />
 
-        {/* Title on the left */}
-        <div>
-          <h2 className={`${FONT_SIZES.title} font-extrabold text-gray-900 tracking-tight`}>Onderhoudsrapportages</h2>
-          <p className={`${FONT_SIZES.body} text-gray-500 mt-1`}>
-            Overzicht van de onderhoudsstatus
-          </p>
+        {/* CONTROLS ROW - FORCED SINGLE ROW (justify-between) */}
+        <div className="flex items-center justify-between gap-4 w-full mb-2">
+
+          {/* LEFT: PRESS SELECTION */}
+          <div className="flex-1 overflow-x-auto no-scrollbar py-2">
+            <Tabs value={selectedPress} onValueChange={(value) => setSelectedPress(value as PressType | 'all')}>
+              <TabsList className="tab-pill-list">
+                <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
+                {activePresses.map((press) => (
+                  <TabsTrigger key={press.id} value={press.name} className="tab-pill-trigger">
+                    {press.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {/* RIGHT: OVERDUE FILTER */}
+          <div>
+            <Tabs value={overdueFilter} onValueChange={(value) => setOverdueFilter(value as OverdueFilter)}>
+              <TabsList className="tab-pill-list">
+                <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
+                <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Maand</TabsTrigger>
+                <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Maanden</TabsTrigger>
+                <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Jaar</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
         </div>
-
-        {/* Print Button on the right */}
-        <Button onClick={handlePrint} className="gap-2 shadow-sm">
-          <Printer className="w-4 h-4" />
-          Printen
-        </Button>
-      </div>
-
-      {/* CONTROLS ROW - FORCED SINGLE ROW (justify-between) */}
-      <div className="no-print flex items-center justify-between gap-4 w-full">
-
-        {/* LEFT: PRESS SELECTION */}
-        <div className="flex-1 overflow-x-auto no-scrollbar py-2">
-          <Tabs value={selectedPress} onValueChange={(value) => setSelectedPress(value as PressType | 'all')}>
-            <TabsList className="tab-pill-list">
-              <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
-              {activePresses.map((press) => (
-                <TabsTrigger key={press.id} value={press.name} className="tab-pill-trigger">
-                  {press.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* RIGHT: OVERDUE FILTER */}
-        <div>
-          <Tabs value={overdueFilter} onValueChange={(value) => setOverdueFilter(value as OverdueFilter)}>
-            <TabsList className="tab-pill-list">
-              <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
-              <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Maand</TabsTrigger>
-              <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Maanden</TabsTrigger>
-              <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Jaar</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
       </div>
 
       {/* Printable Content */}
@@ -299,56 +298,46 @@ export function Reports({ tasks }: ReportsProps) {
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
           {/* PRINTABLE REPORT TITLE BLOCK */}
-          <div className="mb-8 border-b pb-4 text-center">
+          <div className="mb-2 border-b pb-4 text-center">
             <h1 className={`${FONT_SIZES.title} font-extrabold text-gray-900 tracking-tight`}>Onderhoudsrapport</h1>
-            <div className={`${FONT_SIZES.body} text-gray-500 mt-1`}>
-              Gegenereerd op {formatDate(new Date())}
-            </div>
-            {overdueFilter !== 'all' && (
-              <div className="mt-4 inline-block">
-                <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">
-                  Filter: Achterstallig &gt; {overdueFilter === '1y' ? '1 Jaar' : overdueFilter === '3m' ? '3 Maanden' : '1 Maand'}
-                </Badge>
-              </div>
-            )}
+            <p className="text-gray-500 text-sm mt-1">Gegenereerd op {new Date().toLocaleDateString('nl-NL')}</p>
           </div>
 
-          {/* SUMMARY SECTION */}
-          <div className="mb-12 break-inside-avoid">
-            <h2 className={`${FONT_SIZES.section} font-bold text-gray-900 mb-4 pb-2 border-b-2 border-gray-100`}>Overzicht per Pers</h2>
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className={`${FONT_SIZES.label} text-gray-400 uppercase border-b border-gray-100 bg-gray-50/30`}>
-                  <th className="py-2 px-4 font-semibold">Pers</th>
-                  <th className="py-2 px-4 font-semibold text-center">Te laat</th>
-                  <th className="py-2 px-4 font-semibold text-center">Binnenkort</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pressesToShow.map(press => {
-                  const overdueCount = getOverdueTasks(press).length;
-                  const dueSoonCount = getDueSoonTasks(press).length;
-                  if (overdueCount === 0 && dueSoonCount === 0) return null;
-                  return (
-                    <tr key={`summary-${press}`} className={`border-b border-gray-100 ${FONT_SIZES.body}`}>
-                      <td className="py-2 px-4 font-medium text-gray-900">{press}</td>
-                      <td className="py-2 px-4 text-center">
-                        {overdueCount > 0 ? (
-                          <span className="text-red-600 font-bold">{formatNumber(overdueCount)}</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-4 text-center">
-                        {dueSoonCount > 0 ? (
-                          <span className="text-orange-600 font-bold">{formatNumber(dueSoonCount)}</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+          {/* STATS SUMMARY BAR */}
+          <div className="flex justify-around items-center bg-gray-50 rounded-lg p-4 mb-2 border border-gray-100">
+            <div className="text-center">
+              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Totaal Taken</div>
+              <div className="text-2xl font-bold text-gray-900">{formatNumber(tasks.length)}</div>
+            </div>
+            <div className="text-center border-l border-gray-200 pl-8">
+              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Achterstallig</div>
+              <div className="text-2xl font-bold text-red-600">{formatNumber(tasks.filter(t => new Date(t.nextMaintenance) < new Date()).length)}</div>
+            </div>
+            <div className="text-center border-l border-gray-200 pl-8">
+              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Binnen 7 Dagen</div>
+              <div className="text-2xl font-bold text-orange-500">
+                {formatNumber(tasks.filter(t => {
+                  const d = new Date(t.nextMaintenance);
+                  const now = new Date();
+                  const week = new Date();
+                  week.setDate(week.getDate() + 7);
+                  return d >= now && d <= week;
+                }).length)}
+              </div>
+            </div>
+          </div>
+
+
+          {/* 
+              This table is purely for printing purposes if we wanted a condensed list, 
+              but the below per-press sections are better. 
+              We can keep this structure wrapper. 
+          */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse table-fixed hidden">
+              <ReportTableHeader />
+              <tbody className="divide-y divide-gray-100">
+                {/* Global list if needed */}
               </tbody>
             </table>
           </div>
@@ -367,7 +356,7 @@ export function Reports({ tasks }: ReportsProps) {
 
             return (
               <div key={press} className="mb-10 break-inside-avoid">
-                <div className="flex items-center mb-4 bg-gray-50 p-2 rounded-lg border border-gray-100 flex-nowrap overflow-hidden">
+                <div className="flex items-center mb-2 bg-gray-50 p-2 rounded-lg border border-gray-100 flex-nowrap overflow-hidden">
                   <div className="flex-1" /> {/* Left Spacer */}
                   <h2 className={`${FONT_SIZES.section} font-bold text-gray-900 text-center whitespace-nowrap mx-4`}>{press}</h2>
                   <div className="flex-1 flex justify-end items-center gap-2 whitespace-nowrap flex-shrink-0">
@@ -392,7 +381,7 @@ export function Reports({ tasks }: ReportsProps) {
                     </h3>
 
                     {overdueCategories.map(category => (
-                      <div key={`overdue-${category}`} className="mb-4 pl-2 border-l-2 border-red-100">
+                      <div key={`overdue-${category}`} className="mb-2 pl-2 border-l-2 border-red-100">
                         <h4 className={`font-semibold text-gray-700 mb-2 ${FONT_SIZES.body}`}>{category}</h4>
                         <table className="w-full text-left border-collapse table-fixed">
                           <ReportTableHeader />
@@ -415,7 +404,7 @@ export function Reports({ tasks }: ReportsProps) {
                     </h3>
 
                     {dueSoonCategories.map(category => (
-                      <div key={`soon-${category}`} className="mb-4 pl-2 border-l-2 border-orange-100">
+                      <div key={`soon-${category}`} className="mb-2 pl-2 border-l-2 border-orange-100">
                         <h4 className={`font-semibold text-gray-700 mb-2 ${FONT_SIZES.body}`}>{category}</h4>
                         <table className="w-full text-left border-collapse table-fixed">
                           <ReportTableHeader />

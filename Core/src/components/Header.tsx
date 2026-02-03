@@ -37,9 +37,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-8">
 
           {/* --- LEFT: BRANDING --- */}
-          {/* --- LEFT: BRANDING --- */}
           <button
-            onClick={() => setActiveTab('home')}
+            onClick={() => setActiveTab('/')}
             className="flex items-center gap-3 flex-shrink-0 group cursor-pointer hover:opacity-80 transition-opacity focus:outline-none"
           >
             <div
@@ -60,112 +59,89 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
           {/* --- CENTER: NAVIGATION TABS --- */}
           <div className="flex-1 overflow-x-auto no-scrollbar py-2">
-            {(user.role === 'admin' || user.role === 'meestergast') ? (
-              <div className="flex items-center gap-1.5 p-1.5 bg-slate-50 border border-slate-100 rounded-lg inline-flex">
-                <Tabs value={activeTab} onValueChange={(value) => startTransition(() => setActiveTab(value))}>
-                  <TabsList className="bg-transparent p-0 gap-1.5 h-auto flex items-center">
-
-                    {/* GROUP 1: Core Tasks */}
-                    <TabsTrigger value="tasks" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                      <ClipboardList className="w-4 h-4" /> Taken
-                    </TabsTrigger>
-
-                    {hasPermission('drukwerken_view') && (
-                      <TabsTrigger value="drukwerken" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <Printer className="w-4 h-4" /> Drukwerken
-                      </TabsTrigger>
-                    )}
-
-                    {/* DIVIDER 1: Between Core and Analysis */}
-                    {(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('extern_view')) && (
-                      <div className="w-px h-6 bg-slate-200 mx-1" />
-                    )}
-
-                    {/* GROUP 2: Analysis */}
-                    {hasPermission('reports_view') && (
-                      <TabsTrigger value="reports" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <FileBarChart className="w-4 h-4" /> Rapport
-                      </TabsTrigger>
-                    )}
-
-                    {hasPermission('checklist_view') && (
-                      <TabsTrigger value="checklist" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <ListChecks className="w-4 h-4" /> Checklist
-                      </TabsTrigger>
-                    )}
-
-                    {hasPermission('extern_view') && (
-                      <TabsTrigger value="extern" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <Users className="w-4 h-4" /> Extern
-                      </TabsTrigger>
-                    )}
-
-                    {/* DIVIDER 2: Between Analysis and Management/Admin */}
-                    {(hasPermission('management_access') || hasPermission('toolbox_access')) && (
-                      <div className="w-px h-6 bg-slate-200 mx-1" />
-                    )}
-
-                    {hasPermission('management_access') && (
-                      <button
-                        onClick={() => startTransition(() => setActiveTab('operators'))}
-                        className={`tab-pill-trigger flex items-center gap-2 outline-none ${['operators', 'categories', 'tags', 'presses', 'passwords', 'permissions'].includes(activeTab) ? '!bg-blue-600 !text-white shadow-lg shadow-blue-100' : ''}`}
-                      >
-                        <Users className="w-4 h-4" /> Beheer
-                      </button>
-                    )}
-
-                    {hasPermission('toolbox_access') && (
-                      <TabsTrigger value="toolbox" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <Wrench className="w-4 h-4" /> Admin Toolbox
-                      </TabsTrigger>
-                    )}
-
-                    {/* DIVIDER 3: Before System Logs/Feedback */}
-                    {(hasPermission('logs_view') || hasPermission('feedback_view')) && (
-                      <div className="w-px h-6 bg-slate-200 mx-1" />
-                    )}
-
-                    {hasPermission('logs_view') && (
-                      <TabsTrigger value="logs" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <FileText className="w-4 h-4" /> Logboek
-                      </TabsTrigger>
-                    )}
-
-                    {hasPermission('feedback_view') && (
-                      <TabsTrigger value="feedback-list" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                        <MessageSquarePlus className="w-4 h-4" /> Feedback
-                      </TabsTrigger>
-                    )}
-
-                  </TabsList>
-                </Tabs>
-              </div>
-            ) : user.role === 'press' ? (
+            <div className="flex items-center gap-1.5 p-1.5 bg-slate-50 border border-slate-100 rounded-lg inline-flex">
               <Tabs
-                value={activeTab}
+                value={activeTab.split('/')[1] ? '/' + activeTab.split('/')[1] : activeTab}
                 onValueChange={(value) => startTransition(() => setActiveTab(value))}
-                className="w-auto inline-block"
               >
-                <TabsList className="tab-pill-list">
-                  <TabsTrigger value="tasks" className="tab-pill-trigger">
+                <TabsList className="bg-transparent p-0 gap-1.5 h-auto flex items-center">
+
+                  {/* Common Tabs */}
+                  <TabsTrigger value="/Taken" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
                     <ClipboardList className="w-4 h-4" /> Taken
                   </TabsTrigger>
-                  <TabsTrigger value="drukwerken" className="tab-pill-trigger">
-                    <Printer className="w-4 h-4" /> Drukwerken
-                  </TabsTrigger>
+
+                  {hasPermission('drukwerken_view') && (
+                    <TabsTrigger value="/Drukwerken" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                      <Printer className="w-4 h-4" /> Drukwerken
+                    </TabsTrigger>
+                  )}
+
+                  {/* Admin/Meestergast Only Middle Section */}
+                  {(user.role === 'admin' || user.role === 'meestergast') && (
+                    <>
+                      {/* DIVIDER 1: Between Core and Analysis */}
+                      {(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('extern_view')) && (
+                        <div className="w-px h-6 bg-slate-200 mx-1" />
+                      )}
+
+                      {hasPermission('reports_view') && (
+                        <TabsTrigger value="/Rapport" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                          <FileBarChart className="w-4 h-4" /> Rapport
+                        </TabsTrigger>
+                      )}
+
+                      {hasPermission('checklist_view') && (
+                        <TabsTrigger value="/Checklist" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                          <ListChecks className="w-4 h-4" /> Checklist
+                        </TabsTrigger>
+                      )}
+
+                      {hasPermission('extern_view') && (
+                        <TabsTrigger value="/Extern" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                          <Users className="w-4 h-4" /> Extern
+                        </TabsTrigger>
+                      )}
+
+                      {/* DIVIDER 2: Between Analysis and Management/Admin */}
+                      {(hasPermission('management_access') || hasPermission('toolbox_access')) && (
+                        <div className="w-px h-6 bg-slate-200 mx-1" />
+                      )}
+
+                      {hasPermission('management_access') && (
+                        <TabsTrigger value="/Beheer" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                          <Users className="w-4 h-4" /> Beheer
+                        </TabsTrigger>
+                      )}
+
+                      {hasPermission('toolbox_access') && (
+                        <TabsTrigger value="/Toolbox" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                          <Wrench className="w-4 h-4" /> Toolbox
+                        </TabsTrigger>
+                      )}
+                    </>
+                  )}
+
+                  {/* Common End Section */}
+                  {(hasPermission('logs_view') || hasPermission('feedback_view')) && (
+                    <div className="w-px h-6 bg-slate-200 mx-1" />
+                  )}
+
                   {hasPermission('logs_view') && (
-                    <TabsTrigger value="logs" className="tab-pill-trigger">
+                    <TabsTrigger value="/Logboek" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
                       <FileText className="w-4 h-4" /> Logboek
                     </TabsTrigger>
                   )}
+
                   {hasPermission('feedback_view') && (
-                    <TabsTrigger value="feedback-list" className="tab-pill-trigger">
+                    <TabsTrigger value="/Feedback" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
                       <MessageSquarePlus className="w-4 h-4" /> Feedback
                     </TabsTrigger>
                   )}
+
                 </TabsList>
               </Tabs>
-            ) : null}
+            </div>
           </div>
 
           {/* --- RIGHT: USER & LOGOUT --- */}
@@ -182,7 +158,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             <button
               onClick={(e) => {
                 e.preventDefault();
-                setActiveTab('tasks');
+                setActiveTab('/');
                 logout();
               }}
               className="group flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 active:scale-95 transition-all"

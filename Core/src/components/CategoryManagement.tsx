@@ -27,7 +27,8 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus, Check, Settings2, GripVertical, Save } from 'lucide-react';
+import { Edit, Trash2, Plus, Check, Settings2, GripVertical, Save, Tags } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 import {
     Select,
     SelectContent,
@@ -405,14 +406,12 @@ export function CategoryManagement() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-gray-900">Categorie Beheer</h2>
-                    <p className="text-gray-600 mt-1">
-                        Beheer categorieën voor onderhoudstaken
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Categorie Beheer"
+                description="Beheer categorieën voor onderhoudstaken"
+                icon={Tags}
+                className="mb-2"
+            />
 
             <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-2">

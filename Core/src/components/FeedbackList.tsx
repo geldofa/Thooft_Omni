@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { Card, CardHeader, CardTitle, CardContent, CardAction } from './ui/card';
+import { Card, CardHeader, CardContent } from './ui/card';
+import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
 import {
     Table,
@@ -314,22 +315,19 @@ export function FeedbackList() {
     return (
         <Card className="w-full shadow-sm bg-white overflow-hidden">
             <CardHeader>
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                        <MessageSquare className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <CardTitle className={`${FONT_SIZES.title} font-bold`}>
-                        {canManage ? 'Feedback Beheer' : 'Feedback Overzicht'}
-                    </CardTitle>
-                </div>
-                <CardAction>
-                    <Button
-                        onClick={() => setIsFeedbackOpen(true)}
-                        className="gap-2"
-                    >
-                        <Plus className="w-4 h-4" /> Feedback
-                    </Button>
-                </CardAction>
+                <PageHeader
+                    title={canManage ? 'Feedback Beheer' : 'Feedback Overzicht'}
+                    icon={MessageSquare}
+                    actions={
+                        <Button
+                            onClick={() => setIsFeedbackOpen(true)}
+                            className="gap-2"
+                        >
+                            <Plus className="w-4 h-4" /> Feedback
+                        </Button>
+                    }
+                    className="mb-2"
+                />
             </CardHeader>
             <CardContent className="space-y-6">
                 {loading ? (

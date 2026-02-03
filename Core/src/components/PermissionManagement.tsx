@@ -10,6 +10,7 @@ import {
 } from './ui/table';
 import { Checkbox } from './ui/checkbox';
 import { Shield, Info } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 import {
     Tooltip,
     TooltipContent,
@@ -31,9 +32,10 @@ const ALL_PERMISSIONS: { key: Permission; label: string; description: string }[]
     { key: 'manage_categories', label: 'Categorieën Beheren', description: 'Beheer van taakcategorieën.' },
     { key: 'manage_tags', label: 'Tags Beheren', description: 'Beheer van tags.' },
     { key: 'manage_presses', label: 'Persen Beheren', description: 'Beheer van drukpersen.' },
+    { key: 'manage_parameters', label: 'Parameters Beheren', description: 'Beheer van drukwerk parameters en formules.' },
     { key: 'manage_accounts', label: 'Accounts Beheren', description: 'Beheer van gebruikersaccounts en wachtwoorden.' },
     { key: 'manage_permissions', label: 'Rechten Beheren', description: 'Mogelijkheid om deze rol-gebaseerde rechten aan te passen.' },
-    { key: 'toolbox_access', label: 'Admin Toolbox', description: 'Toegang tot de Admin Toolbox functionaliteiten.' },
+    { key: 'toolbox_access', label: 'Toolbox', description: 'Toegang tot de Toolbox functionaliteiten.' },
     { key: 'logs_view', label: 'Logs Bekijken', description: 'Toegang tot het Logboek.' },
     { key: 'feedback_view', label: 'Feedback Bekijken', description: 'Toegang tot de binnengekomen feedback.' },
     { key: 'feedback_manage', label: 'Feedback Beheren', description: 'Mogelijkheid om feedback af te handelen of te verwijderen.' },
@@ -67,17 +69,12 @@ export function PermissionManagement() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-gray-900 flex items-center gap-2">
-                        <Shield className="w-5 h-5 text-blue-600" />
-                        Rollen & Rechten Beheer
-                    </h2>
-                    <p className="text-gray-600 mt-1">
-                        Configureer welke functionaliteiten beschikbaar zijn voor elke gebruikersrol.
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Rollen & Rechten Beheer"
+                description="Configureer welke functionaliteiten beschikbaar zijn voor elke gebruikersrol."
+                icon={Shield}
+                className="mb-2"
+            />
 
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 <TooltipProvider>

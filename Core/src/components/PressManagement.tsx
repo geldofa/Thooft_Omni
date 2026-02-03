@@ -13,7 +13,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Switch } from './ui/switch';
-import { Plus, Edit, Trash2, Archive } from 'lucide-react';
+import { Plus, Edit, Trash2, Archive, Factory } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 import {
   Dialog,
   DialogContent,
@@ -149,18 +150,18 @@ export function PressManagement() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-gray-900">Pers Beheer</h2>
-          <p className="text-gray-600 mt-1">
-            Beheer drukpersen in het systeem
-          </p>
-        </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Pers Toevoegen
-        </Button>
-      </div>
+      <PageHeader
+        title="Pers Beheer"
+        description="Beheer drukpersen in het systeem"
+        icon={Factory}
+        className="mb-2"
+        actions={
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Pers Toevoegen
+          </Button>
+        }
+      />
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <Table>

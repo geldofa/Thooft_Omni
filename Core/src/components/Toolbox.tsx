@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth, MaintenanceTask, BackupInfo, BackupSettings, pb } from './AuthContext';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -9,23 +10,14 @@ import { ImportTool } from './ImportTool';
 import { ImportToolDrukwerken } from './ImportToolDrukwerken';
 import { TooltipProvider } from './ui/tooltip';
 import { Input } from './ui/input';
+import { PageHeader } from './PageHeader';
+import { Settings, Upload, Wrench, Database } from 'lucide-react';
 
 export function Toolbox({ onNavigateHome }: { onNavigateHome?: () => void }) {
     return (
         <TooltipProvider>
-            <div className="p-6 w-full mx-auto">
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-200">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Admin Toolbox</h1>
-                        <p className="text-sm text-gray-500 font-medium">Beheer systeeminstellingen en data-onderhoud</p>
-                    </div>
-                </div>
+            <div className="p-2 w-full mx-auto">
+
 
                 <ToolboxContent onNavigateHome={onNavigateHome} />
             </div>
@@ -62,22 +54,29 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
     const [tasksStep, setTasksStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [drukwerkenStep, setDrukwerkenStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
 
-    // Sub-tab Persistence (URL based)
-    const [activeTab, setActiveTabState] = useState(() => {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            return params.get('tab') || 'settings';
-        }
-        return 'settings';
-    });
+    const { subtab } = useParams<{ subtab: string }>();
+    const navigate = useNavigate();
+
+    // Mapping internal IDs to Dutch URL segments
+    const tabMap: Record<string, string> = {
+        'Tools': 'settings',
+        'Import': 'import',
+        'Fixes': 'fixes',
+        'Backup': 'backup'
+    };
+
+    const reverseTabMap: Record<string, string> = {
+        'settings': 'Tools',
+        'import': 'Import',
+        'fixes': 'Fixes',
+        'backup': 'Backup'
+    };
+
+    const activeTab = tabMap[subtab || ''] || 'settings';
 
     const setActiveTab = (tab: string) => {
-        setActiveTabState(tab);
-        if (typeof window !== 'undefined') {
-            const url = new URL(window.location.href);
-            url.searchParams.set('tab', tab);
-            window.history.replaceState({}, '', url.toString());
-        }
+        const urlSegment = reverseTabMap[tab] || 'Tools';
+        navigate(`/Toolbox/${urlSegment}`);
     };
 
     useEffect(() => {
@@ -390,15 +389,47 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         }
     };
 
+    const headerConfig: Record<string, { title: string; description: string; icon: any }> = {
+        'settings': {
+            title: "Systeeminstellingen",
+            description: "Beheer globale applicatie instellingen voor ontwikkeling en testen",
+            icon: Settings
+        },
+        'import': {
+            title: "Data Import",
+            description: "Importeer onderhoudstaken en parameters vanuit Excel/CSV",
+            icon: Upload
+        },
+        'fixes': {
+            title: "Database Onderhoud",
+            description: "Draai correctiescripts en onderhoudstaken op de database",
+            icon: Wrench
+        },
+        'backup': {
+            title: "Backup & Herstel",
+            description: "Beheer systeembackups, cloud synchronisatie en herstelopties",
+            icon: Database
+        }
+    };
+
+    const currentHeader = headerConfig[activeTab] || headerConfig['settings'];
+
     return (
-        <div className="space-y-6">
+        <div>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="tab-pill-list mb-6">
-                    <TabsTrigger value="settings" className="tab-pill-trigger">Systeem Instellingen</TabsTrigger>
-                    <TabsTrigger value="import" className="tab-pill-trigger">Import Wizard</TabsTrigger>
+                <TabsList className="tab-pill-list mb-2">
+                    <TabsTrigger value="settings" className="tab-pill-trigger">Tools</TabsTrigger>
+                    <TabsTrigger value="import" className="tab-pill-trigger">Import</TabsTrigger>
                     <TabsTrigger value="fixes" className="tab-pill-trigger">Database Fixes</TabsTrigger>
                     <TabsTrigger value="backup" className="tab-pill-trigger">Backup & Restore</TabsTrigger>
                 </TabsList>
+
+                <PageHeader
+                    title={currentHeader.title}
+                    description={currentHeader.description}
+                    icon={currentHeader.icon}
+                    className="mb-2"
+                />
 
                 <TabsContent value="settings" className="space-y-6">
                     <Card className="border-blue-200 bg-blue-50/30">

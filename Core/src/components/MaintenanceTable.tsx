@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, Plus, CornerDownRight } from 'lucide-react';
+import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,7 @@ import {
 } from './ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatNumber } from '../utils/formatNumber';
+import { getStatusInfo } from '../utils/StatusUtils';
 
 // --- CONFIGURATION CONSTANTS ---
 // EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
@@ -47,6 +48,7 @@ interface MaintenanceTableProps {
   onUpdate: (task: MaintenanceTask) => Promise<void>;
   onEditGroup?: (group: GroupedTask) => void;
   onAddTask?: () => void;
+  statusFilter?: string | null;
 }
 
 // --- HELPER INTERFACES ---
@@ -57,14 +59,14 @@ interface SortableColumnHeaderProps {
   style?: React.CSSProperties;
 }
 
-export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, onAddTask }: MaintenanceTableProps) {
+export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, statusFilter }: MaintenanceTableProps) {
   const { user, categoryOrder, categories, tags, hasPermission } = useAuth();
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedGroupedTasks, setCollapsedGroupedTasks] = useState<Set<string>>(new Set());
   const [quickEditTask, setQuickEditTask] = useState<MaintenanceTask | null>(null);
   const [quickEditSiblings, setQuickEditSiblings] = useState<MaintenanceTask[]>([]);
   const [quickEditField, setQuickEditField] = useState<'lastMaintenance' | 'opmerkingen'>('lastMaintenance');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+
   const [sortConfig, setSortConfig] = useState<{
     key: 'task' | 'lastMaintenance' | 'nextMaintenance' | 'status' | 'assignedTo' | null;
     direction: 'asc' | 'desc';
@@ -123,37 +125,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   };
 
 
-  const getStatusInfo = (nextMaintenance: Date) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize today
-    const next = new Date(nextMaintenance);
-    next.setHours(0, 0, 0, 0); // Normalize target
 
-    const diffTime = next.getTime() - today.getTime();
-    const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (daysUntil < 0) {
-      return { key: 'Te laat', label: '!!!', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
-    } else if (daysUntil === 0) {
-      return { key: 'Deze Week', label: 'Vandaag!!', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
-    } else if (daysUntil === 1) {
-      return { key: 'Deze Week', label: 'Morgen!', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
-    } else if (daysUntil <= 7) {
-      return { key: 'Deze Week', label: `${daysUntil} Dagen`, color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
-    } else if (daysUntil <= 30) {
-      return { key: 'Deze Maand', label: `${daysUntil} Dagen`, color: 'bg-yellow-50', textColor: 'text-yellow-700', badgeClass: 'bg-yellow-500 hover:bg-yellow-600' };
-    } else {
-      // Weeks calculation
-      const weeks = Math.round(daysUntil / 7);
-      if (weeks > 7) {
-        const months = Math.round(daysUntil / 30.4375); // Average month length
-        const label = months <= 1 ? '1 Maand' : `${months} Maanden`;
-        return { key: 'Gepland', label: label, color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
-      }
-      const label = weeks === 1 ? '1 Week' : `${weeks} Weken`;
-      return { key: 'Gepland', label: label, color: '', textColor: '', badgeClass: 'bg-gray-200 hover:bg-gray-300 text-gray-700' };
-    }
-  };
 
   const toggleCategory = (categoryId: string, e?: React.MouseEvent) => {
     // Record click position relative to viewport if needed, or simply let the browser handle it
@@ -207,16 +179,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   };
 
   // Flatten subtasks for status filtering and counting
-  const allSubtasks: Subtask[] = tasks.flatMap(group => group.subtasks);
 
   // Count subtasks by status
-  const statusCounts = allSubtasks.reduce((acc, subtask) => {
-    const status = getStatusInfo(subtask.nextMaintenance).key;
-    if (status !== 'Gepland') {
-      acc[status] = (acc[status] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
 
   // Group GroupedTasks by category ID
   const groupedTasksByCategoryId = tasks.reduce((acc, groupedTask) => {
@@ -256,9 +220,6 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     });
   }, [categoryOrder, groupedTasksByCategoryId, categories]);
 
-  const handleStatusFilter = (status: string) => {
-    setStatusFilter(statusFilter === status ? null : status);
-  };
 
   // Sorting functions
   const handleSort = (key: 'task' | 'lastMaintenance' | 'nextMaintenance' | 'status' | 'assignedTo') => {
@@ -1060,66 +1021,6 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
   return (
     <>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className={`${FONT_SIZES.title} font-bold text-gray-900`}>Onderhoudstaken</h2>
-        <div className="flex items-center gap-2">
-          {/* Status Filter Buttons */}
-          {statusCounts['Te laat'] > 0 && (
-            <Button
-              variant={statusFilter === 'Te laat' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilter('Te laat')}
-              className="gap-2"
-            >
-              <span className={statusFilter === 'Te laat' ? 'text-white' : 'text-red-600'}>
-                Te laat
-              </span>
-              <Badge variant={statusFilter === 'Te laat' ? 'secondary' : 'default'} className="bg-red-500">
-                {statusCounts['Te laat']}
-              </Badge>
-            </Button>
-          )}
-          {statusCounts['Deze Week'] > 0 && (
-            <Button
-              variant={statusFilter === 'Deze Week' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilter('Deze Week')}
-              className="gap-2"
-            >
-              <span className={statusFilter === 'Deze Week' ? 'text-white' : 'text-orange-600'}>
-                Deze Week
-              </span>
-              <Badge variant={statusFilter === 'Deze Week' ? 'secondary' : 'default'} className="bg-orange-500">
-                {statusCounts['Deze Week']}
-              </Badge>
-            </Button>
-          )}
-          {statusCounts['Deze Maand'] > 0 && (
-            <Button
-              variant={statusFilter === 'Deze Maand' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilter('Deze Maand')}
-              className="gap-2"
-            >
-              <span className={statusFilter === 'Deze Maand' ? 'text-white' : 'text-yellow-600'}>
-                Deze Maand
-              </span>
-              <Badge variant={statusFilter === 'Deze Maand' ? 'secondary' : 'default'} className="bg-yellow-500">
-                {statusCounts['Deze Maand']}
-              </Badge>
-            </Button>
-          )}
-        </div>
-        {onAddTask && (
-          <Button
-            onClick={onAddTask}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-100 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Nieuwe Taak Toevoegen
-          </Button>
-        )}
-      </div>
 
       <div className="space-y-4">
         {orderedCategoryIds.length === 0 ? (
@@ -1138,7 +1039,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                 isCollapsed={collapsedCategories.has(categoryId)}
                 user={user}
                 categoryGroupedTasks={groupedTasksByCategoryId[categoryId]}
-                statusFilter={statusFilter}
+                statusFilter={statusFilter ?? null}
                 getStatusInfo={getStatusInfo}
                 getSortedTasks={getSortedTasks}
                 collapsedGroupedTasks={collapsedGroupedTasks}

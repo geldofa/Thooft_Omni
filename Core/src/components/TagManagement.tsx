@@ -10,7 +10,8 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus, Lock } from 'lucide-react';
+import { Edit, Trash2, Plus, Lock, Tag as TagIcon } from 'lucide-react';
+import { PageHeader } from './PageHeader';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -145,14 +146,12 @@ export function TagManagement() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-gray-900">Tag Beheer</h2>
-                    <p className="text-gray-600 mt-1">
-                        Beheer tags voor onderhoudstaken
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Tag Beheer"
+                description="Beheer tags voor onderhoudstaken"
+                icon={TagIcon}
+                className="mb-2"
+            />
 
             <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-2">

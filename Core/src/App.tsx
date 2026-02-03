@@ -7,8 +7,13 @@ import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
 import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
+import { Button } from './components/ui/button';
+import { Badge } from './components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { PageHeader } from './components/PageHeader';
+import { ListChecks, Plus } from 'lucide-react';
+import { getStatusInfo } from './utils/StatusUtils';
 import { APP_TITLE } from './config';
 
 // Lazy Imports
@@ -39,6 +44,10 @@ function MainApp() {
     checkFirstRun,
     hasPermission
   } = useAuth();
+
+  // --- Router Hooks ---
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     document.title = APP_TITLE;
@@ -83,6 +92,23 @@ function MainApp() {
     return 'Lithoman';
   });
 
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(statusFilter === status ? null : status);
+  };
+
+  const currentPressTasks = groupedTasks.filter(group => group.press === location.pathname.split('/').pop());
+  const allSubtasks = currentPressTasks.flatMap(group => group.subtasks);
+
+  const statusCounts = allSubtasks.reduce((acc, subtask) => {
+    const status = getStatusInfo(subtask.nextMaintenance).key;
+    if (status !== 'Gepland') {
+      acc[status] = (acc[status] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
   useEffect(() => {
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.setItem('tasks_selectedPress', selectedPress);
@@ -90,19 +116,20 @@ function MainApp() {
   }, [selectedPress]);
 
   // --- Router Hooks ---
-  const navigate = useNavigate();
-  const location = useLocation();
-  const activeTab = location.pathname === '/' ? 'home' : location.pathname.substring(1);
-
   const setActiveTab = (tab: string) => {
-    navigate(tab === 'home' ? '/' : `/${tab}`);
+    // This now handles both top-level and sub-tabs if passed as a full path
+    if (tab.startsWith('/')) {
+      navigate(tab);
+    } else {
+      navigate(tab === 'home' ? '/' : `/${tab}`);
+    }
   };
 
   // Handle post-onboarding redirect
   useEffect(() => {
     const redirect = localStorage.getItem('onboarding_redirect');
     if (redirect === 'import') {
-      navigate('/toolbox');
+      navigate('/Toolbox/Import');
       localStorage.removeItem('onboarding_redirect');
     } else if (redirect === 'home') {
       navigate('/');
@@ -112,12 +139,13 @@ function MainApp() {
 
   // Data fetching based on tab
   useEffect(() => {
-    if (activeTab === 'tasks') {
+    const path = location.pathname.toLowerCase();
+    if (path.startsWith('/taken')) {
       fetchTasks();
     }
-    else if (activeTab === 'logs') fetchActivityLogs();
-    else if (activeTab === 'passwords') fetchUserAccounts();
-  }, [activeTab, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
+    else if (path === '/logboek') fetchActivityLogs();
+    else if (path === '/beheer/accounts') fetchUserAccounts();
+  }, [location.pathname, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
 
   // Ensure a valid press is selected when they load or active list changes
   useEffect(() => {
@@ -131,7 +159,7 @@ function MainApp() {
 
   // Scroll position handling
   useEffect(() => {
-    const scrollKey = 'scrollPosition_' + activeTab; // Per-tab scroll
+    const scrollKey = 'scrollPosition_' + location.pathname; // Per-path scroll
     if (typeof sessionStorage !== 'undefined') {
       try {
         const savedPosition = sessionStorage.getItem(scrollKey);
@@ -144,7 +172,7 @@ function MainApp() {
         console.warn('Session storage error:', e);
       }
     }
-  }, [activeTab]);
+  }, [location.pathname]);
 
   // --- Handlers ---
 
@@ -225,9 +253,6 @@ function MainApp() {
     }
   };
 
-  const filteredTasks = hasPermission('tasks_view')
-    ? groupedTasks
-    : groupedTasks.filter(group => group.press === user?.press);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
@@ -240,19 +265,96 @@ function MainApp() {
         <LoginForm />
       ) : (
         <>
-          {activeTab !== 'home' && <Header activeTab={activeTab} setActiveTab={setActiveTab} />}
-          <main className={activeTab === 'home' ? "" : "w-full mx-auto px-4 sm:px-6 lg:px-8 py-4"}>
+          {location.pathname !== '/' && <Header activeTab={location.pathname} setActiveTab={setActiveTab} />}
+          <main className={location.pathname === '/' ? "" : "w-full mx-auto px-4 sm:px-6 lg:px-8 py-4"}>
             <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
               <Routes>
-                <Route path="/" element={<Home setActiveTab={setActiveTab} />} />
-                <Route path="/home" element={<Navigate to="/" replace />} />
+                <Route path="/" element={<Home setActiveTab={setActiveTab} activePresses={activePresses} />} />
 
-                <Route path="/tasks" element={
+                {/* --- TAKEN --- */}
+                <Route path="/Taken" element={
+                  activePresses.length > 0
+                    ? <Navigate to={`/Taken/${activePresses[0].name}`} replace />
+                    : <Navigate to="/" replace />
+                } />
+                <Route path="/Taken/:pressName" element={
                   hasPermission('tasks_view') ? (
                     <div className="space-y-6">
+                      <PageHeader
+                        title="Onderhoudstaken"
+                        description="Beheer en plan onderhoudstaken"
+                        icon={ListChecks}
+                        actions={
+                          <div className="flex items-center gap-2">
+                            {/* Status Filter Buttons */}
+                            {statusCounts['Te laat'] > 0 && (
+                              <Button
+                                variant={statusFilter === 'Te laat' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleStatusFilter('Te laat')}
+                                className="gap-2"
+                              >
+                                <span className={statusFilter === 'Te laat' ? 'text-white' : 'text-red-600'}>
+                                  Te laat
+                                </span>
+                                <Badge variant={statusFilter === 'Te laat' ? 'secondary' : 'default'} className="bg-red-500">
+                                  {statusCounts['Te laat']}
+                                </Badge>
+                              </Button>
+                            )}
+                            {statusCounts['Deze Week'] > 0 && (
+                              <Button
+                                variant={statusFilter === 'Deze Week' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleStatusFilter('Deze Week')}
+                                className="gap-2"
+                              >
+                                <span className={statusFilter === 'Deze Week' ? 'text-white' : 'text-orange-600'}>
+                                  Deze Week
+                                </span>
+                                <Badge variant={statusFilter === 'Deze Week' ? 'secondary' : 'default'} className="bg-orange-500">
+                                  {statusCounts['Deze Week']}
+                                </Badge>
+                              </Button>
+                            )}
+                            {statusCounts['Deze Maand'] > 0 && (
+                              <Button
+                                variant={statusFilter === 'Deze Maand' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleStatusFilter('Deze Maand')}
+                                className="gap-2"
+                              >
+                                <span className={statusFilter === 'Deze Maand' ? 'text-white' : 'text-yellow-600'}>
+                                  Deze Maand
+                                </span>
+                                <Badge variant={statusFilter === 'Deze Maand' ? 'secondary' : 'default'} className="bg-yellow-500">
+                                  {statusCounts['Deze Maand']}
+                                </Badge>
+                              </Button>
+                            )}
+
+                            {hasPermission('tasks_edit') && (
+                              <Button onClick={() => {
+                                startTransition(() => {
+                                  setEditingTask(null);
+                                  setEditingTaskGroup(null);
+                                  setIsAddDialogOpen(true);
+                                });
+                              }} className="gap-2 shadow-sm">
+                                <Plus className="w-4 h-4" />
+                                Nieuwe Taak
+                              </Button>
+                            )}
+                          </div>
+                        }
+                      />
                       {activePresses.length > 1 && (
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-                          <Tabs value={selectedPress} onValueChange={(value) => startTransition(() => setSelectedPress(value as string))} className="w-full sm:w-auto">
+                          <Tabs
+                            value={location.pathname.split('/').pop()}
+                            onValueChange={(value) => navigate(`/Taken/${value}`)}
+                            className="w-full sm:w-auto"
+                          >
                             <TabsList className="tab-pill-list">
                               {activePresses.map(press => (
                                 <TabsTrigger
@@ -268,7 +370,8 @@ function MainApp() {
                         </div>
                       )}
                       <MaintenanceTable
-                        tasks={groupedTasks.filter(group => group.press === selectedPress)}
+                        tasks={currentPressTasks}
+                        statusFilter={statusFilter}
                         onEdit={(task) => {
                           startTransition(() => {
                             setEditingTask(task);
@@ -282,10 +385,10 @@ function MainApp() {
                           startTransition(() => {
                             setEditingTaskGroup(groupTasks.subtasks.map(subtask => ({
                               id: subtask.id,
-                              task: groupTasks.taskName, // Parent Group Name
-                              subtaskName: subtask.subtaskName, // Child Task Name
-                              taskSubtext: groupTasks.taskSubtext, // Parent Subtext
-                              subtaskSubtext: subtask.subtext, // Child Subtext
+                              task: groupTasks.taskName,
+                              subtaskName: subtask.subtaskName,
+                              taskSubtext: groupTasks.taskSubtext,
+                              subtaskSubtext: subtask.subtext,
                               category: groupTasks.category,
                               categoryId: groupTasks.categoryId,
                               press: groupTasks.press,
@@ -307,55 +410,60 @@ function MainApp() {
                             setIsAddDialogOpen(true);
                           });
                         }}
-                        onAddTask={hasPermission('tasks_edit') ? () => {
-                          startTransition(() => {
-                            setEditingTask(null);
-                            setEditingTaskGroup(null);
-                            setIsAddDialogOpen(true);
-                          });
-                        } : undefined}
                       />
                     </div>
-                  ) : (
-                    hasPermission('tasks_view') ? ( // This condition seems redundant here, but keeping it as per original logic for non-admin
-                      <MaintenanceTable
-                        tasks={filteredTasks}
-                        onEdit={(task: MaintenanceTask) => {
-                          startTransition(() => {
-                            setEditingTask(task);
-                            setIsAddDialogOpen(true);
-                          });
-                        }}
-                        onDelete={handleDeleteTask}
-                        onUpdate={async (task: MaintenanceTask) => await startTransition(() => handleEditTask(task))}
-                      />
-                    ) : <Navigate to="/" replace />
-                  )
+                  ) : <Navigate to="/" replace />
                 } />
 
-                <Route path="/drukwerken" element={
+                {/* --- DRUKWERKEN --- */}
+                <Route path="/Drukwerken" element={
+                  user?.role === 'press'
+                    ? <Navigate to="/Drukwerken/Nieuw" replace />
+                    : <Navigate to="/Drukwerken/Gedrukt" replace />
+                } />
+                <Route path="/Drukwerken/:subtab" element={
                   hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />
                 } />
 
-                <Route path="/extern" element={
+                {/* --- EXTERN --- */}
+                <Route path="/Extern" element={
                   hasPermission('extern_view') ? <ExternalSummary /> : <Navigate to="/" replace />
                 } />
 
-                <Route path="/management" element={
-                  hasPermission('management_access') ? <ManagementLayout activeTab={activeTab} setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />
+                {/* --- BEHEER (MANAGEMENT) --- */}
+                <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
+                <Route path="/Beheer/:subtab" element={
+                  hasPermission('management_access') ? <ManagementLayout /> : <Navigate to="/" replace />
                 } />
-                <Route path="/operators" element={hasPermission('management_access') ? <ManagementLayout activeTab="operators" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/categories" element={hasPermission('management_access') ? <ManagementLayout activeTab="categories" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/tags" element={hasPermission('management_access') ? <ManagementLayout activeTab="tags" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/presses" element={hasPermission('management_access') ? <ManagementLayout activeTab="presses" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/passwords" element={hasPermission('management_access') ? <ManagementLayout activeTab="passwords" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/permissions" element={hasPermission('management_access') ? <ManagementLayout activeTab="permissions" setActiveTab={setActiveTab} user={user} /> : <Navigate to="/" replace />} />
 
-                <Route path="/reports" element={hasPermission('reports_view') ? <Reports tasks={tasks} /> : <Navigate to="/" replace />} />
-                <Route path="/checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} /> : <Navigate to="/" replace />} />
-                <Route path="/logs" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
-                <Route path="/feedback-list" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
-                <Route path="/toolbox" element={hasPermission('toolbox_access') ? <Toolbox onNavigateHome={() => navigate('/')} /> : <Navigate to="/" replace />} />
+                {/* --- ANALYSIS & LOGS --- */}
+                <Route path="/Rapport" element={hasPermission('reports_view') ? <Reports tasks={tasks} /> : <Navigate to="/" replace />} />
+                <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} /> : <Navigate to="/" replace />} />
+                <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
+                <Route path="/Feedback" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
+
+                {/* --- TOOLBOX --- */}
+                <Route path="/Toolbox" element={<Navigate to="/Toolbox/Tools" replace />} />
+                <Route path="/Toolbox/:subtab" element={
+                  hasPermission('toolbox_access') ? <Toolbox onNavigateHome={() => navigate('/')} /> : <Navigate to="/" replace />
+                } />
+
+                {/* Redirects for old paths */}
+                <Route path="/tasks" element={<Navigate to="/Taken" replace />} />
+                <Route path="/drukwerken" element={<Navigate to="/Drukwerken" replace />} />
+                <Route path="/management" element={<Navigate to="/Beheer" replace />} />
+                <Route path="/toolbox" element={<Navigate to="/Toolbox" replace />} />
+                <Route path="/reports" element={<Navigate to="/Rapport" replace />} />
+                <Route path="/checklist" element={<Navigate to="/Checklist" replace />} />
+                <Route path="/logs" element={<Navigate to="/Logboek" replace />} />
+                <Route path="/feedback-list" element={<Navigate to="/Feedback" replace />} />
+                <Route path="/operators" element={<Navigate to="/Beheer/Personeel" replace />} />
+                <Route path="/categories" element={<Navigate to="/Beheer/Categorie" replace />} />
+                <Route path="/tags" element={<Navigate to="/Beheer/Tags" replace />} />
+                <Route path="/presses" element={<Navigate to="/Beheer/Persen" replace />} />
+                <Route path="/passwords" element={<Navigate to="/Beheer/Accounts" replace />} />
+                <Route path="/parameters" element={<Navigate to="/Beheer/Parameters" replace />} />
+                <Route path="/permissions" element={<Navigate to="/Beheer/Rechten" replace />} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
