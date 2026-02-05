@@ -1,6 +1,6 @@
 import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, EXTERNAL_TAG_NAME, Press, Category, Tag } from './components/AuthContext';
+import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Category, Tag } from './components/AuthContext';
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
@@ -45,6 +45,26 @@ function MainApp() {
     fetchUserAccounts,
     isLoading: authLoading
   } = useAuth();
+
+  const isHighlightRuleActive = (rule: any) => {
+    if (!rule.enabled) return false;
+    const now = new Date();
+    const currentDay = now.getDay();
+    if (!rule.days.includes(currentDay)) return false;
+
+    if (rule.allDay) return true;
+
+    const [startH, startM] = rule.startTime.split(':').map(Number);
+    const [endH, endM] = rule.endTime.split(':').map(Number);
+    const currentH = now.getHours();
+    const currentM = now.getMinutes();
+
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const currentMinutes = currentH * 60 + currentM;
+
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -124,16 +144,20 @@ function MainApp() {
               record.interval_unit === 'Maanden' ? 'months' :
                 record.interval_unit === 'Jaren' ? 'years' : 'days',
           assignedTo: [
-            ...(record.expand?.assigned_operator?.map((o: any) => o.naam || o.name || o.username || 'Onbekend') || []),
-            ...(record.expand?.assigned_team?.map((t: any) => t.naam || t.name || 'Onbekend') || [])
+            ...(Array.isArray(record.expand?.assigned_operator)
+              ? record.expand.assigned_operator.map((o: any) => o.naam || o.name || o.username || 'Onbekend')
+              : (record.expand?.assigned_operator ? [record.expand.assigned_operator.naam || record.expand.assigned_operator.name || record.expand.assigned_operator.username || 'Onbekend'] : [])),
+            ...(Array.isArray(record.expand?.assigned_team)
+              ? record.expand.assigned_team.map((t: any) => t.naam || t.name || 'Onbekend')
+              : (record.expand?.assigned_team ? [record.expand.assigned_team.naam || record.expand.assigned_team.name || 'Onbekend'] : []))
           ].join(', ') || '',
           assignedToIds: [
-            ...(record.assigned_operator || []),
-            ...(record.assigned_team || [])
+            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])),
+            ...(Array.isArray(record.assigned_team) ? record.assigned_team : (record.assigned_team ? [record.assigned_team] : []))
           ],
           assignedToTypes: [
-            ...(record.assigned_operator || []).map(() => 'operator'),
-            ...(record.assigned_team || []).map(() => 'ploeg')
+            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])).map(() => 'operator'),
+            ...(Array.isArray(record.assigned_team) ? record.assigned_team : (record.assigned_team ? [record.assigned_team] : [])).map(() => 'ploeg')
           ],
           comment: record.opmerkingen || '',
           sort_order: record.sort_order || 0,
@@ -142,7 +166,44 @@ function MainApp() {
         } as any);
       });
 
-      setGroupedTasks(grouped);
+      // Handle Highlights: Virtual Categories
+      const highlightCategories: GroupedTask[] = [];
+      tags.forEach(tag => {
+        const activeRule = tag.highlights?.find(r => r.enabled && r.method === 'category' && isHighlightRuleActive(r));
+        if (activeRule) {
+          // Find all tasks with this tag
+          const matchingSubtasks: any[] = [];
+          grouped.forEach(group => {
+            group.subtasks.forEach(subtask => {
+              if (subtask.tagIds?.includes(tag.id)) {
+                matchingSubtasks.push({
+                  ...subtask,
+                  isHighlight: true,
+                  highlightColor: tag.kleur,
+                  highlightTag: tag.naam
+                });
+              }
+            });
+          });
+
+          if (matchingSubtasks.length > 0) {
+            highlightCategories.push({
+              id: `highlight-${tag.id}`,
+              taskName: `Highlight: ${tag.naam}`,
+              taskSubtext: `Automatische highlight op basis van tag '${tag.naam}'`,
+              category: 'Highlights',
+              categoryId: 'highlights',
+              press: 'Systeem',
+              pressId: 'system',
+              subtasks: matchingSubtasks,
+              isHighlightGroup: true,
+              highlightColor: tag.kleur
+            });
+          }
+        }
+      });
+
+      setGroupedTasks([...highlightCategories, ...grouped]);
     } catch (e) {
       console.error("Failed to fetch data in App", e);
       toast.error("Fout bij het laden van gegevens");
@@ -156,11 +217,12 @@ function MainApp() {
 
     const subscribe = async () => {
       try {
-        await pb.collection('onderhoud').subscribe('*', () => {
-          fetchData();
-        });
+        await Promise.all([
+          pb.collection('onderhoud').subscribe('*', () => fetchData()),
+          pb.collection('tags').subscribe('*', () => fetchData())
+        ]);
       } catch (err) {
-        console.error("Task subscription failed:", err);
+        console.error("Subscriptions failed:", err);
       }
     };
 
@@ -742,8 +804,8 @@ function MainApp() {
 
 // Performance Profiler Callback
 function onRenderCallback(
-  id: string,
-  phase: 'mount' | 'update' | 'nested-update',
+  _id: string,
+  _phase: 'mount' | 'update' | 'nested-update',
   actualDuration: number,
   _baseDuration: number,
   _startTime: number,

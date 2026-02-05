@@ -15,9 +15,11 @@ export interface GroupedTask {
   taskSubtext: string;
   category: string; // Name for display
   categoryId: string; // ID for relations
-  press: PressType; // Name for display
+  press: string; // Name for display
   pressId: string; // ID for relations
   subtasks: Subtask[];
+  isHighlightGroup?: boolean;
+  highlightColor?: string;
 }
 
 export interface Subtask {
@@ -149,6 +151,14 @@ export interface Tag {
   kleur?: string;
   active: boolean;
   system_managed?: boolean;
+  highlights?: {
+    enabled: boolean;
+    days: number[]; // 0-6 (Sun-Sat)
+    allDay: boolean;
+    startTime: string; // "HH:mm"
+    endTime: string; // "HH:mm"
+    method: 'category' | 'dot';
+  }[];
 }
 
 export interface ActivityLog {
@@ -567,7 +577,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     } catch (e: any) {
       console.error("List backups failed:", e);
-      toast.error(`Kon backups niet ophalen: ${e.message}`);
+      // Only toast if it's NOT a permission error, to avoid spamming normal users
+      if (e.status !== 403) {
+        toast.error(`Kon backups niet ophalen: ${e.message}`);
+      }
       return [];
     }
   };
@@ -734,7 +747,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     } catch (e: any) {
       console.error("Get backup settings failed:", e);
-      toast.error(`Instellingen ophalen mislukt: ${e.message}`);
+      // Only toast if it's NOT a permission error
+      if (e.status !== 403) {
+        toast.error(`Instellingen ophalen mislukt: ${e.message}`);
+      }
       return null;
     }
   };
@@ -875,8 +891,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isSuper = model.collectionName === "_superusers" ||
           model.collectionId === "_superusers" ||
           model.role === "Admin" ||
-          model.role === "admin" ||
-          (!model.pers && !model.press && model.email);
+          model.role === "admin";
 
         if (isSuper) {
           setIsSuperuser(true);

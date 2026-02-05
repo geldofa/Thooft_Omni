@@ -648,7 +648,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             },
             (status) => {
                 setCacheStatus(status);
-            }
+            },
+            user,
+            hasPermission
         );
 
         // Trigger Sync
@@ -1350,7 +1352,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                         </TableRow>
                                     </>
                                 )}
-                                itemContent={(index, job) => (
+                                itemContent={(_index, job) => (
                                     <>
                                         {user?.role?.toLowerCase() === 'admin' && (
                                             <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70" title={job.pressName}>

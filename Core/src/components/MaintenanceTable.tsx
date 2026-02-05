@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { GroupedTask, Subtask, MaintenanceTask, pb, Category, Tag, Press } from './AuthContext';
+import { GroupedTask, Subtask, MaintenanceTask, pb, Category, Tag } from './AuthContext';
 import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
@@ -64,7 +64,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [, setIsLoading] = useState(false);
 
   // Active press ID can be derived from the first task if not provided
   const activePressId = tasks[0]?.pressId;
@@ -223,6 +223,26 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   const handleDelete = (id: string, name: string) => {
     onDelete(id);
     toast.success(`${name} succesvol verwijderd`);
+  };
+
+  const isHighlightRuleActive = (rule: any) => {
+    if (!rule.enabled) return false;
+    const now = new Date();
+    const currentDay = now.getDay();
+    if (!rule.days.includes(currentDay)) return false;
+
+    if (rule.allDay) return true;
+
+    const [startH, startM] = rule.startTime.split(':').map(Number);
+    const [endH, endM] = rule.endTime.split(':').map(Number);
+    const currentH = now.getHours();
+    const currentM = now.getMinutes();
+
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const currentMinutes = currentH * 60 + currentM;
+
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
   };
 
   // Flatten subtasks for status filtering and counting
@@ -478,7 +498,25 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     className="text-left w-full"
                     onClick={(e) => toggleGroupedTask(groupedTask.id, e)}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(() => {
+                        // Check for DOT highlight rules in any subtask
+                        const activeDotTag = tags?.find(tag =>
+                          relevantSubtasks.some(st => st.tagIds?.includes(tag.id)) &&
+                          tag.highlights?.some(h => h.enabled && h.method === 'dot' && isHighlightRuleActive(h))
+                        );
+
+                        if (activeDotTag) {
+                          return (
+                            <div
+                              className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse shadow-sm"
+                              style={{ backgroundColor: activeDotTag.kleur }}
+                              title={`Gemarkeerd door tag: ${activeDotTag.naam}`}
+                            />
+                          );
+                        }
+                        return null;
+                      })()}
                       <span className="font-medium text-gray-900">{groupedTask.taskName}</span>
                       <Badge variant="secondary" className="ml-2">
                         {formatNumber(relevantSubtasks.length)} subtaken
@@ -486,6 +524,22 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       {relevantSubtasks.some(st => st.isExternal) && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-auto border-blue-400 bg-blue-100 text-blue-800 font-bold shadow-sm">EXTERNE</Badge>
                       )}
+                      {/* Aggregated Tags from subtasks */}
+                      {(() => {
+                        const uniqueTagIds = [...new Set(relevantSubtasks.flatMap(st => st.tagIds || []))];
+                        return uniqueTagIds.map((tagId: string) => {
+                          const tag = tags?.find((t: any) => t.id === tagId);
+                          return (
+                            <Badge
+                              key={tagId}
+                              style={{ backgroundColor: tag?.kleur || '#3b82f6' }}
+                              className="text-[10px] px-1.5 py-0.5 h-auto text-white border-none shadow-sm"
+                            >
+                              {tag?.naam || 'Onbekend'}
+                            </Badge>
+                          );
+                        });
+                      })()}
                     </div>
                     {groupedTask.taskSubtext && (
                       <div className="text-gray-500 text-xs mt-0.5">{groupedTask.taskSubtext}</div>
@@ -639,7 +693,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   <div className="w-6 flex-shrink-0"></div>
 
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="">{subtask.subtaskName}</div>
                       {Array.isArray(subtask.tagIds) && subtask.tagIds.map((tagId: string) => {
                         const tag = tags?.find((t: any) => t.id === tagId);

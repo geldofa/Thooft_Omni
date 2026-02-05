@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAuth, pb, EXTERNAL_TAG_NAME } from './AuthContext';
+import { useAuth, pb, EXTERNAL_TAG_NAME, Ploeg, Category, Operator, ExternalEntity, Tag, Press } from './AuthContext';
 import {
     Table,
     TableBody,
@@ -75,7 +75,7 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
 };
 
 export function ImportTool({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'preview') => void }) {
-    const { categories, presses, operators, externalEntities, addTask, addActivityLog, user, tags } = useAuth();
+    const { addActivityLog, user } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
     const [headers, setHeaders] = useState<string[]>([]);
@@ -83,6 +83,86 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
     const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [isImporting, setIsImporting] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [ploegen, setPloegen] = useState<Ploeg[]>([]);
+
+    // Local state for data not provided by AuthContext
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [operators, setOperators] = useState<Operator[]>([]);
+    const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([]);
+    const [presses, setPresses] = useState<Press[]>([]);
+    const [tags, setTags] = useState<Tag[]>([]);
+
+    // Fetch all required data for import resolution
+    useEffect(() => {
+        const fetchImportData = async () => {
+            try {
+                // Fetch ploegen
+                const ploegenResult = await pb.collection('ploegen').getFullList();
+                setPloegen(ploegenResult.map((r: any) => ({
+                    id: r.id,
+                    name: r.naam,
+                    operatorIds: r.leden || [],
+                    presses: r.presses || [],
+                    active: r.active ?? true
+                })));
+
+                // Fetch categories
+                const categoriesResult = await pb.collection('categorieen').getFullList();
+                setCategories(categoriesResult.map((r: any) => ({
+                    id: r.id,
+                    name: r.naam,
+                    subtexts: r.subtexts || {},
+                    pressIds: r.presses || [],
+                    active: r.active ?? true
+                })));
+
+                // Fetch all operatoren to split into internal and external
+                const allOpsResult = await pb.collection('operatoren').getFullList();
+
+                setOperators(allOpsResult.filter(r => r.dienstverband !== 'Extern').map((r: any) => ({
+                    id: r.id,
+                    employeeId: r.employeeId || '',
+                    name: r.naam,
+                    presses: r.presses || [],
+                    active: r.active ?? true,
+                    canEditTasks: r.canEditTasks ?? false,
+                    canAccessOperatorManagement: r.canAccessOperatorManagement ?? false,
+                    dienstverband: r.dienstverband
+                })));
+
+                setExternalEntities(allOpsResult.filter(r => r.dienstverband === 'Extern').map((r: any) => ({
+                    id: r.id,
+                    name: r.naam,
+                    presses: r.presses || [],
+                    active: r.active ?? true
+                })));
+
+                // Fetch presses
+                const pressesResult = await pb.collection('persen').getFullList();
+                setPresses(pressesResult.map((r: any) => ({
+                    id: r.id,
+                    name: r.naam,
+                    active: r.active ?? true,
+                    archived: r.archived ?? false,
+                    category_order: r.category_order
+                })));
+
+                // Fetch tags
+                const tagsResult = await pb.collection('tags').getFullList();
+                setTags(tagsResult.map((r: any) => ({
+                    id: r.id,
+                    naam: r.naam,
+                    kleur: r.kleur,
+                    active: r.active ?? true,
+                    system_managed: r.system_managed ?? false
+                })));
+
+            } catch (err) {
+                console.error('Failed to fetch import data', err);
+            }
+        };
+        fetchImportData();
+    }, []);
 
     useEffect(() => {
         if (onStepChange) onStepChange(step);
@@ -192,16 +272,16 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             const pressName = row[mappings.press!]?.toString().trim();
             const opName = mappings.assignedTo ? row[mappings.assignedTo!]?.toString().trim() : null;
 
-            if (catName && !categories.some(c => c.name.toLowerCase() === catName.toLowerCase() || c.id === catName)) {
+            if (catName && !(categories || []).some(c => c.name.toLowerCase() === catName.toLowerCase() || c.id === catName)) {
                 missingCats.add(catName);
             }
-            if (pressName && !presses.some(p => p.name.toLowerCase() === pressName.toLowerCase() || p.id === pressName)) {
+            if (pressName && !(presses || []).some(p => p.name.toLowerCase() === pressName.toLowerCase() || p.id === pressName)) {
                 missingPresses.add(pressName);
             }
             if (opName) {
                 const names = opName.split(',').map((n: string) => n.trim()).filter(Boolean);
                 names.forEach((n: string) => {
-                    const exists = [...operators, ...externalEntities].some(o => o.name.toLowerCase() === n.toLowerCase() || o.id === n);
+                    const exists = [...(operators || []), ...(externalEntities || []), ...(ploegen || [])].some(o => o.name.toLowerCase() === n.toLowerCase() || o.id === n);
                     if (!exists) missingOps.add(n);
                 });
             }
@@ -212,7 +292,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             presses: Array.from(missingPresses),
             operators: Array.from(missingOps)
         };
-    }, [csvData, mappings, categories, presses, operators, externalEntities]);
+    }, [csvData, mappings, categories, presses, operators, externalEntities, ploegen]);
 
     useEffect(() => {
         setResolutions(prev => {
@@ -392,14 +472,14 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             const rawCatName = item.category?.toString().trim();
             const resCat = resolutions.categories[rawCatName];
             const resolvedCategory = resCat?.type === 'existing'
-                ? categories.find(c => c.id === resCat.value)
-                : categories.find(c => c.name.toLowerCase() === (rawCatName?.toLowerCase() || ''));
+                ? (categories || []).find(c => c.id === resCat.value)
+                : (categories || []).find(c => c.name.toLowerCase() === (rawCatName?.toLowerCase() || ''));
 
             const rawPressName = item.press?.toString().trim();
             const resPress = resolutions.presses[rawPressName];
             const resolvedPress = resPress?.type === 'existing'
-                ? presses.find(p => p.id === resPress.value)
-                : presses.find(p => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
+                ? (presses || []).find(p => p.id === resPress.value)
+                : (presses || []).find(p => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
 
             const opName = item.assignedTo?.toString().trim();
             const resolvedOpIds: string[] = [];
@@ -408,6 +488,23 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             if (opName) {
                 const names = opName.split(',').map((n: string) => n.trim()).filter(Boolean);
                 names.forEach((n: string) => {
+                    // Check if this name matches a ploeg - if so, expand to all members
+                    const matchingPloeg = ploegen.find(p => p.name.toLowerCase() === n.toLowerCase() && p.active);
+                    if (matchingPloeg) {
+                        // Expansion: Add all operators from this ploeg if they have members
+                        if (matchingPloeg.operatorIds && matchingPloeg.operatorIds.length > 0) {
+                            matchingPloeg.operatorIds.forEach(opId => {
+                                if (!resolvedOpIds.includes(opId)) {
+                                    resolvedOpIds.push(opId);
+                                    resolvedOpTypes.push('operator');
+                                }
+                            });
+                            console.log(`[Import] Expanded ploeg "${n}" to ${matchingPloeg.operatorIds.length} operators`);
+                        }
+                        return; // Skip normal operator lookup for this name
+                    }
+
+                    // Normal operator resolution logic
                     const resOp = resolutions.operators[n];
                     if (resOp?.type === 'existing') {
                         if (resOp.value.startsWith('__PENDING__')) {
@@ -416,18 +513,31 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                             resolvedOpIds.push(`__PENDING_OP__${pendingKey}`);
                             resolvedOpTypes.push(pendingRes?.type === 'external' ? 'external' : 'operator');
                         } else {
-                            resolvedOpIds.push(resOp.value);
-                            const isExt = externalEntities.some(e => e.id === resOp.value);
-                            resolvedOpTypes.push(isExt ? 'external' : 'operator');
+                            const selectedPloeg = ploegen.find(p => p.id === resOp.value);
+                            if (selectedPloeg) {
+                                // Expansion: Add all operators from this ploeg
+                                if (selectedPloeg.operatorIds && selectedPloeg.operatorIds.length > 0) {
+                                    selectedPloeg.operatorIds.forEach(opId => {
+                                        if (!resolvedOpIds.includes(opId)) {
+                                            resolvedOpIds.push(opId);
+                                            resolvedOpTypes.push('operator');
+                                        }
+                                    });
+                                }
+                            } else {
+                                resolvedOpIds.push(resOp.value);
+                                const isExt = (externalEntities || []).some(e => e.id === resOp.value);
+                                resolvedOpTypes.push(isExt ? 'external' : 'operator');
+                            }
                         }
                     } else if (resOp?.type === 'new' || resOp?.type === 'external') {
                         resolvedOpIds.push(`__NEW_OP__${n}`);
                         resolvedOpTypes.push(resOp.type === 'external' ? 'external' : 'operator');
-                    } else if (!resOp && [...operators, ...externalEntities].some(o => o.name.toLowerCase() === n.toLowerCase())) {
-                        const existing = [...operators, ...externalEntities].find(o => o.name.toLowerCase() === n.toLowerCase());
+                    } else if (!resOp && [...(operators || []), ...(externalEntities || [])].some(o => o.name.toLowerCase() === n.toLowerCase())) {
+                        const existing = [...(operators || []), ...(externalEntities || [])].find(o => o.name.toLowerCase() === n.toLowerCase());
                         if (existing) {
                             resolvedOpIds.push(existing.id);
-                            resolvedOpTypes.push(externalEntities.some(e => e.id === existing.id) ? 'external' : 'operator');
+                            resolvedOpTypes.push((externalEntities || []).some(e => e.id === existing.id) ? 'external' : 'operator');
                         }
                     }
                 });
@@ -460,7 +570,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 rawTags: item.tagIds?.toString() || ''
             };
         });
-    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions]);
+    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions, ploegen]);
 
     const handleImport = async () => {
         const validRows = processedData.filter(d => d.isValid);
@@ -634,30 +744,33 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
                 const isSingleTask = groupCounts[groupKey] === 1;
 
-                await addTask({
+                // Map interval unit to Dutch for the database
+                const intervalUnit =
+                    row.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+                        row.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+                            row.maintenanceIntervalUnit === 'months' ? 'Maanden' :
+                                row.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Maanden';
+
+                // Separate assignments for the database fields
+                const assignedOperatorIds = finalAssignedToIds.filter((_: string, i: number) => row.assignedToTypes[i] === 'operator' || row.assignedToTypes[i] === 'external');
+
+                await pb.collection('onderhoud').create({
                     task: row.task,
-                    taskSubtext: isSingleTask ? '' : (row.taskSubtext || ''),
-                    subtaskName: isSingleTask ? row.task : row.subtaskName,
-                    subtaskSubtext: isSingleTask ? '' : (row.subtaskSubtext || ''),
-                    category: row.categoryName,
-                    categoryId: finalCatId,
-                    press: row.pressName,
-                    pressId: finalPressId,
-                    maintenanceInterval: row.maintenanceInterval,
-                    maintenanceIntervalUnit: row.maintenanceIntervalUnit || 'months',
-                    lastMaintenance: row.lastMaintenance || null,
-                    nextMaintenance: row.nextMaintenance || new Date(),
-                    assignedTo: row.assignedTo || '',
-                    assignedToIds: finalAssignedToIds,
-                    assignedToTypes: row.assignedToTypes,
+                    task_subtext: isSingleTask ? '' : (row.taskSubtext || ''),
+                    subtask: isSingleTask ? row.task : row.subtaskName,
+                    subtask_subtext: isSingleTask ? '' : (row.subtaskSubtext || ''),
+                    category: finalCatId,
+                    pers: finalPressId,
+                    interval: row.maintenanceInterval || 1,
+                    interval_unit: intervalUnit,
+                    last_date: row.lastMaintenance || null,
+                    next_date: row.nextMaintenance || new Date(),
+                    assigned_operator: assignedOperatorIds,
                     opmerkingen: row.comment || '',
-                    comment: row.comment || '',
-                    commentDate: row.commentDate || null,
                     sort_order: 0,
-                    isGroupTask: !isSingleTask,
-                    isExternal: row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false,
-                    tagIds: (row.rawTags?.split(',').map((s: string) => s.trim()).filter(Boolean).map((n: string) => finalTagMap[n]).filter(Boolean)) || []
-                } as any);
+                    is_external: row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false,
+                    tags: (row.rawTags?.split(',').map((s: string) => s.trim()).filter(Boolean).map((n: string) => finalTagMap[n]).filter(Boolean)) || []
+                });
                 successCount++;
             }
 
@@ -852,7 +965,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                                             <SelectValue placeholder="Kies..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {categories.map(c => (
+                                                            {(categories || []).map(c => (
                                                                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                                                             ))}
                                                         </SelectContent>
@@ -907,7 +1020,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                                             <SelectValue placeholder="Kies..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {presses.map(pr => (
+                                                            {(presses || []).map(pr => (
                                                                 <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
                                                             ))}
                                                         </SelectContent>
@@ -965,11 +1078,15 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="_header" className="font-bold border-b bg-gray-50">Intern Personeel</SelectItem>
-                                                            {operators.map(o => (
+                                                            {(operators || []).map(o => (
                                                                 <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
                                                             ))}
+                                                            <SelectItem value="_header_ploeg" className="font-bold border-b bg-gray-50 mt-2">Ploegen</SelectItem>
+                                                            {(ploegen || []).map(p => (
+                                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                            ))}
                                                             <SelectItem value="_header_ext" className="font-bold border-b bg-gray-50 mt-2">Extern / Derden</SelectItem>
-                                                            {externalEntities.map(e => (
+                                                            {(externalEntities || []).map(e => (
                                                                 <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                                             ))}
                                                             <SelectItem value="_header_pnd" className="font-bold border-b bg-gray-50 mt-2">Nieuw bij deze import</SelectItem>

@@ -74,12 +74,18 @@ class DrukwerkenCacheService {
     }
 
     private listeners: { onJobs: JobsCallback; onStatus: StatusCallback }[] = [];
+    private currentUser: any = null;
+    private currentHasPermission: ((perm: any) => boolean) | null = null;
 
-    subscribe(onJobs: JobsCallback, onStatus: StatusCallback) {
+    subscribe(onJobs: JobsCallback, onStatus: StatusCallback, user?: any, hasPermission?: (perm: any) => boolean) {
         this.listeners.push({ onJobs, onStatus });
+        // Store user context for filtering
+        if (user) this.currentUser = user;
+        if (hasPermission) this.currentHasPermission = hasPermission;
+
         // Immediately send current state
         onStatus(this.status);
-        this.getIdsFromCache().then(jobs => onJobs(jobs));
+        this.getIdsFromCache(this.currentUser, this.currentHasPermission || undefined).then(jobs => onJobs(jobs));
 
         return () => {
             this.listeners = this.listeners.filter(l => l.onJobs !== onJobs);
@@ -92,12 +98,19 @@ class DrukwerkenCacheService {
     }
 
     private async notifyJobs() {
-        const jobs = await this.getIdsFromCache();
+        const jobs = await this.getIdsFromCache(this.currentUser, this.currentHasPermission || undefined);
         this.listeners.forEach(l => l.onJobs(jobs));
     }
 
-    async getIdsFromCache() {
-        return await db.jobs.orderBy('date').reverse().toArray();
+    async getIdsFromCache(user?: any, hasPermission?: (perm: any) => boolean) {
+        let jobs = await db.jobs.orderBy('date').reverse().toArray();
+
+        // Filter by press if user doesn't have view_all permission
+        if (user && hasPermission && !hasPermission('drukwerken_view_all') && user.pressId) {
+            jobs = jobs.filter(job => job.pressId === user.pressId);
+        }
+
+        return jobs;
     }
 
     private isSyncing = false;

@@ -10,7 +10,7 @@ import {
 } from './ui/table';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Plus, Lock, Tag as TagIcon } from 'lucide-react';
+import { Edit, Trash2, Plus, Lock, Tag as TagIcon, Clock } from 'lucide-react';
 import { PageHeader } from './PageHeader';
 import {
     AlertDialog,
@@ -34,6 +34,13 @@ import {
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from './ui/select';
 import { toast } from 'sonner';
 
 export function TagManagement() {
@@ -52,7 +59,8 @@ export function TagManagement() {
                 naam: r.naam,
                 kleur: r.kleur || '#3b82f6',
                 active: r.active !== false,
-                system_managed: r.system_managed === true
+                system_managed: r.system_managed === true,
+                highlights: r.highlights || []
             })));
         } catch (e) {
             console.error("Failed to fetch tags", e);
@@ -63,7 +71,7 @@ export function TagManagement() {
 
     useEffect(() => {
         fetchTags();
-        const unsubscribe = pb.collection('tags').subscribe('*', () => fetchTags());
+        pb.collection('tags').subscribe('*', () => fetchTags());
         return () => {
             pb.collection('tags').unsubscribe('*');
         };
@@ -89,7 +97,8 @@ export function TagManagement() {
             await pb.collection('tags').update(tag.id, {
                 naam: tag.naam,
                 kleur: tag.kleur,
-                active: tag.active
+                active: tag.active,
+                highlights: tag.highlights
             });
             fetchTags();
             return true;
@@ -118,6 +127,7 @@ export function TagManagement() {
         active: true
     });
     const [showInactive, setShowInactive] = useState(false);
+    const [addRuleSelectKey, setAddRuleSelectKey] = useState(0);
 
     const handleOpenDialog = (tag?: Tag) => {
         if (tag) {
@@ -127,6 +137,7 @@ export function TagManagement() {
                 kleur: tag.kleur || '#3b82f6',
                 active: tag.active
             });
+            setIsAddDialogOpen(true);
         } else {
             setEditingTag(null);
             setFormData({
@@ -152,7 +163,7 @@ export function TagManagement() {
         e.preventDefault();
 
         if (!formData.naam.trim()) {
-            toast.error('Voer a.u.b. de tagnaam in');
+            toast.error('Voer a.u. b. de tagnaam in');
             return;
         }
 
@@ -219,6 +230,43 @@ export function TagManagement() {
 
     const filteredTags = tags.filter(tag => showInactive ? true : tag.active);
 
+    const toggleHighlightRule = async (tag: Tag, index: number, enabled: boolean) => {
+        const newHighlights = [...(tag.highlights || [])];
+        newHighlights[index] = { ...newHighlights[index], enabled };
+        await updateTagLocal({ ...tag, highlights: newHighlights });
+    };
+
+    const deleteHighlightRule = async (tag: Tag, index: number) => {
+        const newHighlights = [...(tag.highlights || [])];
+        newHighlights.splice(index, 1);
+        await updateTagLocal({ ...tag, highlights: newHighlights });
+    };
+
+    const addHighlightRule = async (tagId: string) => {
+        const tag = tags.find(t => t.id === tagId);
+        if (!tag) return;
+
+        toast.info(`Regel toevoegen voor ${tag.naam}...`);
+
+        const newRule = {
+            enabled: true,
+            days: [1, 2, 3, 4, 5],
+            allDay: true,
+            startTime: '08:00',
+            endTime: '17:00',
+            method: 'category' as const
+        };
+        const newHighlights = [...(tag.highlights || []), newRule];
+        const success = await updateTagLocal({ ...tag, highlights: newHighlights });
+
+        if (success) {
+            toast.success(`Highlight regel toegevoegd voor "${tag.naam}"`);
+            setAddRuleSelectKey(prev => prev + 1);
+        } else {
+            toast.error(`Toevoegen van regel voor "${tag.naam}" mislukt`);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <PageHeader
@@ -236,7 +284,7 @@ export function TagManagement() {
                         onClick={() => setShowInactive(!showInactive)}
                         className={showInactive ? 'bg-gray-200 hover:bg-gray-300 text-gray-900' : 'text-gray-500'}
                     >
-                        {showInactive ? 'Inactieve tonen' : 'Inactieve tonen'}
+                        {showInactive ? 'Inactieve verbergen' : 'Inactieve tonen'}
                     </Button>
                 </div>
                 <Button onClick={() => handleOpenDialog()} className="gap-2">
@@ -332,7 +380,165 @@ export function TagManagement() {
                 </Table>
             </div>
 
-            <Dialog open={isAddDialogOpen || !!editingTag} onOpenChange={handleCloseDialog}>
+            <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-blue-600" />
+                    <h2 className="text-xl font-semibold text-gray-900">Highlight Sectie</h2>
+                </div>
+                <p className="text-sm text-gray-500 max-w-2xl">
+                    Configureer wanneer en hoe tags extra opvallen in de takenlijst.
+                    Hoogtepunten kunnen verschijnen als een tijdelijke categorie bovenaan of als een gekleurde stip naast de taaknaam.
+                </p>
+
+                <div className="grid gap-4">
+                    {tags.filter(t => (t.highlights || []).length > 0).map(tag => (
+                        <div key={tag.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                            <div className="bg-gray-50/80 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Badge style={{ backgroundColor: tag.kleur }} className="text-white border-none">
+                                        {tag.naam}
+                                    </Badge>
+                                    <span className="text-sm font-medium text-gray-700">Regels</span>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => addHighlightRule(tag.id)}>
+                                    <Plus className="w-4 h-4 mr-1" /> Regel Toevoegen
+                                </Button>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                                {tag.highlights?.map((rule, idx) => (
+                                    <div key={idx} className="p-4 flex flex-wrap items-center gap-6">
+                                        <div className="flex items-center gap-2 min-w-[140px]">
+                                            <Switch
+                                                checked={rule.enabled}
+                                                onCheckedChange={(val) => toggleHighlightRule(tag, idx, val)}
+                                            />
+                                            <span className="text-sm font-medium">{rule.enabled ? 'Actief' : 'Gepauzeerd'}</span>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1 min-w-[200px]">
+                                            <Label className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Wanneer</Label>
+                                            <div className="flex flex-wrap gap-1">
+                                                {['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'].map((day, dIdx) => (
+                                                    <button
+                                                        key={day}
+                                                        onClick={() => {
+                                                            const newDays = rule.days.includes(dIdx)
+                                                                ? rule.days.filter(d => d !== dIdx)
+                                                                : [...rule.days, dIdx];
+                                                            const newHighlights = [...(tag.highlights || [])];
+                                                            newHighlights[idx] = { ...rule, days: newDays };
+                                                            updateTagLocal({ ...tag, highlights: newHighlights });
+                                                        }}
+                                                        className={`text-[10px] w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${rule.days.includes(dIdx)
+                                                            ? 'bg-blue-600 border-blue-600 text-white font-bold'
+                                                            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                                                            }`}
+                                                    >
+                                                        {day}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1 min-w-[150px]">
+                                            <Label className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Tijdstip</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Switch
+                                                    checked={rule.allDay}
+                                                    onCheckedChange={(val) => {
+                                                        const newHighlights = [...(tag.highlights || [])];
+                                                        newHighlights[idx] = { ...rule, allDay: val };
+                                                        updateTagLocal({ ...tag, highlights: newHighlights });
+                                                    }}
+                                                />
+                                                <span className="text-xs">{rule.allDay ? 'Hele dag' : 'Specifiek'}</span>
+                                                {!rule.allDay && (
+                                                    <div className="flex items-center gap-1 ml-2">
+                                                        <input
+                                                            type="time"
+                                                            value={rule.startTime}
+                                                            onChange={(e) => {
+                                                                const newHighlights = [...(tag.highlights || [])];
+                                                                newHighlights[idx] = { ...rule, startTime: e.target.value };
+                                                                updateTagLocal({ ...tag, highlights: newHighlights });
+                                                            }}
+                                                            className="text-xs border rounded p-1"
+                                                        />
+                                                        <span className="text-xs">-</span>
+                                                        <input
+                                                            type="time"
+                                                            value={rule.endTime}
+                                                            onChange={(e) => {
+                                                                const newHighlights = [...(tag.highlights || [])];
+                                                                newHighlights[idx] = { ...rule, endTime: e.target.value };
+                                                                updateTagLocal({ ...tag, highlights: newHighlights });
+                                                            }}
+                                                            className="text-xs border rounded p-1"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1 min-w-[150px]">
+                                            <Label className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Hoe</Label>
+                                            <Select
+                                                value={rule.method}
+                                                onValueChange={(val: any) => {
+                                                    const newHighlights = [...(tag.highlights || [])];
+                                                    newHighlights[idx] = { ...rule, method: val };
+                                                    updateTagLocal({ ...tag, highlights: newHighlights });
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="category">Tijdelijke Categorie</SelectItem>
+                                                    <SelectItem value="dot">Gekleurde Stip</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="ml-auto text-red-500 hover:text-red-600 hover:bg-red-50"
+                                            onClick={() => deleteHighlightRule(tag, idx)}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="bg-blue-50/50 rounded-lg border border-dashed border-blue-200 p-8 flex flex-col items-center justify-center gap-4">
+                        <div className="bg-blue-100 p-3 rounded-full">
+                            <Clock className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-center">
+                            <h3 className="text-sm font-semibold text-gray-900">Nieuwe Highlight Regel</h3>
+                            <p className="text-xs text-gray-500 mt-1">Selecteer een tag om een regel aan te maken.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Select key={addRuleSelectKey} onValueChange={(val) => addHighlightRule(val)}>
+                                <SelectTrigger className="w-[200px] h-9 bg-white">
+                                    <SelectValue placeholder="Selecteer een tag..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {tags.filter(t => t.active).map(tag => (
+                                        <SelectItem key={tag.id} value={tag.id}>{tag.naam}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <Dialog open={isAddDialogOpen} onOpenChange={handleCloseDialog}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>{editingTag ? 'Tag Bewerken' : 'Nieuwe Tag Toevoegen'}</DialogTitle>
