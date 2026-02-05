@@ -13,12 +13,13 @@ interface FeedbackDialogProps {
 }
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
-    const { sendFeedback, user, operators } = useAuth();
+    const { sendFeedback, user } = useAuth();
     const [type, setType] = useState('bug');
     const [message, setMessage] = useState('');
     const [selectedOperator, setSelectedOperator] = useState('');
     const [ip, setIp] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [operators, setOperators] = useState<any[]>([]);
 
     useEffect(() => {
         if (open) {
@@ -26,6 +27,19 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 .then(res => res.json())
                 .then(data => setIp(data.ip))
                 .catch(err => console.warn('Failed to fetch IP', err));
+
+            // Fetch operators using the imported client from AuthContext (not exported directly, using pb if available or new instance?)
+            // We need to import pb from AuthContext
+            import('./AuthContext').then(({ pb }) => {
+                pb.collection('operatoren').getFullList({ sort: 'naam' })
+                    .then((records: any[]) => {
+                        setOperators(records.map(r => ({
+                            id: r.id,
+                            name: r.naam || r.name
+                        })));
+                    })
+                    .catch(err => console.error("Failed to fetch operators for feedback", err));
+            });
         }
     }, [open]);
 
@@ -90,7 +104,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                                 <SelectValue placeholder="Select contact person" />
                             </SelectTrigger>
                             <SelectContent>
-                                {operators.filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
+                                {(operators || []).filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
                                     <SelectItem key={op.id} value={op.name}>
                                         {op.name}
                                     </SelectItem>

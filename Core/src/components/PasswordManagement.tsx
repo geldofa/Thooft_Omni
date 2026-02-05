@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAuth, UserAccount, UserRole, PressType } from './AuthContext';
+import { useState, useCallback, useEffect } from 'react';
+import { useAuth, UserAccount, UserRole, PressType, pb, Press } from './AuthContext';
 import {
   Table,
   TableBody,
@@ -32,17 +32,124 @@ import {
 import { toast } from 'sonner';
 
 export function PasswordManagement() {
-  const {
-    user,
-    userAccounts,
-    changePassword,
-    addUserAccount,
-    updateUserAccount,
-    deleteUserAccount,
-    addActivityLog,
-    presses,
-    hasPermission
-  } = useAuth();
+  const { user, hasPermission, addActivityLog } = useAuth();
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const mapDbRoleToUi = (dbRole: string): UserRole => {
+    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press' };
+    return roleMap[dbRole] || 'press';
+  };
+
+  const mapUiRoleToDb = (uiRole: UserRole): string => {
+    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator' };
+    return roleMap[uiRole || 'press'] || 'Operator';
+  };
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [userResult, pressResult] = await Promise.all([
+        pb.collection('users').getFullList(),
+        pb.collection('persen').getFullList()
+      ]);
+
+      setPresses(pressResult.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true,
+        category_order: r.category_order
+      })));
+
+      setUserAccounts(userResult.map((r: any) => ({
+        id: r.id,
+        username: r.username,
+        name: r.name,
+        role: mapDbRoleToUi(r.role),
+        press: r.press,
+        email: r.email,
+        created: r.created,
+        updated: r.updated
+      })));
+    } catch (e) {
+      console.error("Failed to fetch data in PasswordManagement", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+
+    pb.collection('users').subscribe('*', () => fetchData());
+    return () => {
+      pb.collection('users').unsubscribe('*');
+    };
+  }, [fetchData]);
+
+  const addUserAccountLocal = async (account: UserAccount) => {
+    try {
+      const pressId = presses.find(p => p.name === account.press)?.id;
+      await pb.collection('users').create({
+        username: account.username,
+        email: `${account.username}@example.com`,
+        name: account.name,
+        password: account.password,
+        passwordConfirm: account.password,
+        role: mapUiRoleToDb(account.role),
+        press: account.press,
+        pers: pressId,
+        plain_password: account.password
+      });
+      return true;
+    } catch (e: any) {
+      toast.error(`Fout bij toevoegen: ${e.message}`);
+      return false;
+    }
+  };
+
+  const updateUserAccountLocal = async (username: string, updates: Partial<UserAccount>) => {
+    try {
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("Gebruiker niet gevonden");
+      const pressId = presses.find(p => p.name === (updates.press || usr.press))?.id;
+      await pb.collection('users').update(usr.id, {
+        name: updates.name,
+        role: mapUiRoleToDb(updates.role || usr.role),
+        press: updates.press,
+        pers: pressId
+      });
+      return true;
+    } catch (e: any) {
+      toast.error(`Fout bij bijwerken: ${e.message}`);
+      return false;
+    }
+  };
+
+  const deleteUserAccountLocal = async (username: string) => {
+    try {
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("Gebruiker niet gevonden");
+      await pb.collection('users').delete(usr.id);
+    } catch (e: any) {
+      toast.error(`Fout bij verwijderen: ${e.message}`);
+    }
+  };
+
+  const changePasswordLocal = async (username: string, newPw: string) => {
+    try {
+      const usr = userAccounts.find(u => u.username === username);
+      if (!usr) throw new Error("Gebruiker niet gevonden");
+      await pb.collection('users').update(usr.id, {
+        password: newPw,
+        passwordConfirm: newPw
+      });
+    } catch (e: any) {
+      toast.error(`Fout bij wachtwoord wijzigen: ${e.message}`);
+    }
+  };
 
   // --- DELETE CONFIRMATION STATE ---
   const [deletingUser, setDeletingUser] = useState<string | null>(null);
@@ -120,7 +227,7 @@ export function PasswordManagement() {
 
     if (editingUser) {
       // Update existing
-      const success = await updateUserAccount(editingUser, {
+      const success = await updateUserAccountLocal(editingUser, {
         name: formData.name,
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined
@@ -150,7 +257,7 @@ export function PasswordManagement() {
         return;
       }
 
-      const success = await addUserAccount({
+      const success = await addUserAccountLocal({
         id: Math.random().toString(36).substr(2, 9),
         username: formData.username,
         name: formData.name,
@@ -176,7 +283,7 @@ export function PasswordManagement() {
 
   const handleDeleteUser = () => {
     if (!deletingUser) return;
-    deleteUserAccount(deletingUser);
+    deleteUserAccountLocal(deletingUser);
     toast.success(`Gebruiker ${deletingUser} verwijderd`);
     addActivityLog({
       user: user?.username || 'Unknown',
@@ -202,7 +309,7 @@ export function PasswordManagement() {
       return;
     }
 
-    changePassword(passwordUser, newPassword);
+    changePasswordLocal(passwordUser, newPassword);
     toast.success('Wachtwoord succesvol gewijzigd');
 
     addActivityLog({
@@ -221,6 +328,14 @@ export function PasswordManagement() {
 
   return (
     <div className="space-y-4">
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <p className="font-medium text-blue-900 text-lg">Laden...</p>
+          </div>
+        </div>
+      )}
       <PageHeader
         title="Accountbeheer"
         description="Beheer gebruikers, rollen en wachtwoorden"

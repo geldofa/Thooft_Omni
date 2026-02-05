@@ -44,6 +44,7 @@ export interface FinishedPrintJob {
     performance: string;
     pressId?: string;
     pressName?: string;
+    created?: string;
 }
 
 export interface CalculatedField {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth, pb } from './AuthContext';
 import { Card, CardHeader, CardContent } from './ui/card';
 import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
@@ -73,7 +73,7 @@ const FONT_SIZES = {
 };
 
 export function FeedbackList() {
-    const { fetchFeedback, updateFeedback, deleteFeedback, archiveFeedback, user, hasPermission } = useAuth();
+    const { user, hasPermission } = useAuth();
     const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
@@ -96,11 +96,25 @@ export function FeedbackList() {
     }, [user]);
 
     const loadFeedback = async () => {
-        if (!fetchFeedback) return;
         setLoading(true);
         try {
-            const data = await fetchFeedback();
-            setFeedback(data);
+            const records = await pb.collection('feedback').getFullList<any>({
+                sort: '-created'
+            });
+            setFeedback(records.map(r => ({
+                id: r.id,
+                type: r.type,
+                message: r.message,
+                user_agent: r.user_agent,
+                url: r.url,
+                created: r.created,
+                username: r.username,
+                ip: r.ip,
+                contact_operator: r.contact_operator,
+                status: r.status,
+                admin_comment: r.admin_comment,
+                archived: r.archived === true
+            })));
         } catch (e) {
             console.error("Failed to load feedback", e);
             toast.error("Fout bij laden feedback");
@@ -110,13 +124,11 @@ export function FeedbackList() {
     };
 
     const handleStatusChange = async (id: string, newStatus: string) => {
-        if (!updateFeedback) return;
         try {
             setFeedback(prev => prev.map(item =>
                 item.id === id ? { ...item, status: newStatus as any } : item
             ));
-            const success = await updateFeedback(id, { status: newStatus });
-            if (!success) throw new Error("Update failed");
+            await pb.collection('feedback').update(id, { status: newStatus });
             toast.success("Status bijgewerkt");
         } catch (e) {
             toast.error("Fout bij updaten status");
@@ -125,13 +137,11 @@ export function FeedbackList() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!deleteFeedback) return;
         if (!window.confirm("Weet je zeker dat je deze feedback wilt verwijderen?")) return;
 
         try {
             setFeedback(prev => prev.filter(item => item.id !== id));
-            const success = await deleteFeedback(id);
-            if (!success) throw new Error("Delete failed");
+            await pb.collection('feedback').delete(id);
             toast.success("Feedback verwijderd");
         } catch (e) {
             toast.error("Fout bij verwijderen");
@@ -140,14 +150,11 @@ export function FeedbackList() {
     };
 
     const handleArchive = async (id: string) => {
-        if (!archiveFeedback) return;
-
         try {
             setFeedback(prev => prev.map(item =>
                 item.id === id ? { ...item, archived: true } : item
             ));
-            const success = await archiveFeedback(id);
-            if (!success) throw new Error("Archive failed");
+            await pb.collection('feedback').update(id, { archived: true });
             toast.success("Feedback gearchiveerd");
         } catch (e) {
             toast.error("Fout bij archiveren");
@@ -161,13 +168,12 @@ export function FeedbackList() {
     };
 
     const saveComment = async (id: string) => {
-        if (!updateFeedback) return;
         try {
             setFeedback(prev => prev.map(item =>
                 item.id === id ? { ...item, admin_comment: commentText } : item
             ));
             setEditingCommentId(null);
-            await updateFeedback(id, { admin_comment: commentText });
+            await pb.collection('feedback').update(id, { admin_comment: commentText });
             toast.success("Reactie opgeslagen");
         } catch (e) {
             toast.error("Fout bij opslaan reactie");

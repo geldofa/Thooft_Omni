@@ -30,7 +30,7 @@ export function Home({ setActiveTab, activePresses = [] }: HomeProps) {
                 description: 'Beheer en update onderhoudstaken',
                 permission: 'tasks_view',
                 color: 'bg-blue-600',
-                subtabs: activePresses.map(p => ({ label: p.name, path: `/Taken/${p.name}` }))
+                subtabs: activePresses.map(p => ({ label: p.name, path: `/Taken/${encodeURIComponent(p.name)}` }))
             },
             {
                 id: '/Drukwerken',

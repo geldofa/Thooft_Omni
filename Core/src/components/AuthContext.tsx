@@ -89,6 +89,7 @@ export type Permission =
   | 'manage_permissions'
   | 'toolbox_access'
   | 'logs_view'
+  | 'logs_view_all'
   | 'feedback_view'
   | 'feedback_manage';
 
@@ -97,7 +98,7 @@ export interface RolePermissions {
   permissions: Permission[];
 }
 
-interface User {
+export interface User {
   id: string;
   username: string;
   name?: string;
@@ -114,6 +115,7 @@ export interface Operator {
   active: boolean;
   canEditTasks: boolean;
   canAccessOperatorManagement: boolean;
+  dienstverband?: 'Intern' | 'Extern';
 }
 
 export interface ExternalEntity {
@@ -211,44 +213,12 @@ interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
-  operators: Operator[];
-  addOperator: (operator: Omit<Operator, 'id'>) => Promise<void>;
-  updateOperator: (operator: Operator) => Promise<void>;
-  deleteOperator: (id: string) => Promise<void>;
-  categories: Category[];
-  addCategory: (category: Omit<Category, 'id'>) => Promise<boolean>;
-  updateCategory: (category: Category) => Promise<boolean>;
-  deleteCategory: (id: string) => Promise<void>;
-  categoryOrder: string[];
-  updateCategoryOrder: (order: string[]) => void;
-  updatePressCategoryOrder: (pressId: string, order: string[]) => Promise<boolean>;
+  fetchActivityLogs: () => Promise<void>;
   activityLogs: ActivityLog[];
   addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
-  presses: Press[];
-  addPress: (press: Omit<Press, 'id'>) => Promise<void>;
-  updatePress: (press: Press) => Promise<void>;
-  deletePress: (id: string) => Promise<void>;
   userAccounts: UserAccount[];
-  changePassword: (username: string, newPassword: string) => Promise<void>;
-  addUserAccount: (account: UserAccount) => Promise<boolean>;
-  updateUserAccount: (username: string, updates: Partial<UserAccount>) => Promise<boolean>;
-  deleteUserAccount: (username: string) => Promise<void>;
-  getElevatedOperators: () => Operator[];
-  tasks: GroupedTask[];
-  fetchTasks: () => Promise<void>;
-  fetchActivityLogs: () => Promise<void>;
+  presses: Press[];
   fetchUserAccounts: () => Promise<void>;
-  addTask: (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => Promise<void>;
-  updateTask: (task: MaintenanceTask, refresh?: boolean) => Promise<void>;
-  deleteTask: (id: string) => Promise<void>;
-  externalEntities: ExternalEntity[];
-  addExternalEntity: (entity: Omit<ExternalEntity, 'id'>) => Promise<void>;
-  updateExternalEntity: (entity: ExternalEntity) => Promise<void>;
-  deleteExternalEntity: (id: string) => Promise<void>;
-  ploegen: Ploeg[];
-  addPloeg: (ploeg: Omit<Ploeg, 'id'>) => Promise<void>;
-  updatePloeg: (ploeg: Ploeg) => Promise<void>;
-  deletePloeg: (id: string) => Promise<void>;
   sendFeedback: (type: string, message: string, context?: any) => Promise<boolean>;
   fetchFeedback: () => Promise<any[]>;
   resolveFeedback?: (id: string) => Promise<boolean>;
@@ -256,10 +226,6 @@ interface AuthContextType {
   deleteFeedback?: (id: string) => Promise<boolean>;
   archiveFeedback?: (id: string) => Promise<boolean>;
   fetchParameters: () => Promise<Record<string, any>>;
-  tags: Tag[];
-  addTag: (tag: Omit<Tag, 'id'>) => Promise<boolean>;
-  updateTag: (tag: Tag) => Promise<boolean>;
-  deleteTag: (id: string) => Promise<void>;
   isFirstRun: boolean;
   onboardingDismissed: boolean;
   setOnboardingDismissed: (val: boolean) => void;
@@ -285,32 +251,29 @@ interface AuthContextType {
   verifyCloudBackups: (filenames: string[]) => Promise<Record<string, boolean>>;
   isSuperuser: boolean;
   authenticateSuperuser: (email: string, password: string) => Promise<boolean>;
+  getSystemSetting: (key: string, defaultValue: any) => any;
+  updateSystemSetting: (key: string, value: any) => Promise<boolean>;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode; tasks: GroupedTask[] }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [tasksState, setTasksState] = useState<GroupedTask[]>([]);
-  const [presses, setPresses] = useState<Press[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]); // Preserved unused var for now
-
-  // Placeholders for things we haven't migrated schemas for yet or are keeping local for now
-  const [operators, setOperators] = useState<Operator[]>([]);
-  const [externalEntities, setExternalEntities] = useState<ExternalEntity[]>([]);
-  const [ploegen, setPloegen] = useState<Ploeg[]>([]);
-  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
-  const [isFirstRun, setIsFirstRun] = useState<boolean>(false);
-  const [onboardingDismissed, setOnboardingDismissedState] = useState<boolean>(() => {
+  const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
+  const [onboardingDismissedState, setOnboardingDismissedState] = useState<boolean>(() => {
     return localStorage.getItem('onboarding_dismissed') === 'true';
   });
   const [testingMode, setTestingModeState] = useState<boolean>(false);
-  const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
+  const [isFirstRun, setIsFirstRun] = useState<boolean>(false);
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus | null>(null);
+  const [systemSettings, setSystemSettings] = useState<Record<string, any>>({});
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
 
   const setOnboardingDismissed = (val: boolean) => {
     setOnboardingDismissedState(val);
@@ -358,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     return roleMap[uiRole || 'press'] || 'Operator';
   };
 
-  const hasPermission = (permission: Permission): boolean => {
+  const hasPermission = useCallback((permission: Permission): boolean => {
     if (!user) return false;
     // Admins have all permissions by default as a safety net
     if (user.role === 'admin') return true;
@@ -367,7 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     if (!roleData) return false;
 
     return roleData.permissions.includes(permission);
-  };
+  }, [user, rolePermissions]);
 
   // --- Data Fetching ---
   const fetchTestingMode = useCallback(async () => {
@@ -379,6 +342,48 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   }, []);
 
+  const fetchSystemSettings = useCallback(async () => {
+    try {
+      const records = await pb.collection('app_settings').getFullList();
+      const settings: Record<string, any> = {};
+      records.forEach(r => {
+        settings[r.key] = r.value;
+      });
+      setSystemSettings(settings);
+    } catch (e) {
+      console.warn("Failed to fetch system settings", e);
+    }
+  }, []);
+
+  const getSystemSetting = (key: string, defaultValue: any) => {
+    return systemSettings[key] ?? defaultValue;
+  };
+
+  const updateSystemSetting = async (key: string, value: any) => {
+    try {
+      let record;
+      try {
+        record = await pb.collection('app_settings').getFirstListItem(`key="${key}"`);
+      } catch (e) {
+        // Not found, create it
+      }
+
+      if (record) {
+        await pb.collection('app_settings').update(record.id, { value });
+      } else {
+        await pb.collection('app_settings').create({ key, value });
+      }
+
+      setSystemSettings(prev => ({ ...prev, [key]: value }));
+      toast.success("Instelling opgeslagen");
+      return true;
+    } catch (e: any) {
+      console.error("Update setting failed:", e);
+      toast.error(`Opslaan mislukt: ${e.message}`);
+      return false;
+    }
+  };
+
   const checkFirstRun = useCallback(async () => {
     try {
       const result = await pb.collection('users').getList(1, 1);
@@ -388,128 +393,19 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   }, []);
 
-  const fetchTasks = useCallback(async () => {
+  const fetchPresses = useCallback(async () => {
     try {
-      let filter = '';
-      if (user?.role === 'press' && user.press) {
-        // Use correct casing for relation filter if needed, but naam is usually string
-        filter = `pers.naam = "${user.press}"`;
-      }
-
-      const records = await pb.collection('onderhoud').getFullList({
-        expand: 'category,pers,assigned_operator,assigned_team,tags',
-        filter: filter
-      });
-
-      // Client-side sort
-      records.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
-
-      const groups: Record<string, GroupedTask> = {};
-
-      records.forEach((record: any) => {
-        const categoryName = categories.find(c => c.id === record.category)?.name || record.expand?.category?.naam || record.category;
-        const pressName = presses.find(p => p.id === record.pers)?.name || record.expand?.pers?.naam || record.pers;
-        const groupKey = `${record.category}-${record.pers}-${record.task}`; // Unique group key
-
-        if (!groups[groupKey]) {
-          groups[groupKey] = {
-            id: record.id + '_group',
-            taskName: record.task,
-            taskSubtext: record.task_subtext || '',
-            category: categoryName,
-            categoryId: record.category,
-            press: pressName,
-            pressId: record.pers,
-            subtasks: []
-          };
-        }
-
-        // Helper to get names from expanded relations
-        const getAssignedNames = () => {
-          const names: string[] = [];
-
-          // Operators & Externals
-          if (record.expand?.assigned_operator) {
-            const ops = Array.isArray(record.expand.assigned_operator)
-              ? record.expand.assigned_operator
-              : [record.expand.assigned_operator];
-            names.push(...ops.map((o: any) => o.naam));
-          }
-
-          // Teams
-          if (record.expand?.assigned_team) {
-            const teams = Array.isArray(record.expand.assigned_team)
-              ? record.expand.assigned_team
-              : [record.expand.assigned_team];
-            names.push(...teams.map((t: any) => t.naam));
-          }
-
-          return names.filter(Boolean).join(', ');
-        };
-
-        const assignedNamesCombined = getAssignedNames();
-
-        groups[groupKey].subtasks.push({
-          id: record.id,
-          subtaskName: record.subtask || record.task,
-          subtext: record.subtask_subtext || record.task_subtext || '',
-          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
-          nextMaintenance: record.next_date ? new Date(record.next_date) : (() => {
-            if (record.last_date && record.interval) {
-              const last = new Date(record.last_date);
-              const unit = (record.interval_unit || '').toLowerCase();
-
-              if (unit.includes('maand') || unit.includes('month')) {
-                last.setMonth(last.getMonth() + record.interval);
-              } else if (unit.includes('jaar') || unit.includes('year')) {
-                last.setFullYear(last.getFullYear() + record.interval);
-              } else if (unit.includes('week')) {
-                last.setDate(last.getDate() + (record.interval * 7));
-              } else {
-                // Days or default
-                last.setDate(last.getDate() + record.interval);
-              }
-              return last;
-            }
-            return new Date();
-          })(),
-          maintenanceInterval: record.interval || 0,
-          maintenanceIntervalUnit: (() => {
-            const u = (record.interval_unit || '').toLowerCase();
-            if (u === 'dagen' || u === 'days') return 'days';
-            if (u === 'weken' || u === 'weeks') return 'weeks';
-            if (u === 'maanden' || u === 'months') return 'months';
-            if (u === 'jaren' || u === 'years') return 'years';
-            return 'days';
-          })(),
-          assignedTo: assignedNamesCombined,
-          assignedToIds: [
-            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])),
-            ...(Array.isArray(record.assigned_team) ? record.assigned_team : (record.assigned_team ? [record.assigned_team] : []))
-          ],
-          assignedToTypes: [
-            ...(Array.isArray(record.assigned_operator) ? record.assigned_operator.map(() => 'operator') : (record.assigned_operator ? ['operator'] : [])),
-            ...(Array.isArray(record.assigned_team) ? record.assigned_team.map(() => 'ploeg') : (record.assigned_team ? ['ploeg'] : []))
-          ],
-          comment: record.opmerkingen || record.comment || record.notes || '',
-          commentDate: record.commentDate ? new Date(record.commentDate) : (record.updated ? new Date(record.updated) : null),
-          sort_order: record.sort_order || 0,
-          isExternal: record.is_external || false,
-          tagIds: (record.expand?.tags && Array.isArray(record.expand.tags)) ? record.expand.tags.map((t: any) => t.id) : []
-        });
-      });
-
-      // After grouping, sort subtasks within each group by sort_order
-      Object.values(groups).forEach(group => {
-        group.subtasks.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-      });
-
-      setTasksState(Object.values(groups));
-
+      const records = await pb.collection('persen').getFullList({ sort: 'naam' });
+      setPresses(records.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true
+      })));
     } catch (e) {
-      console.error("Fetch tasks failed:", e);
+      console.error("Fetch presses failed", e);
     }
-  }, [user, categories, presses]); // Add user and other data it maps
+  }, []);
 
   const fetchUserAccounts = useCallback(async () => {
     try {
@@ -520,38 +416,6 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       })));
     } catch (e) {
       console.error("Fetch users failed", e);
-    }
-  }, []);
-
-  const fetchOperators = useCallback(async () => {
-    try {
-      const records = await pb.collection('operatoren').getFullList();
-      const ops: Operator[] = [];
-      const externals: ExternalEntity[] = [];
-      records.forEach((r: any) => {
-        const pressNames = Array.isArray(r.presses) ? r.presses : [];
-        const entity = {
-          id: r.id, name: r.naam, employeeId: r.interne_id?.toString() || '', presses: pressNames as string[], active: r.active !== false, canEditTasks: !!r.can_edit_tasks, canAccessOperatorManagement: !!r.can_access_management
-        };
-        if (r.dienstverband === 'Extern') externals.push(entity as ExternalEntity);
-        else ops.push(entity as Operator);
-      });
-      setOperators(ops);
-      setExternalEntities(externals);
-    } catch (e) {
-      console.error("Fetch operators failed", e);
-    }
-  }, []);
-
-  const fetchPloegen = useCallback(async () => {
-    try {
-      const records = await pb.collection('ploegen').getFullList({ expand: 'pers,leden' });
-      const teams: Ploeg[] = records.map((r: any) => ({
-        id: r.id, name: r.naam, operatorIds: r.leden || [], presses: (r.expand?.pers ? [r.expand.pers.naam] : []), active: r.active !== false
-      }));
-      setPloegen(teams);
-    } catch (e) {
-      console.error("Fetch ploegen failed", e);
     }
   }, []);
 
@@ -566,111 +430,6 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       console.error("Fetch logs failed", e);
     }
   }, []);
-
-  const loadData = useCallback(async () => {
-    try {
-      // 0. If user is press-role but missing press info, try to refresh user record first
-      if (user && user.role === 'press' && (!user.press || !user.pressId)) {
-        try {
-          const freshUser = await pb.collection('users').getOne(user.id);
-          if (freshUser.press || freshUser.pers) {
-            setUser(prev => prev ? {
-              ...prev,
-              press: freshUser.press || prev.press,
-              pressId: freshUser.pers || prev.pressId
-            } : null);
-          }
-        } catch (e) {
-          console.error("Failed to auto-refresh user record:", e);
-        }
-      }
-
-      const [pressesResult, categoriesResult] = await Promise.all([
-        pb.collection('persen').getFullList(),
-        pb.collection('categorieen').getFullList()
-      ]);
-
-      setPresses(pressesResult.map((p: any) => {
-        let catOrder = p.category_order;
-        if (typeof catOrder === 'string') {
-          try {
-            catOrder = JSON.parse(catOrder);
-          } catch (e) {
-            console.warn('Failed to parse category_order for press', p.naam);
-          }
-        }
-        return {
-          id: p.id,
-          name: p.naam,
-          active: p.status !== 'niet actief',
-          archived: p.archived || false,
-          category_order: Array.isArray(catOrder) ? catOrder : []
-        };
-      }));
-
-      setCategories(categoriesResult.map((c: any) => ({
-        id: c.id,
-        name: c.naam,
-        subtexts: c.subtexts || {},
-        pressIds: c.presses || [],
-        active: c.active !== false
-      })));
-
-      try {
-        const tagsResult = await pb.collection('tags').getFullList();
-        console.log('[Auth] Tags fetched from DB:', tagsResult);
-        const mappedTags = tagsResult.map((t: any) => ({
-          id: t.id,
-          naam: t.naam,
-          kleur: t.kleur,
-          system_managed: !!t.system_managed,
-          active: t.active !== false
-        }));
-        console.log('[Auth] Mapped tags:', mappedTags);
-
-        setTags(mappedTags);
-      } catch (e) {
-        console.error('Failed to fetch tags:', e);
-      }
-
-      // Set category order from current press if available
-      // Set category order from current press if available
-      // Set category order logic:
-      // 1. If user is Press, use their press's order
-      // 2. If user is Admin, use the first active press's order (fallback)
-      const targetPressId = user?.pressId || (user?.role === 'admin' && pressesResult.length > 0 ? (pressesResult.find((p: any) => p.status !== 'niet actief')?.id || pressesResult[0].id) : null);
-
-      if (targetPressId) {
-        const currentPress = pressesResult.find((p: any) => p.id === targetPressId);
-        if (currentPress?.category_order) {
-          let order = currentPress.category_order;
-          // Handle if stored as stringified JSON
-          if (typeof order === 'string') {
-            try {
-              const parsed = JSON.parse(order);
-              if (Array.isArray(parsed)) order = parsed;
-            } catch (e) {
-              console.error("Failed to parse category order", e);
-            }
-          }
-
-          if (Array.isArray(order)) {
-            setCategoryOrder(order);
-          }
-        }
-      }
-
-      await Promise.all([
-        fetchTasks(),
-        fetchUserAccounts(),
-        fetchOperators(),
-        fetchPloegen(),
-        fetchPermissions()
-      ]);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-  }, [fetchTasks, fetchUserAccounts, fetchOperators, fetchPloegen]);
 
   const setTestingMode = async (val: boolean) => {
     try {
@@ -695,7 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       const records = await pb.collection('role_permissions').getFullList();
       if (records.length === 0) {
         // Initialize defaults if empty (Fallback)
-        const defaults: any[] = [
+        const defaults = [
           {
             role: 'Admin',
             permissions: [
@@ -731,20 +490,15 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           permissions: d.permissions as Permission[]
         }));
         setRolePermissions(mappedDefaults);
-      } else {
-        setRolePermissions(records.map(r => ({
-          role: mapDbRoleToUi(r.role),
-          permissions: r.permissions as Permission[]
-        })));
+        return;
       }
+
+      setRolePermissions(records.map((r: any) => ({
+        role: mapDbRoleToUi(r.role),
+        permissions: r.permissions as Permission[]
+      })));
     } catch (e) {
       console.error("Fetch permissions failed:", e);
-      // Fallback in-memory defaults if collection doesn't exist yet
-      setRolePermissions([
-        { role: 'admin', permissions: ['tasks_view', 'tasks_edit', 'management_access', 'manage_permissions'] },
-        { role: 'meestergast', permissions: ['tasks_view', 'tasks_edit'] },
-        { role: 'press', permissions: ['tasks_view', 'drukwerken_create'] }
-      ]);
     }
   }, []);
 
@@ -757,7 +511,6 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       toast.success(`Rechten bijgewerkt voor ${role}`);
     } catch (e: any) {
       console.error("Update permissions failed:", e);
-      // If not found, create
       try {
         const dbRole = mapUiRoleToDb(role);
         await pb.collection('role_permissions').create({ role: dbRole, permissions });
@@ -772,6 +525,36 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       }
     }
   };
+
+  const loadData = useCallback(async () => {
+    try {
+      if (user && user.role === 'press' && (!user.press || !user.pressId)) {
+        try {
+          const freshUser = await pb.collection('users').getOne(user.id);
+          if (freshUser.press || freshUser.pers) {
+            setUser(prev => prev ? {
+              ...prev,
+              press: freshUser.press || prev.press,
+              pressId: freshUser.pers || prev.pressId
+            } : null);
+          }
+        } catch (e) {
+          console.error("Failed to auto-refresh user record:", e);
+        }
+      }
+
+      await Promise.all([
+        fetchUserAccounts(),
+        fetchPermissions(),
+        fetchActivityLogs(),
+        fetchPresses()
+      ]);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, fetchUserAccounts, fetchPermissions, fetchActivityLogs, fetchPresses]);
 
   // --- Backup Functions ---
   const listBackups = async (): Promise<BackupInfo[]> => {
@@ -1076,10 +859,11 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   useEffect(() => {
     checkFirstRun();
     fetchTestingMode();
+    fetchSystemSettings();
     if (user && hasPermission('toolbox_access')) {
       getCloudSyncStatus();
     }
-  }, [checkFirstRun, fetchTestingMode, user]);
+  }, [checkFirstRun, fetchTestingMode, fetchSystemSettings, user]);
 
   // 1. Initialize Auth
   useEffect(() => {
@@ -1113,7 +897,15 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
           press: pressName,
           pressId: pressId
         });
+        // Note: We do NOT set isLoading(false) here. 
+        // We wait for loadData() to finish (triggered by setUser) to ensure permissions/presses are loaded.
+      } else {
+        // Valid token but no model? Should not happen usually, but treat as not logged in
+        setIsLoading(false);
       }
+    } else {
+      // No valid token, so we are definitely done loading (and not logged in)
+      setIsLoading(false);
     }
   }, []);
 
@@ -1188,226 +980,7 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     }
   };
 
-  const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
-    try {
-      console.log('addTask called with:', task);
-      console.log('categoryId:', task.categoryId, 'pressId:', task.pressId);
 
-      let finalCategoryId = task.categoryId;
-      let finalPressId = task.pressId;
-
-      // Dynamic creation of new categories/presses if they come from the importer
-      if (finalPressId?.startsWith('__NEW_PRESS__')) {
-        const newName = finalPressId.replace('__NEW_PRESS__', '');
-        try {
-          const created = await pb.collection('persen').create({
-            naam: newName,
-            active: true,
-            archived: false
-          });
-          finalPressId = created.id;
-          console.log(`[DynamicImport] Created new press: ${newName} (${created.id})`);
-        } catch (err) {
-          console.error(`Failed to create new press '${newName}':`, err);
-        }
-      }
-
-      if (finalCategoryId?.startsWith('__NEW_CAT__')) {
-        const newName = finalCategoryId.replace('__NEW_CAT__', '');
-        try {
-          const created = await pb.collection('categorieen').create({
-            naam: newName,
-            presses: [finalPressId].filter(Boolean),
-            active: true
-          });
-          finalCategoryId = created.id;
-          console.log(`[DynamicImport] Created new category: ${newName} (${created.id})`);
-        } catch (err) {
-          console.error(`Failed to create new category '${newName}':`, err);
-        }
-      } else if (finalCategoryId && finalPressId) {
-        // Fallback: Ensure existing category is linked to the press
-        try {
-          const catRecord = await pb.collection('categorieen').getOne(finalCategoryId);
-          const existingPresses = Array.isArray(catRecord.presses) ? catRecord.presses : [];
-          if (!existingPresses.includes(finalPressId)) {
-            await pb.collection('categorieen').update(finalCategoryId, {
-              presses: [...existingPresses, finalPressId]
-            });
-            console.log(`[SafetyLink] Linked existing category ${finalCategoryId} to press ${finalPressId}`);
-          }
-        } catch (err) {
-          console.error(`Failed to link existing category ${finalCategoryId} to press ${finalPressId}:`, err);
-        }
-      }
-
-      const baseData = {
-        category: finalCategoryId,
-        pers: finalPressId,
-        last_date: task.lastMaintenance,
-        next_date: task.nextMaintenance,
-        interval: task.maintenanceInterval,
-        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
-          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
-              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
-        assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
-        assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
-        comment: task.comment || '',
-        commentDate: task.commentDate,
-        sort_order: task.sort_order || 0,
-        is_external: task.isExternal || false,
-        tags: Array.isArray(task.tagIds) ? task.tagIds : []
-      };
-
-      if (task.subtasks && task.subtasks.length > 0) {
-        // Handle Grouped Task: Create a record for each subtask
-        const promises = task.subtasks.map(subtask =>
-          pb.collection('onderhoud').create({
-            ...baseData,
-            task: task.task,
-            task_subtext: task.taskSubtext,
-            subtask: subtask.name,
-            subtask_subtext: subtask.subtext,
-            opmerkingen: subtask.opmerkingen || task.opmerkingen,
-            commentDate: subtask.commentDate || task.commentDate,
-            sort_order: subtask.sort_order || 0,
-            is_external: subtask.isExternal || task.isExternal || false
-          })
-        );
-        await Promise.all(promises);
-        addActivityLog({
-          user: user?.username || 'Unknown',
-          action: 'Created',
-          entity: 'Task',
-          entityName: task.task,
-          press: task.press || '',
-          details: `Created grouped task with ${task.subtasks?.length} subtasks`
-        });
-      } else {
-        // Handle Single Task
-        const data = {
-          ...baseData,
-          task: task.task,
-          task_subtext: task.taskSubtext,
-          subtask: task.subtaskName || task.task,
-          subtask_subtext: task.subtaskSubtext || task.taskSubtext,
-          opmerkingen: task.opmerkingen
-        };
-        console.log('Creating task with data:', data);
-        const record = await pb.collection('onderhoud').create(data);
-        addActivityLog({
-          user: user?.username || 'Unknown',
-          action: 'Created',
-          entity: 'Task',
-          entityId: record.id,
-          entityName: task.task !== task.subtaskName ? `${task.task} > ${task.subtaskName}` : task.task,
-          press: task.press || '',
-          details: `Created task: ${task.subtaskName || task.task}`
-        });
-      }
-      await fetchTasks(); // Refresh list after adding
-      if (finalPressId?.startsWith('__NEW_') || finalCategoryId?.startsWith('__NEW_')) {
-        await loadData(); // Full reload if base entities were created
-      }
-    } catch (e) {
-      console.error("Add task failed:", e);
-      alert("Failed to save to server");
-    }
-  };
-
-  const updateTask = async (task: MaintenanceTask, refresh: boolean = true) => {
-    try {
-      // 1. Fetch old record for diffing
-      const oldRecord = await pb.collection('onderhoud').getOne(task.id);
-
-      // Split assignments by type for PocketBase relations
-      const operatorIds = task.assignedToIds?.filter((_, i) =>
-        task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external'
-      ) || [];
-
-      const teamIds = task.assignedToIds?.filter((_, i) =>
-        task.assignedToTypes?.[i] === 'ploeg'
-      ) || [];
-
-      await pb.collection('onderhoud').update(task.id, {
-        task: task.task,
-        subtask: task.subtaskName || task.task,
-        task_subtext: task.taskSubtext,
-        subtask_subtext: task.subtaskSubtext || task.taskSubtext,
-        category: task.categoryId || null,
-        pers: task.pressId || null,
-        last_date: task.lastMaintenance,
-        next_date: task.nextMaintenance,
-        interval: task.maintenanceInterval,
-        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
-          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
-            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
-              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
-        assigned_operator: operatorIds,
-        assigned_team: teamIds,
-        opmerkingen: task.opmerkingen,
-        comment: task.comment || '',
-        commentDate: task.commentDate,
-        is_external: task.isExternal || false,
-        sort_order: task.sort_order || 0,
-        tags: Array.isArray(task.tagIds) ? task.tagIds : []
-      });
-
-      // 2. Calculate what changed for the log
-      let changedField = '';
-      let oldValue = '';
-      let newValue = '';
-
-      if (oldRecord.last_date !== (task.lastMaintenance?.toISOString() || null)) {
-        changedField = 'Last Date';
-        oldValue = oldRecord.last_date ? new Date(oldRecord.last_date).toLocaleDateString() : 'None';
-        newValue = task.lastMaintenance ? task.lastMaintenance.toLocaleDateString() : 'None';
-      } else if (oldRecord.opmerkingen !== task.opmerkingen) {
-        changedField = 'Notes';
-        oldValue = oldRecord.opmerkingen || 'None';
-        newValue = task.opmerkingen || 'None';
-      } else {
-        changedField = 'Task Details';
-      }
-
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Updated',
-        entity: 'Task',
-        entityId: task.id,
-        entityName: task.task !== task.subtaskName ? `${task.task} > ${task.subtaskName}` : task.task,
-        press: task.press || '',
-        details: `Updated ${changedField}`,
-        oldValue,
-        newValue
-      });
-      if (refresh) {
-        await fetchTasks();
-      }
-    } catch (e) {
-      console.error("Update task failed:", e);
-    }
-  };
-
-  const deleteTask = async (id: string) => {
-    try {
-      const record = await pb.collection('onderhoud').getOne(id);
-      await pb.collection('onderhoud').delete(id);
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Deleted',
-        entity: 'Task',
-        entityId: id,
-        entityName: record.task !== record.subtask ? `${record.task} > ${record.subtask}` : record.task,
-        press: (record.pers && presses.find(p => p.id === record.pers)?.name) || '',
-        details: `Deleted task: ${record.subtask || record.task}`
-      });
-      await fetchTasks();
-    } catch (e) {
-      console.error("Delete task failed:", e);
-    }
-  };
 
   const sendFeedback = async (type: string, message: string, context?: any): Promise<boolean> => {
     try {
@@ -1485,416 +1058,10 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
   };
 
   // --- Stubs for other entities ---
-  const addOperator = async (operator: Omit<Operator, 'id'>) => {
-    try {
-      // Store press names directly as JSON array
-      await pb.collection('operatoren').create({
-        naam: operator.name,
-        interne_id: operator.employeeId,
-        dienstverband: 'Intern',
-        presses: operator.presses, // Direct names array
-        active: operator.active,
-        can_edit_tasks: operator.canEditTasks,
-        can_access_management: operator.canAccessOperatorManagement
-      });
-      await fetchOperators();
-    } catch (e: any) {
-      toast.error(`Failed to add operator: ${e.message}`);
-    }
-  };
 
-  const updateOperator = async (operator: Operator) => {
-    try {
-      console.log('Updating operator:', operator.name, 'with presses:', operator.presses);
 
-      // Store press names directly as JSON array
-      await pb.collection('operatoren').update(operator.id, {
-        naam: operator.name,
-        interne_id: operator.employeeId,
-        presses: operator.presses, // Direct names array
-        active: operator.active,
-        can_edit_tasks: operator.canEditTasks,
-        can_access_management: operator.canAccessOperatorManagement
-      });
-      await fetchOperators();
-    } catch (e: any) {
-      console.error('Failed to update operator:', e);
-      toast.error(`Failed to update operator: ${e.message}`);
-    }
-  };
-
-  const deleteOperator = async (id: string) => {
-    try {
-      await pb.collection('operatoren').delete(id);
-      await fetchOperators();
-    } catch (e: any) {
-      toast.error(`Failed to delete operator: ${e.message}`);
-    }
-  };
-
-  const addExternalEntity = async (entity: Omit<ExternalEntity, 'id'>) => {
-    try {
-      // Store press names directly as JSON array
-      await pb.collection('operatoren').create({
-        naam: entity.name,
-        dienstverband: 'Extern',
-        presses: entity.presses, // Direct names array
-        active: entity.active
-      });
-      await fetchOperators();
-    } catch (e: any) {
-      toast.error(`Failed to add external entity: ${e.message}`);
-    }
-  };
-
-  const updateExternalEntity = async (entity: ExternalEntity) => {
-    try {
-      // Store press names directly as JSON array
-      await pb.collection('operatoren').update(entity.id, {
-        naam: entity.name,
-        presses: entity.presses, // Direct names array
-        active: entity.active
-      });
-      await fetchOperators();
-    } catch (e: any) {
-      toast.error(`Failed to update external entity: ${e.message}`);
-    }
-  };
-
-  const deleteExternalEntity = async (id: string) => {
-    try {
-      await pb.collection('operatoren').delete(id);
-      await fetchOperators();
-    } catch (e: any) {
-      toast.error(`Failed to delete external entity: ${e.message}`);
-    }
-  };
-
-  const addPloeg = async (ploeg: Omit<Ploeg, 'id'>) => {
-    try {
-      const pressId = presses.find(p => ploeg.presses.includes(p.name))?.id;
-      await pb.collection('ploegen').create({
-        naam: ploeg.name,
-        pers: pressId,
-        leden: ploeg.operatorIds,
-        active: ploeg.active
-      });
-      await fetchPloegen();
-    } catch (e: any) {
-      toast.error(`Failed to add ploeg: ${e.message}`);
-    }
-  };
-
-  const updatePloeg = async (ploeg: Ploeg) => {
-    try {
-      const pressId = presses.find(p => ploeg.presses.includes(p.name))?.id;
-      await pb.collection('ploegen').update(ploeg.id, {
-        naam: ploeg.name,
-        pers: pressId,
-        leden: ploeg.operatorIds,
-        active: ploeg.active
-      });
-      await fetchPloegen();
-    } catch (e: any) {
-      toast.error(`Failed to update ploeg: ${e.message}`);
-    }
-  };
-
-  const deletePloeg = async (id: string) => {
-    try {
-      await pb.collection('ploegen').delete(id);
-      await fetchPloegen();
-    } catch (e: any) {
-      toast.error(`Failed to delete ploeg: ${e.message}`);
-    }
-  };
-
-  const getElevatedOperators = () => {
-    return operators.filter(op => op.canAccessOperatorManagement || op.canEditTasks);
-  };
-
+  // --- Stubs for other entities ---
   const fetchParameters = useCallback(async () => { return {}; }, []);
-  // --- Category & Press Management ---
-
-  const addCategory = async (category: Omit<Category, 'id'>) => {
-    try {
-      await pb.collection('categorieen').create({
-        naam: category.name,
-        subtexts: category.subtexts || {},
-        presses: category.pressIds,
-        active: category.active
-      });
-      await loadData();
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to add category: ${e.message}`);
-      return false;
-    }
-  };
-
-  const updateCategory = async (category: Category) => {
-    try {
-      await pb.collection('categorieen').update(category.id, {
-        naam: category.name,
-        subtexts: category.subtexts || {},
-        presses: category.pressIds,
-        active: category.active
-      });
-      await loadData();
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to update category: ${e.message}`);
-      return false;
-    }
-  };
-
-  const deleteCategory = async (id: string) => {
-    try {
-      await pb.collection('categorieen').delete(id);
-      await loadData();
-    } catch (e: any) {
-      toast.error(`Failed to delete category: ${e.message}`);
-    }
-  };
-
-  const addTag = async (tag: Omit<Tag, 'id'>) => {
-    try {
-      await pb.collection('tags').create({
-        naam: tag.naam,
-        kleur: tag.kleur,
-        active: tag.active
-      });
-      await loadData();
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to add tag: ${e.message}`);
-      return false;
-    }
-  };
-
-  const updateTag = async (tag: Tag) => {
-    try {
-      const existing = tags.find(t => t.id === tag.id);
-      if (existing?.system_managed && tag.naam !== existing.naam) {
-        toast.error('Systeem tags kunnen niet hernoemd worden');
-        return false;
-      }
-
-      await pb.collection('tags').update(tag.id, {
-        naam: tag.naam,
-        kleur: tag.kleur,
-        active: tag.active,
-        system_managed: tag.system_managed
-      });
-      await loadData();
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to update tag: ${e.message}`);
-      return false;
-    }
-  };
-
-  const deleteTag = async (id: string) => {
-    try {
-      const tag = tags.find(t => t.id === id);
-      if (tag?.system_managed) {
-        toast.error('Systeem tags kunnen niet verwijderd worden');
-        return;
-      }
-
-      await pb.collection('tags').delete(id);
-      await loadData();
-    } catch (e: any) {
-      toast.error(`Failed to delete tag: ${e.message}`);
-    }
-  };
-
-  const updateCategoryOrder = async (order: string[]) => {
-    setCategoryOrder(order);
-    if (user?.pressId) {
-      try {
-        await pb.collection('persen').update(user.pressId, {
-          category_order: order
-        });
-      } catch (e: any) {
-        console.error("Failed to persist category order:", e);
-      }
-    }
-  };
-
-  const updatePressCategoryOrder = async (pressId: string, order: string[]) => {
-    try {
-      await pb.collection('persen').update(pressId, {
-        category_order: order
-      });
-
-      // Update local state if the modified press is currently loaded in presses list
-      setPresses(prev => prev.map(p => {
-        if (p.id === pressId) {
-          return { ...p, category_order: order };
-        }
-        return p;
-      }));
-
-      // If we updated the CURRENT user's press, update the local categoryOrder state too
-      // If we updated the CURRENT user's press OR if user is Admin (to see the effect), update local state
-      if (user?.pressId === pressId || user?.role === 'admin') {
-        setCategoryOrder(order);
-      }
-
-      return true;
-    } catch (e: any) {
-      console.error("Failed to update press category order:", e);
-      throw e;
-    }
-  };
-
-  const addPress = async (press: Omit<Press, 'id'>) => {
-    try {
-      if (!press.name || !press.name.trim()) {
-        toast.error('Voer a.u.b. de naam van de pers in');
-        return;
-      }
-
-      // Debug: Check auth status
-      console.log('Auth valid?', pb.authStore.isValid);
-      console.log('Auth token?', pb.authStore.token ? 'Yes' : 'No');
-
-      const data = {
-        naam: press.name.trim(),
-        status: press.active ? 'actief' : 'niet actief'
-      };
-      console.log('Creating press with data:', data);
-      const createdPress = await pb.collection('persen').create(data);
-
-      // Auto-create user account for this press
-      const pressName = press.name.trim();
-      const username = pressName.toLowerCase().replace(/\s+/g, '_');
-      const password = pressName + '12345';
-
-      try {
-        await pb.collection('users').create({
-          username: username,
-          email: `${username}@press.local`,
-          name: pressName,
-          password: password,
-          passwordConfirm: password,
-          role: 'press',
-          press: pressName,
-          pers: createdPress.id
-        });
-        console.log(`Auto-created account for press: ${pressName}`);
-        toast.success(`Pers "${pressName}" toegevoegd met account (wachtwoord: ${password})`);
-      } catch (userError: any) {
-        console.warn('Failed to auto-create user account:', userError);
-        toast.success('Pers succesvol toegevoegd (account kon niet automatisch aangemaakt worden)');
-      }
-
-      await loadData();
-      await fetchUserAccounts();
-    } catch (e: any) {
-      console.error('Failed to add press - Full error:', e);
-      console.error('Error data:', JSON.stringify(e.data || e.response?.data));
-      toast.error(`Failed to add press: ${e.message}`);
-    }
-  };
-
-  const updatePress = async (press: Press) => {
-    try {
-      await pb.collection('persen').update(press.id, {
-        naam: press.name,
-        status: press.active ? 'actief' : 'niet actief'
-        // archived: press.archived // Uncomment after migration 1700000019 is applied
-      });
-      await loadData();
-    } catch (e: any) {
-      toast.error(`Failed to update press: ${e.message}`);
-    }
-  };
-
-  const deletePress = async (id: string) => {
-    try {
-      await pb.collection('persen').delete(id);
-      await loadData();
-    } catch (e: any) {
-      toast.error(`Failed to delete press: ${e.message}`);
-    }
-  };
-
-  // --- User Account Management ---
-
-  const addUserAccount = async (account: UserAccount) => {
-    try {
-      const pressId = presses.find(p => p.name === account.press)?.id;
-
-      await pb.collection('users').create({
-        username: account.username,
-        email: `${account.username}@example.com`,
-        name: account.name,
-        password: account.password,
-        passwordConfirm: account.password,
-        role: mapUiRoleToDb(account.role),
-        press: account.press,
-        pers: pressId, // Save the relation
-        plain_password: account.password // Store for Quick Login in testing
-      });
-
-      await fetchUserAccounts();
-      toast.success(`User ${account.username} created`);
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to add user: ${e.message}`);
-      return false;
-    }
-  };
-
-  const updateUserAccount = async (username: string, updates: Partial<UserAccount>) => {
-    try {
-      const usr = userAccounts.find(u => u.username === username);
-      if (!usr) throw new Error("User not found");
-
-      const pressId = presses.find(p => p.name === (updates.press || usr.press))?.id;
-
-      await pb.collection('users').update(usr.id, {
-        name: updates.name,
-        role: mapUiRoleToDb(updates.role || usr.role),
-        press: updates.press,
-        pers: pressId // Update the relation
-      });
-      await fetchUserAccounts();
-      toast.success(`User ${username} updated`);
-      return true;
-    } catch (e: any) {
-      toast.error(`Failed to update user: ${e.message}`);
-      return false;
-    }
-  };
-
-  const deleteUserAccount = async (username: string) => {
-    try {
-      const usr = userAccounts.find(u => u.username === username);
-      if (!usr) throw new Error("User not found");
-      await pb.collection('users').delete(usr.id);
-      await fetchUserAccounts();
-      toast.success(`User ${username} deleted`);
-    } catch (e: any) {
-      toast.error(`Failed to delete user: ${e.message}`);
-    }
-  };
-
-  const changePassword = async (username: string, newPw: string) => {
-    try {
-      const usr = userAccounts.find(u => u.username === username);
-      if (!usr) throw new Error("User not found");
-      await pb.collection('users').update(usr.id, {
-        password: newPw,
-        passwordConfirm: newPw
-      });
-      toast.success(`Password updated for ${username}`);
-    } catch (e: any) {
-      toast.error(`Failed to change password: ${e.message}`);
-    }
-  };
 
   // 4. Initial Data Load
   useEffect(() => {
@@ -1904,107 +1071,18 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // Only reload if user identity changes
 
-  // 5. Separate pressId resolution to prevent loops
-  useEffect(() => {
-    if (user && !user.pressId && user.press && presses.length > 0) {
-      const matchingPress = presses.find(p => p.name === user.press);
-      if (matchingPress) {
-        console.log("Resolving pressId for user:", user.username, "->", matchingPress.id);
-        setUser(prev => prev ? { ...prev, pressId: matchingPress.id } : null);
-      }
-    }
-  }, [user?.press, user?.pressId, presses]);
-
-  // 6. Stabilized Realtime Subscriptions
-  // NOTE: We intentionally exclude callback functions from dependencies.
-  // Subscriptions should only be set up once per user session to prevent
-  // infinite loops from callback reference changes.
-  useEffect(() => {
-    if (!user) return;
-
-    let isSubscribed = true;
-    const subscribeAll = async () => {
-      try {
-        await Promise.all([
-          pb.collection('onderhoud').subscribe('*', () => { if (isSubscribed) fetchTasks(); }),
-          pb.collection('persen').subscribe('*', () => { if (isSubscribed) loadData(); }),
-          pb.collection('categorieen').subscribe('*', () => { if (isSubscribed) loadData(); }),
-          pb.collection('tags').subscribe('*', () => { if (isSubscribed) loadData(); }),
-          pb.collection('operatoren').subscribe('*', () => { if (isSubscribed) fetchOperators(); }),
-          pb.collection('ploegen').subscribe('*', () => { if (isSubscribed) fetchPloegen(); }),
-          pb.collection('drukwerken').subscribe('*', () => { if (isSubscribed) window.dispatchEvent(new CustomEvent('pb-drukwerken-changed')); }),
-          pb.collection('press_parameters').subscribe('*', () => { if (isSubscribed) window.dispatchEvent(new CustomEvent('pb-parameters-changed')); })
-        ]);
-        if (isSubscribed) {
-          console.log("Realtime subscriptions established");
-        }
-      } catch (err) {
-        if (isSubscribed) {
-          console.error("Realtime subscription failed:", err);
-        }
-      }
-    };
-
-    subscribeAll();
-
-    return () => {
-      isSubscribed = false;
-      // Wrap unsubscribe in try-catch to prevent "Missing or invalid client id" errors
-      try { pb.collection('onderhoud').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('persen').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('categorieen').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('operatoren').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('ploegen').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('drukwerken').unsubscribe('*'); } catch (e) { /* ignore */ }
-      try { pb.collection('press_parameters').unsubscribe('*'); } catch (e) { /* ignore */ }
-      console.log("Realtime subscriptions cleared");
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]); // Only re-run when user identity changes
 
   return (
     <AuthContext.Provider value={{
       user,
       login,
       logout,
-      operators,
-      addOperator,
-      updateOperator,
-      deleteOperator,
       activityLogs,
       addActivityLog,
-      presses,
-      addPress,
-      updatePress,
-      deletePress,
-      userAccounts,
-      changePassword,
-      addUserAccount,
-      updateUserAccount,
-      deleteUserAccount,
-      getElevatedOperators,
-      tasks: tasksState,
-      fetchTasks,
       fetchActivityLogs,
+      userAccounts,
+      presses,
       fetchUserAccounts,
-      addTask,
-      updateTask,
-      deleteTask,
-      externalEntities,
-      addExternalEntity,
-      updateExternalEntity,
-      deleteExternalEntity,
-      ploegen,
-      addPloeg,
-      updatePloeg,
-      deletePloeg,
-      categories,
-      addCategory,
-      updateCategory,
-      deleteCategory,
-      categoryOrder,
-      updateCategoryOrder,
-      updatePressCategoryOrder,
       sendFeedback,
       fetchFeedback,
       resolveFeedback,
@@ -2012,12 +1090,8 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       deleteFeedback,
       archiveFeedback,
       fetchParameters,
-      tags,
-      addTag,
-      updateTag,
-      deleteTag,
-      isFirstRun: isFirstRun,
-      onboardingDismissed,
+      isFirstRun,
+      onboardingDismissed: onboardingDismissedState,
       setOnboardingDismissed,
       testingMode,
       setTestingMode,
@@ -2039,10 +1113,13 @@ export function AuthProvider({ children }: { children: ReactNode; tasks: Grouped
       configureCloudSync,
       verifyCloudBackups,
       isSuperuser,
-      authenticateSuperuser
+      authenticateSuperuser,
+      getSystemSetting,
+      updateSystemSetting,
+      isLoading
     }}>
       {children}
-    </AuthContext.Provider >
+    </AuthContext.Provider>
   );
 }
 

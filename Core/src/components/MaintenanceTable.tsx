@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { GroupedTask, Subtask, MaintenanceTask } from './AuthContext';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { GroupedTask, Subtask, MaintenanceTask, pb, Category, Tag, Press } from './AuthContext';
 import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
@@ -60,7 +60,54 @@ interface SortableColumnHeaderProps {
 }
 
 export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, statusFilter }: MaintenanceTableProps) {
-  const { user, categoryOrder, categories, tags, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Active press ID can be derived from the first task if not provided
+  const activePressId = tasks[0]?.pressId;
+
+  const fetchData = useCallback(async () => {
+    if (!activePressId) return;
+    try {
+      setIsLoading(true);
+      const [catResult, tagResult, pressResult] = await Promise.all([
+        pb.collection('categorieen').getFullList(),
+        pb.collection('tags').getFullList(),
+        pb.collection('persen').getOne(activePressId)
+      ]);
+
+      setCategories(catResult.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+        active: r.active !== false,
+        subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+      })));
+
+      setTags(tagResult.map((r: any) => ({
+        id: r.id,
+        naam: r.naam,
+        kleur: r.kleur,
+        active: r.active !== false,
+        system_managed: r.system_managed === true
+      })));
+
+      if (pressResult && pressResult.category_order) {
+        setCategoryOrder(Array.isArray(pressResult.category_order) ? pressResult.category_order : []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch data in MaintenanceTable", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activePressId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedGroupedTasks, setCollapsedGroupedTasks] = useState<Set<string>>(new Set());
   const [quickEditTask, setQuickEditTask] = useState<MaintenanceTask | null>(null);

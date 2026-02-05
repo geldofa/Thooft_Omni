@@ -171,11 +171,10 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
 
         csvData.forEach(row => {
             const pressName = row[mappings.pers!]?.toString().trim();
-            if (pressName && !presses.some(p => p.name.toLowerCase() === pressName.toLowerCase() || p.id === pressName)) {
+            if (pressName && !presses.some((p: any) => p.name.toLowerCase() === pressName.toLowerCase() || p.id === pressName)) {
                 missingPresses.add(pressName);
             }
         });
-
         return {
             presses: Array.from(missingPresses)
         };
@@ -398,8 +397,8 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
             const rawPressName = item.pers?.toString().trim();
             const resPress = resolutions.presses[rawPressName];
             const resolvedPress = resPress?.type === 'existing'
-                ? presses.find(p => p.id === resPress.value)
-                : presses.find(p => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
+                ? presses.find((p: any) => p.id === resPress.value)
+                : presses.find((p: any) => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
 
             const errors: string[] = [];
             if (!item.order_nummer) errors.push('Order Nummer ontbreekt');
@@ -672,7 +671,7 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                                         <SelectValue placeholder="Kies machine..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {presses.map(exists => (
+                                                        {presses.map((exists: any) => (
                                                             <SelectItem key={exists.id} value={exists.id}>{exists.name}</SelectItem>
                                                         ))}
                                                     </SelectContent>

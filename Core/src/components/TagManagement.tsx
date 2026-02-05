@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAuth, Tag } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { pb, useAuth, Tag } from './AuthContext';
 import {
     Table,
     TableBody,
@@ -37,7 +37,78 @@ import { Switch } from './ui/switch';
 import { toast } from 'sonner';
 
 export function TagManagement() {
-    const { tags, addTag, updateTag, deleteTag, addActivityLog, user } = useAuth();
+    const { user, addActivityLog } = useAuth();
+    const [tags, setTags] = useState<Tag[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchTags = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const records = await pb.collection('tags').getFullList({
+                sort: 'naam'
+            });
+            setTags(records.map((r: any) => ({
+                id: r.id,
+                naam: r.naam,
+                kleur: r.kleur || '#3b82f6',
+                active: r.active !== false,
+                system_managed: r.system_managed === true
+            })));
+        } catch (e) {
+            console.error("Failed to fetch tags", e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchTags();
+        const unsubscribe = pb.collection('tags').subscribe('*', () => fetchTags());
+        return () => {
+            pb.collection('tags').unsubscribe('*');
+        };
+    }, [fetchTags]);
+
+    const addTagLocal = async (tag: Omit<Tag, 'id'>) => {
+        try {
+            await pb.collection('tags').create({
+                naam: tag.naam,
+                kleur: tag.kleur,
+                active: tag.active
+            });
+            fetchTags();
+            return true;
+        } catch (e) {
+            console.error("Add tag failed", e);
+            return false;
+        }
+    };
+
+    const updateTagLocal = async (tag: Tag) => {
+        try {
+            await pb.collection('tags').update(tag.id, {
+                naam: tag.naam,
+                kleur: tag.kleur,
+                active: tag.active
+            });
+            fetchTags();
+            return true;
+        } catch (e) {
+            console.error("Update tag failed", e);
+            return false;
+        }
+    };
+
+    const deleteTagLocal = async (id: string) => {
+        try {
+            await pb.collection('tags').delete(id);
+            fetchTags();
+            return true;
+        } catch (e) {
+            console.error("Delete tag failed", e);
+            return false;
+        }
+    };
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [editingTag, setEditingTag] = useState<Tag | null>(null);
@@ -88,13 +159,12 @@ export function TagManagement() {
         let success = false;
 
         if (editingTag) {
-            const updatedTag: Tag = {
+            success = await updateTagLocal({
                 ...editingTag,
                 naam: formData.naam,
                 kleur: formData.kleur,
                 active: formData.active
-            };
-            success = await updateTag(updatedTag);
+            });
 
             if (success) {
                 toast.success('Tag succesvol bijgewerkt');
@@ -106,9 +176,12 @@ export function TagManagement() {
                     entityName: formData.naam,
                     details: `Updated tag: ${formData.naam}`
                 });
+                handleCloseDialog();
+            } else {
+                toast.error('Bijwerken van tag mislukt');
             }
         } else {
-            success = await addTag(formData);
+            success = await addTagLocal(formData);
 
             if (success) {
                 toast.success('Tag succesvol toegevoegd');
@@ -120,26 +193,28 @@ export function TagManagement() {
                     entityName: formData.naam,
                     details: `Added new tag: ${formData.naam}`
                 });
+                handleCloseDialog();
+            } else {
+                toast.error('Toevoegen van tag mislukt');
             }
-        }
-
-        if (success) {
-            handleCloseDialog();
         }
     };
 
-    const handleDelete = (id: string, name: string) => {
-        deleteTag(id);
-        toast.success(`Tag "${name}" succesvol verwijderd`);
-
-        addActivityLog({
-            user: user?.username || 'Unknown',
-            action: 'Deleted',
-            entity: 'Tag',
-            entityId: id,
-            entityName: name,
-            details: `Deleted tag`
-        });
+    const handleDelete = async (id: string, name: string) => {
+        const success = await deleteTagLocal(id);
+        if (success) {
+            toast.success(`Tag "${name}" succesvol verwijderd`);
+            addActivityLog({
+                user: user?.username || 'Unknown',
+                action: 'Deleted',
+                entity: 'Tag',
+                entityId: id,
+                entityName: name,
+                details: `Deleted tag`
+            });
+        } else {
+            toast.error(`Verwijderen van tag "${name}" mislukt`);
+        }
     };
 
     const filteredTags = tags.filter(tag => showInactive ? true : tag.active);
@@ -177,11 +252,15 @@ export function TagManagement() {
                             <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                             <TableHead className="w-[150px] text-center border-r border-gray-200 font-semibold text-gray-900">Voorbeeld</TableHead>
                             <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
-                            <TableHead className="text-right w-[100px] font-semibold text-gray-900">Acties</TableHead>
+                            <TableHead className="text-right w-[100px] font-semibold text-gray-900 pr-4">Acties</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredTags.length === 0 ? (
+                        {isLoading ? (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center py-12">Laden...</TableCell>
+                            </TableRow>
+                        ) : filteredTags.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={4} className="text-center py-12 text-gray-500">
                                     Geen tags gevonden.
@@ -211,7 +290,7 @@ export function TagManagement() {
                                             <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">Inactief</Badge>
                                         )}
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right pr-4">
                                         <div className="flex items-center justify-end gap-1">
                                             <Button
                                                 variant="ghost"
@@ -267,6 +346,7 @@ export function TagManagement() {
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-4 py-4">
                             <div className="grid gap-2">
+                                <Label htmlFor="tagName">Naam *</Label>
                                 <Input
                                     id="tagName"
                                     placeholder="bijv., Prioriteit"

@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
-import { MaintenanceTask } from './AuthContext';
-import { useAuth, PressType } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { MaintenanceTask, useAuth, PressType, pb, Press, Category, Tag } from './AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -119,7 +118,57 @@ export function AddMaintenanceDialog({
   onUpdateGroup,
   activePress
 }: AddMaintenanceDialogProps) {
-  const { user, presses, categories, tags } = useAuth();
+  const { user } = useAuth();
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [pressResult, catResult, tagResult] = await Promise.all([
+        pb.collection('persen').getFullList(),
+        pb.collection('categorieen').getFullList(),
+        pb.collection('tags').getFullList()
+      ]);
+
+      setPresses(pressResult.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true,
+        category_order: r.category_order
+      })));
+
+      setCategories(catResult.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+        active: r.active !== false,
+        subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+      })));
+
+      setTags(tagResult.map((r: any) => ({
+        id: r.id,
+        naam: r.naam,
+        kleur: r.kleur,
+        active: r.active !== false,
+        system_managed: r.system_managed === true
+      })));
+    } catch (e) {
+      console.error("Failed to fetch data in AddMaintenanceDialog", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      fetchData();
+    }
+  }, [open, fetchData]);
+
   const isOperator = user?.role === 'press';
 
   const initialTaskData = {
@@ -413,342 +462,351 @@ export function AddMaintenanceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto px-4 py-2" style={{ maxWidth: '800px' }}>
-        <DialogHeader>
-          <DialogTitle>{editTask ? 'Taak bewerken' : initialGroup ? 'Groep bewerken' : 'Nieuwe taak toevoegen'}</DialogTitle>
-          <DialogDescription>
-            {editTask ? 'Werk de onderhoudstaak details hieronder bij.' :
-              initialGroup ? 'Werk de groep onderhoudstaken bij.' :
-                'Vul de details in voor de nieuwe onderhoudstaak.'}
-          </DialogDescription>
-        </DialogHeader>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mb-4" />
+            <p className="text-sm text-gray-500">Laden...</p>
+          </div>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{editTask ? 'Taak bewerken' : initialGroup ? 'Groep bewerken' : 'Nieuwe taak toevoegen'}</DialogTitle>
+              <DialogDescription>
+                {editTask ? 'Werk de onderhoudstaak details hieronder bij.' :
+                  initialGroup ? 'Werk de groep onderhoudstaken bij.' :
+                    'Vul de details in voor de nieuwe onderhoudstaak.'}
+              </DialogDescription>
+            </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="isGroupTask">Taak type</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isGroupTask"
-                  checked={taskFormData.isGroupTask}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, isGroupTask: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Label htmlFor="isGroupTask" className="text-sm font-medium leading-none">
-                  Groepstaak
-                </Label>
-                <span className="text-sm text-gray-500">(Aanvinken als dit een groep gerelateerde taken is)</span>
-              </div>
-            </div>
-
-
-            <div className="grid gap-2">
-              <Label>Tags</Label>
-              <div className="flex flex-wrap gap-2 border rounded-md p-3 min-h-[46px] bg-gray-50/30">
-                {tags.filter(t => t.active).map(tag => (
-                  <Button
-                    key={tag.id}
-                    type="button"
-                    variant={taskFormData.tagIds.includes(tag.id) ? 'default' : 'outline'}
-                    size="sm"
-                    className="gap-2 h-7"
-                    style={taskFormData.tagIds.includes(tag.id) ? { backgroundColor: tag.kleur } : {}}
-                    onClick={() => {
-                      setTaskFormData(prev => {
-                        const isSelected = prev.tagIds.includes(tag.id);
-                        const newTagIds = isSelected
-                          ? prev.tagIds.filter(id => id !== tag.id)
-                          : [...prev.tagIds, tag.id];
-
-                        return { ...prev, tagIds: newTagIds };
-                      });
-                    }}
-                  >
-                    {tag.naam}
-                  </Button>
-                ))}
-                {tags.filter(t => t.active).length === 0 && (
-                  <span className="text-xs text-gray-500">Geen actieve tags gevonden. Maak ze aan in Categorie Beheer.</span>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="task">{taskFormData.isGroupTask ? 'Groep naam *' : 'Taak naam *'}</Label>
-                <Input
-                  id="task"
-                  placeholder={taskFormData.isGroupTask ? "bijv., HVAC Systeem Onderhoud" : "bijv., Filter Vervangen"}
-                  value={taskFormData.isGroupTask ? taskFormData.task : taskFormData.subtaskName}
-                  onChange={(e) => {
-                    if (taskFormData.isGroupTask) {
-                      setTaskFormData({ ...taskFormData, task: e.target.value });
-                    } else {
-                      // For single tasks, sync Group Name with Task Name if they are the same
-                      const isSingleTask = !editTask || editTask.task === editTask.subtaskName;
-                      if (isSingleTask) {
-                        setTaskFormData({ ...taskFormData, subtaskName: e.target.value, task: e.target.value });
-                      } else {
-                        setTaskFormData({ ...taskFormData, subtaskName: e.target.value });
-                      }
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="taskSubtext">{taskFormData.isGroupTask ? 'Groep omschrijving' : 'Taak omschrijving'}</Label>
-                <Input
-                  id="taskSubtext"
-                  placeholder={taskFormData.isGroupTask ? "bijv., Uitgebreid onderhoud..." : "bijv., Alle units..."}
-                  value={taskFormData.isGroupTask ? taskFormData.taskSubtext : taskFormData.subtaskSubtext}
-                  onChange={(e) => {
-                    if (taskFormData.isGroupTask) {
-                      setTaskFormData({ ...taskFormData, taskSubtext: e.target.value });
-                    } else {
-                      setTaskFormData({ ...taskFormData, subtaskSubtext: e.target.value });
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {taskFormData.isGroupTask && (
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <Label>Subtaken</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addSubtask}>
-                    Subtaak toevoegen
-                  </Button>
-                </div>
-
-                {subtasks.length === 0 ? (
-                  <p className="text-gray-500 text-sm">Nog geen subtaken toegevoegd</p>
-                ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={subtasks.map(s => s.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-2">
-                        {subtasks.map((subtask) => (
-                          <SortableSubtask
-                            key={subtask.id}
-                            subtask={subtask}
-                            onUpdate={updateSubtask}
-                            onRemove={removeSubtask}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                )}
-              </div>
-            )}
-
-            {!isSimplifiedView && (
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit}>
+              <div className="grid gap-6 py-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="press">Machine (Pers) *</Label>
-                  <Select
-                    value={taskFormData.press}
-                    onValueChange={(value) => setTaskFormData({ ...taskFormData, press: value as PressType, category: '' })}
-                    disabled={isNewTask} // Lock press selection for new tasks
-                  >
-                    <SelectTrigger id="press">
-                      <SelectValue placeholder="Selecteer een machine" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {presses.filter((p: any) => p && p.id && p.id.trim() !== '').map((p: any) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {isNewTask && (
-                    <p className="text-xs text-gray-500">Pers is bepaald door de actieve tab</p>
-                  )}
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="category">Categorie *</Label>
-                  <Select
-                    value={taskFormData.category}
-                    onValueChange={(value) => setTaskFormData({ ...taskFormData, category: value })}
-                    disabled={!taskFormData.press}
-                  >
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder={taskFormData.press ? "Selecteer een categorie" : "Selecteer eerst een machine"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredCategories.filter((cat: any) => cat && cat.id && cat.id.trim() !== '').map((cat: any) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
-            {/* Only show Date and Interval fields if NOT editing an individual task from a group */}
-            {!isSimplifiedView ? (
-              <>
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))' }}>
-
-                  <div className="grid gap-2">
-                    <Label>Laatste onderhoud *</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="justify-start text-left w-full"
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formatDate(taskFormData.lastMaintenance)}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={taskFormData.lastMaintenance || undefined}
-                          onSelect={(date) => setTaskFormData({ ...taskFormData, lastMaintenance: date || null })}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                  <Label htmlFor="isGroupTask">Taak type</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isGroupTask"
+                      checked={taskFormData.isGroupTask}
+                      onChange={(e) => setTaskFormData({ ...taskFormData, isGroupTask: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <Label htmlFor="isGroupTask" className="text-sm font-medium leading-none">
+                      Groepstaak
+                    </Label>
+                    <span className="text-sm text-gray-500">(Aanvinken als dit een groep gerelateerde taken is)</span>
                   </div>
+                </div>
 
-                  <div className="grid gap-2">
-                    <Label>Volgende onderhoud *</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="justify-start text-left w-full"
-                          disabled={!!taskFormData.lastMaintenance || isOperator}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formatDate(taskFormData.nextMaintenance)}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={taskFormData.nextMaintenance}
-                          onSelect={(date) => setTaskFormData({ ...taskFormData, nextMaintenance: date || new Date() })}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {taskFormData.lastMaintenance && (
-                      <p className="text-xs text-gray-500">Automatisch berekend op basis van interval</p>
-                    )}
-                    {isOperator && (
-                      <p className="text-xs text-gray-500">Alleen lezen voor operators</p>
+
+                <div className="grid gap-2">
+                  <Label>Tags</Label>
+                  <div className="flex flex-wrap gap-2 border rounded-md p-3 min-h-[46px] bg-gray-50/30">
+                    {tags.filter(t => t.active).map(tag => (
+                      <Button
+                        key={tag.id}
+                        type="button"
+                        variant={taskFormData.tagIds.includes(tag.id) ? 'default' : 'outline'}
+                        size="sm"
+                        className="gap-2 h-7"
+                        style={taskFormData.tagIds.includes(tag.id) ? { backgroundColor: tag.kleur } : {}}
+                        onClick={() => {
+                          setTaskFormData(prev => {
+                            const isSelected = prev.tagIds.includes(tag.id);
+                            const newTagIds = isSelected
+                              ? prev.tagIds.filter(id => id !== tag.id)
+                              : [...prev.tagIds, tag.id];
+
+                            return { ...prev, tagIds: newTagIds };
+                          });
+                        }}
+                      >
+                        {tag.naam}
+                      </Button>
+                    ))}
+                    {tags.filter(t => t.active).length === 0 && (
+                      <span className="text-xs text-gray-500">Geen actieve tags gevonden. Maak ze aan in Categorie Beheer.</span>
                     )}
                   </div>
                 </div>
 
-                {!isOperator && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="task">{taskFormData.isGroupTask ? 'Groep naam *' : 'Taak naam *'}</Label>
+                    <Input
+                      id="task"
+                      placeholder={taskFormData.isGroupTask ? "bijv., HVAC Systeem Onderhoud" : "bijv., Filter Vervangen"}
+                      value={taskFormData.isGroupTask ? taskFormData.task : taskFormData.subtaskName}
+                      onChange={(e) => {
+                        if (taskFormData.isGroupTask) {
+                          setTaskFormData({ ...taskFormData, task: e.target.value });
+                        } else {
+                          // For single tasks, sync Group Name with Task Name if they are the same
+                          const isSingleTask = !editTask || editTask.task === editTask.subtaskName;
+                          if (isSingleTask) {
+                            setTaskFormData({ ...taskFormData, subtaskName: e.target.value, task: e.target.value });
+                          } else {
+                            setTaskFormData({ ...taskFormData, subtaskName: e.target.value });
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="taskSubtext">{taskFormData.isGroupTask ? 'Groep omschrijving' : 'Taak omschrijving'}</Label>
+                    <Input
+                      id="taskSubtext"
+                      placeholder={taskFormData.isGroupTask ? "bijv., Uitgebreid onderhoud..." : "bijv., Alle units..."}
+                      value={taskFormData.isGroupTask ? taskFormData.taskSubtext : taskFormData.subtaskSubtext}
+                      onChange={(e) => {
+                        if (taskFormData.isGroupTask) {
+                          setTaskFormData({ ...taskFormData, taskSubtext: e.target.value });
+                        } else {
+                          setTaskFormData({ ...taskFormData, subtaskSubtext: e.target.value });
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {taskFormData.isGroupTask && (
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Subtaken</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addSubtask}>
+                        Subtaak toevoegen
+                      </Button>
+                    </div>
+
+                    {subtasks.length === 0 ? (
+                      <p className="text-gray-500 text-sm">Nog geen subtaken toegevoegd</p>
+                    ) : (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                      >
+                        <SortableContext
+                          items={subtasks.map(s => s.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="space-y-2">
+                            {subtasks.map((subtask) => (
+                              <SortableSubtask
+                                key={subtask.id}
+                                subtask={subtask}
+                                onUpdate={updateSubtask}
+                                onRemove={removeSubtask}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    )}
+                  </div>
+                )}
+
+                {!isSimplifiedView && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="interval">Onderhoudsinterval *</Label>
-                      <Input
-                        id="interval"
-                        type="number"
-                        min="1"
-                        value={taskFormData.maintenanceInterval}
-                        onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
-                      />
+                      <Label htmlFor="press">Machine (Pers) *</Label>
+                      <Select
+                        value={taskFormData.press}
+                        onValueChange={(value) => setTaskFormData({ ...taskFormData, press: value as PressType, category: '' })}
+                        disabled={isNewTask} // Lock press selection for new tasks
+                      >
+                        <SelectTrigger id="press">
+                          <SelectValue placeholder="Selecteer een machine" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {presses.filter((p: any) => p && p.id && p.id.trim() !== '').map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {isNewTask && (
+                        <p className="text-xs text-gray-500">Pers is bepaald door de actieve tab</p>
+                      )}
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
+                      <Label htmlFor="category">Categorie *</Label>
                       <Select
-                        value={taskFormData.maintenanceIntervalUnit}
-                        onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
-                          setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
-                        }
+                        value={taskFormData.category}
+                        onValueChange={(value) => setTaskFormData({ ...taskFormData, category: value })}
+                        disabled={!taskFormData.press}
                       >
-                        <SelectTrigger id="intervalUnit" className="w-full">
-                          <SelectValue placeholder="Selecteer eenheid" />
+                        <SelectTrigger id="category">
+                          <SelectValue placeholder={taskFormData.press ? "Selecteer een categorie" : "Selecteer eerst een machine"} />
                         </SelectTrigger>
-                        <SelectContent className="max-h-60 overflow-y-auto">
-                          <SelectItem value="days">Dagen</SelectItem>
-                          <SelectItem value="weeks">Weken</SelectItem>
-                          <SelectItem value="months">Maanden</SelectItem>
-                          <SelectItem value="years">Jaren</SelectItem>
+                        <SelectContent>
+                          {filteredCategories.filter((cat: any) => cat && cat.id && cat.id.trim() !== '').map((cat: any) => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 )}
 
-                <div className="grid gap-2">
-                  <Label htmlFor="assignedTo">Toegewezen aan</Label>
-                  <Input
-                    id="assignedTo"
-                    placeholder="bijv., Jan Jansen of Ploeg A"
-                    value={taskFormData.assignedTo}
-                    onChange={(e) => setTaskFormData({ ...taskFormData, assignedTo: e.target.value })}
-                  />
-                </div>
-              </>
-            ) : (
-              /* Group Simplified View - Only Interval and Unit */
-              !isOperator && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="interval">Onderhoudsinterval *</Label>
-                    <Input
-                      id="interval"
-                      type="number"
-                      min="1"
-                      value={taskFormData.maintenanceInterval}
-                      onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
-                    />
-                  </div>
+                {/* Only show Date and Interval fields if NOT editing an individual task from a group */}
+                {!isSimplifiedView ? (
+                  <>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))' }}>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
-                    <Select
-                      value={taskFormData.maintenanceIntervalUnit}
-                      onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
-                        setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Selecteer eenheid" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60 overflow-y-auto">
-                        <SelectItem value="days">Dagen</SelectItem>
-                        <SelectItem value="weeks">Weken</SelectItem>
-                        <SelectItem value="months">Maanden</SelectItem>
-                        <SelectItem value="years">Jaren</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )
-            )}
-          </div>
+                      <div className="grid gap-2">
+                        <Label>Laatste onderhoud *</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="justify-start text-left w-full"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {formatDate(taskFormData.lastMaintenance)}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={taskFormData.lastMaintenance || undefined}
+                              onSelect={(date) => setTaskFormData({ ...taskFormData, lastMaintenance: date || null })}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Annuleren
-            </Button>
-            <Button type="submit">
-              {editTask ? 'Bijwerken' : initialGroup ? 'Groep bijwerken' : 'Toevoegen'}
-            </Button>
-          </DialogFooter>
-        </form >
+                      <div className="grid gap-2">
+                        <Label>Volgende onderhoud *</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="justify-start text-left w-full"
+                              disabled={!!taskFormData.lastMaintenance || isOperator}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {formatDate(taskFormData.nextMaintenance)}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={taskFormData.nextMaintenance}
+                              onSelect={(date) => setTaskFormData({ ...taskFormData, nextMaintenance: date || new Date() })}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        {taskFormData.lastMaintenance && (
+                          <p className="text-xs text-gray-500">Automatisch berekend op basis van interval</p>
+                        )}
+                        {isOperator && (
+                          <p className="text-xs text-gray-500">Alleen lezen voor operators</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {!isOperator && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="interval">Onderhoudsinterval *</Label>
+                          <Input
+                            id="interval"
+                            type="number"
+                            min="1"
+                            value={taskFormData.maintenanceInterval}
+                            onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+
+                        <div className="grid gap-2">
+                          <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
+                          <Select
+                            value={taskFormData.maintenanceIntervalUnit}
+                            onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
+                              setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
+                            }
+                          >
+                            <SelectTrigger id="intervalUnit" className="w-full">
+                              <SelectValue placeholder="Selecteer eenheid" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60 overflow-y-auto">
+                              <SelectItem value="days">Dagen</SelectItem>
+                              <SelectItem value="weeks">Weken</SelectItem>
+                              <SelectItem value="months">Maanden</SelectItem>
+                              <SelectItem value="years">Jaren</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="assignedTo">Toegewezen aan</Label>
+                      <Input
+                        id="assignedTo"
+                        placeholder="bijv., Jan Jansen of Ploeg A"
+                        value={taskFormData.assignedTo}
+                        onChange={(e) => setTaskFormData({ ...taskFormData, assignedTo: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  /* Group Simplified View - Only Interval and Unit */
+                  !isOperator && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="interval">Onderhoudsinterval *</Label>
+                        <Input
+                          id="interval"
+                          type="number"
+                          min="1"
+                          value={taskFormData.maintenanceInterval}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, maintenanceInterval: parseInt(e.target.value) || 1 })}
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="intervalUnit">Interval Eenheid *</Label>
+                        <Select
+                          value={taskFormData.maintenanceIntervalUnit}
+                          onValueChange={(value: 'days' | 'weeks' | 'months' | 'years') =>
+                            setTaskFormData({ ...taskFormData, maintenanceIntervalUnit: value })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Selecteer eenheid" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60 overflow-y-auto">
+                            <SelectItem value="days">Dagen</SelectItem>
+                            <SelectItem value="weeks">Weken</SelectItem>
+                            <SelectItem value="months">Maanden</SelectItem>
+                            <SelectItem value="years">Jaren</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Annuleren
+                </Button>
+                <Button type="submit">
+                  {editTask ? 'Bijwerken' : initialGroup ? 'Groep bijwerken' : 'Toevoegen'}
+                </Button>
+              </DialogFooter>
+            </form >
+          </>
+        )}
       </DialogContent >
     </Dialog >
   );

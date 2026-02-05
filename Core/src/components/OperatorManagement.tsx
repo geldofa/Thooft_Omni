@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useAuth, Operator, ExternalEntity, Ploeg, PressType } from './AuthContext';
+import { useState, useEffect, useMemo } from 'react';
+import { useAuth, Operator, ExternalEntity, Ploeg, PressType, pb, Press } from './AuthContext';
 import {
   Table,
   TableBody,
@@ -38,29 +38,36 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner';
 import { PageHeader } from './PageHeader';
 
-export function OperatorManagement() {
+
+interface OperatorManagementProps {
+  operators: Operator[];
+  ploegen: Ploeg[];
+  presses: Press[];
+  isLoading: boolean;
+  onRefresh: () => void;
+}
+
+export function OperatorManagement({ operators, ploegen, presses, isLoading, onRefresh }: OperatorManagementProps) {
   const {
-    operators,
-    addOperator,
-    updateOperator,
-    deleteOperator,
-    externalEntities,
-    addExternalEntity,
-    updateExternalEntity,
-    deleteExternalEntity,
-    ploegen,
-    addPloeg,
-    updatePloeg,
-    deletePloeg,
-    addActivityLog,
     user,
-    presses
+    addActivityLog
   } = useAuth();
 
+
+  // Temporary local state for external entities if they are not in props
+  // Based on research, external entities might be filtered from the same 'operatoren' collection
+  const externalEntities = useMemo(() =>
+    operators.filter(op => op.dienstverband === 'Extern'),
+    [operators]
+  );
+
+  const internalOperators = useMemo(() =>
+    operators.filter(op => op.dienstverband !== 'Extern'),
+    [operators]
+  );
+
   // Get active presses for columns
-  const activePresses = presses
-    .filter(p => p.active && !p.archived)
-    .map(p => p.name);
+  const activePresses = presses.filter(p => p.active && !p.archived);
 
   // Operator State
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -152,20 +159,33 @@ export function OperatorManagement() {
     );
   };
 
-  const filteredOperators = operators.filter(operator => {
+  const filteredOperators = internalOperators.filter(operator => {
     const statusMatch = showInactive ? true : operator.active;
     return statusMatch;
   });
 
-  const handleSaveChanges = () => {
-    editedOperators.forEach(editedOperator => {
-      const originalOperator = operators.find(op => op.id === editedOperator.id);
-      if (originalOperator && JSON.stringify(originalOperator) !== JSON.stringify(editedOperator)) {
-        updateOperator(editedOperator);
+  const handleSaveChanges = async () => {
+    try {
+      for (const editedOperator of editedOperators) {
+        const originalOperator = operators.find(op => op.id === editedOperator.id);
+        if (originalOperator && JSON.stringify(originalOperator) !== JSON.stringify(editedOperator)) {
+          await pb.collection('operatoren').update(editedOperator.id, {
+            naam: editedOperator.name,
+            employeeId: editedOperator.employeeId,
+            presses: editedOperator.presses,
+            active: editedOperator.active,
+            canEditTasks: editedOperator.canEditTasks,
+            canAccessOperatorManagement: editedOperator.canAccessOperatorManagement
+          });
+        }
       }
-    });
-    toast.success('Changes saved successfully');
-    setEditMode(false);
+      onRefresh();
+      toast.success('Changes saved successfully');
+      setEditMode(false);
+    } catch (err) {
+      console.error("Failed to save changes:", err);
+      toast.error('Failed to save changes');
+    }
   };
 
   const handleOpenDialog = (operator?: Operator) => {
@@ -206,16 +226,16 @@ export function OperatorManagement() {
     });
   };
 
-  const handlePressToggle = (press: PressType) => {
+  const handlePressToggle = (pressName: string) => {
     setOperatorFormData(prev => ({
       ...prev,
-      presses: prev.presses.includes(press)
-        ? prev.presses.filter(p => p !== press)
-        : [...prev.presses, press]
+      presses: prev.presses.includes(pressName)
+        ? prev.presses.filter(p => p !== pressName)
+        : [...prev.presses, pressName]
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!operatorFormData.name.trim()) {
@@ -233,51 +253,71 @@ export function OperatorManagement() {
       return;
     }
 
-    if (editingOperator) {
-      const updatedOperator = {
-        ...editingOperator,
-        ...operatorFormData
-      };
-      updateOperator(updatedOperator);
-      toast.success('Operator updated successfully');
+    try {
+      if (editingOperator) {
+        await pb.collection('operatoren').update(editingOperator.id, {
+          naam: operatorFormData.name,
+          employeeId: operatorFormData.employeeId,
+          presses: operatorFormData.presses,
+          active: operatorFormData.active,
+          canEditTasks: operatorFormData.canEditTasks,
+          canAccessOperatorManagement: operatorFormData.canAccessOperatorManagement
+        });
 
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Updated',
-        entity: 'Operator',
-        entityId: editingOperator.id,
-        entityName: operatorFormData.name,
-        details: `Updated operator presses: ${operatorFormData.presses.join(', ')}`
-      });
-    } else {
-      addOperator(operatorFormData);
-      toast.success('Operator added successfully');
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Updated',
+          entity: 'Operator',
+          entityId: editingOperator.id,
+          entityName: operatorFormData.name,
+          details: `Updated operator presses: ${operatorFormData.presses.join(', ')}`
+        });
+      } else {
+        await pb.collection('operatoren').create({
+          naam: operatorFormData.name,
+          employeeId: operatorFormData.employeeId,
+          presses: operatorFormData.presses,
+          active: operatorFormData.active,
+          canEditTasks: operatorFormData.canEditTasks,
+          canAccessOperatorManagement: operatorFormData.canAccessOperatorManagement,
+          dienstverband: 'Intern'
+        });
 
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Created',
-        entity: 'Operator',
-        entityId: 'new',
-        entityName: operatorFormData.name,
-        details: `Added new operator with presses: ${operatorFormData.presses.join(', ')}`
-      });
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'Operator',
+          entityId: 'new',
+          entityName: operatorFormData.name,
+          details: `Added new operator with presses: ${operatorFormData.presses.join(', ')}`
+        });
+      }
+      onRefresh();
+      handleCloseDialog();
+    } catch (err) {
+      console.error("Failed to save operator:", err);
+      toast.error('Failed to save operator');
     }
-
-    handleCloseDialog();
   };
 
-  const handleDelete = (id: string, name: string) => {
-    deleteOperator(id);
-    toast.success(`Operator "${name}" deleted successfully`);
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      await pb.collection('operatoren').delete(id);
+      onRefresh();
+      toast.success(`Operator "${name}" deleted successfully`);
 
-    addActivityLog({
-      user: user?.username || 'Unknown',
-      action: 'Deleted',
-      entity: 'Operator',
-      entityId: id,
-      entityName: name,
-      details: `Deleted operator`
-    });
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Deleted',
+        entity: 'Operator',
+        entityId: id,
+        entityName: name,
+        details: `Deleted operator`
+      });
+    } catch (err) {
+      console.error("Failed to delete operator:", err);
+      toast.error('Failed to delete operator');
+    }
   };
 
   // --- External Entity Logic ---
@@ -293,15 +333,25 @@ export function OperatorManagement() {
     );
   };
 
-  const handleExternalSaveChanges = () => {
-    editedExternalEntities.forEach(editedEntity => {
-      const originalEntity = externalEntities.find(e => e.id === editedEntity.id);
-      if (originalEntity && JSON.stringify(originalEntity) !== JSON.stringify(editedEntity)) {
-        updateExternalEntity(editedEntity);
+  const handleExternalSaveChanges = async () => {
+    try {
+      for (const editedEntity of editedExternalEntities) {
+        const originalEntity = externalEntities.find(e => e.id === editedEntity.id);
+        if (originalEntity && JSON.stringify(originalEntity) !== JSON.stringify(editedEntity)) {
+          await pb.collection('operatoren').update(editedEntity.id, {
+            naam: editedEntity.name,
+            presses: editedEntity.presses,
+            active: editedEntity.active
+          });
+        }
       }
-    });
-    toast.success('Changes saved successfully');
-    setExternalEditMode(false);
+      onRefresh();
+      toast.success('Changes saved successfully');
+      setExternalEditMode(false);
+    } catch (err) {
+      console.error("Failed to save external entity changes:", err);
+      toast.error('Failed to save changes');
+    }
   };
 
   const handleOpenExternalDialog = (entity?: ExternalEntity) => {
@@ -333,16 +383,16 @@ export function OperatorManagement() {
     });
   };
 
-  const handleExternalPressToggle = (press: PressType) => {
+  const handleExternalPressToggle = (pressName: string) => {
     setExternalFormData(prev => ({
       ...prev,
-      presses: prev.presses.includes(press)
-        ? prev.presses.filter(p => p !== press)
-        : [...prev.presses, press]
+      presses: prev.presses.includes(pressName)
+        ? prev.presses.filter(p => p !== pressName)
+        : [...prev.presses, pressName]
     }));
   };
 
-  const handleExternalSubmit = (e: React.FormEvent) => {
+  const handleExternalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!externalFormData.name.trim()) {
@@ -355,51 +405,87 @@ export function OperatorManagement() {
       return;
     }
 
-    if (editingExternal) {
-      const updatedEntity = {
-        ...editingExternal,
-        ...externalFormData
-      };
-      updateExternalEntity(updatedEntity);
-      toast.success('External entity updated successfully');
+    try {
+      if (editingExternal) {
+        await pb.collection('operatoren').update(editingExternal.id, {
+          naam: externalFormData.name,
+          presses: externalFormData.presses,
+          active: externalFormData.active
+        });
+        toast.success('External entity updated successfully');
 
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Updated',
-        entity: 'External Entity',
-        entityId: editingExternal.id,
-        entityName: externalFormData.name,
-        details: `Updated external entity presses: ${externalFormData.presses.join(', ')}`
-      });
-    } else {
-      addExternalEntity(externalFormData);
-      toast.success('External entity added successfully');
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Updated',
+          entity: 'External Entity',
+          entityId: editingExternal.id,
+          entityName: externalFormData.name,
+          details: `Updated external entity presses: ${externalFormData.presses.join(', ')}`
+        });
+      } else {
+        await pb.collection('operatoren').create({
+          naam: externalFormData.name,
+          presses: externalFormData.presses,
+          active: externalFormData.active,
+          dienstverband: 'Extern'
+        });
+        toast.success('External entity added successfully');
 
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Created',
-        entity: 'External Entity',
-        entityId: 'new',
-        entityName: externalFormData.name,
-        details: `Added new external entity with presses: ${externalFormData.presses.join(', ')}`
-      });
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'External Entity',
+          entityId: 'new',
+          entityName: externalFormData.name,
+          details: `Added new external entity with presses: ${externalFormData.presses.join(', ')}`
+        });
+      }
+      onRefresh();
+      handleCloseExternalDialog();
+    } catch (err) {
+      console.error("Failed to save external entity:", err);
+      toast.error('Failed to save external entity');
     }
-
-    handleCloseExternalDialog();
   };
 
-  const handleDeleteExternal = (id: string, name: string) => {
-    deleteExternalEntity(id);
-    toast.success(`External entity "${name}" deleted successfully`);
+  const handleDeleteExternal = async (id: string, name: string) => {
+    try {
+      await pb.collection('operatoren').delete(id);
+      onRefresh();
+      toast.success(`External entity "${name}" deleted successfully`);
 
-    addActivityLog({
-      user: user?.username || 'Unknown',
-      action: 'Deleted',
-      entity: 'External Entity',
-      entityId: id,
-      entityName: name,
-      details: `Deleted external entity`
-    });
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Deleted',
+        entity: 'External Entity',
+        entityId: id,
+        entityName: name,
+        details: `Deleted external entity`
+      });
+    } catch (err) {
+      console.error("Failed to delete external entity:", err);
+      toast.error('Failed to delete external entity');
+    }
+  };
+
+  const handleDeletePloeg = async (id: string, name: string) => {
+    try {
+      await pb.collection('ploegen').delete(id);
+      onRefresh();
+      toast.success(`Ploeg "${name}" verwijderd`);
+
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Deleted',
+        entity: 'Ploeg',
+        entityId: id,
+        entityName: name,
+        details: `Deleted team/ploeg`
+      });
+    } catch (err) {
+      console.error("Failed to delete ploeg:", err);
+      toast.error('Verwijderen ploeg mislukt');
+    }
   };
 
   return (
@@ -420,6 +506,11 @@ export function OperatorManagement() {
 
         {/* OPERATORS TAB */}
         <TabsContent value="operators" className="space-y-4">
+          {isLoading && (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-2">
               <Button
@@ -449,10 +540,9 @@ export function OperatorManagement() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">ID</TableHead>
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                   {activePresses.map(press => (
-                    <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
+                    <TableHead key={press.id} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press.name}</TableHead>
                   ))}
                   <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
                   {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Acties</TableHead>}
@@ -461,24 +551,13 @@ export function OperatorManagement() {
               <TableBody>
                 {(editMode ? editedOperators : filteredOperators).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={editMode ? activePresses.length + 3 : activePresses.length + 4} className="text-center py-12 text-gray-500">
+                    <TableCell colSpan={editMode ? activePresses.length + 2 : activePresses.length + 3} className="text-center py-12 text-gray-500">
                       Geen operators gevonden.
                     </TableCell>
                   </TableRow>
                 ) : (
                   (editMode ? editedOperators : filteredOperators).map((operator) => (
                     <TableRow key={operator.id} className="hover:bg-gray-50/50">
-                      <TableCell className="border-r border-gray-200">
-                        {editMode ? (
-                          <Input
-                            value={operator.employeeId}
-                            onChange={(e) => handleEditChange(operator.id, 'employeeId', e.target.value)}
-                            className="h-8"
-                          />
-                        ) : (
-                          operator.employeeId
-                        )}
-                      </TableCell>
                       <TableCell className="border-r border-gray-200 font-medium">
                         {editMode ? (
                           <Input
@@ -491,20 +570,20 @@ export function OperatorManagement() {
                         )}
                       </TableCell>
                       {activePresses.map(press => (
-                        <TableCell key={press} className="border-r border-gray-200 p-0">
+                        <TableCell key={press.id} className="border-r border-gray-200 p-0">
                           <div className="flex justify-center items-center h-full py-2">
                             {editMode ? (
                               <Checkbox
-                                checked={operator.presses.includes(press)}
+                                checked={operator.presses.includes(press.name)}
                                 onCheckedChange={(checked) => {
                                   const newPresses = checked
-                                    ? [...operator.presses, press]
-                                    : operator.presses.filter(p => p !== press);
+                                    ? [...operator.presses, press.name]
+                                    : operator.presses.filter(p => p !== press.name);
                                   handleEditChange(operator.id, 'presses', newPresses);
                                 }}
                               />
                             ) : (
-                              operator.presses.includes(press) ? (
+                              operator.presses.includes(press.name) ? (
                                 <Check className="w-5 h-5 text-green-600" />
                               ) : (
                                 <span className="text-gray-300">-</span>
@@ -576,6 +655,11 @@ export function OperatorManagement() {
 
         {/* EXTERNAL ENTITIES TAB */}
         <TabsContent value="external" className="space-y-4">
+          {isLoading && (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-2">
               <Button
@@ -607,7 +691,7 @@ export function OperatorManagement() {
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                   {activePresses.map(press => (
-                    <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press}</TableHead>
+                    <TableHead key={press.id} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press.name}</TableHead>
                   ))}
                   <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
                   {!externalEditMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
@@ -635,20 +719,20 @@ export function OperatorManagement() {
                         )}
                       </TableCell>
                       {activePresses.map(press => (
-                        <TableCell key={press} className="border-r border-gray-200 p-0">
+                        <TableCell key={press.id} className="border-r border-gray-200 p-0">
                           <div className="flex justify-center items-center h-full py-2">
                             {externalEditMode ? (
                               <Checkbox
-                                checked={entity.presses.includes(press)}
+                                checked={entity.presses.includes(press.name)}
                                 onCheckedChange={(checked) => {
                                   const newPresses = checked
-                                    ? [...entity.presses, press]
-                                    : entity.presses.filter(p => p !== press);
+                                    ? [...entity.presses, press.name]
+                                    : entity.presses.filter(p => p !== press.name);
                                   handleExternalEditChange(entity.id, 'presses', newPresses);
                                 }}
                               />
                             ) : (
-                              entity.presses.includes(press) ? (
+                              entity.presses.includes(press.name) ? (
                                 <Check className="w-5 h-5 text-green-600" />
                               ) : (
                                 <span className="text-gray-300">-</span>
@@ -720,6 +804,11 @@ export function OperatorManagement() {
 
         {/* PLOEGEN TAB */}
         <TabsContent value="ploegen" className="space-y-4">
+          {isLoading && (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center space-x-2">
@@ -749,12 +838,11 @@ export function OperatorManagement() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50 hover:bg-gray-50">
-                  <TableHead className="border-r border-gray-200 font-semibold text-gray-900">ID</TableHead>
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                   <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Leden</TableHead>
                   {activePresses.map(press => (
-                    <TableHead key={press} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">
-                      {press}
+                    <TableHead key={press.id} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">
+                      {press.name}
                     </TableHead>
                   ))}
                   <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
@@ -766,7 +854,6 @@ export function OperatorManagement() {
                   .filter(p => showInactivePloegen ? true : p.active)
                   .map((ploeg) => (
                     <TableRow key={ploeg.id}>
-                      <TableCell className="border-r border-gray-200">{ploeg.id}</TableCell>
                       <TableCell className="border-r border-gray-200">{ploeg.name}</TableCell>
                       <TableCell className="border-r border-gray-200">
                         {ploeg.operatorIds.map(opId => {
@@ -775,20 +862,27 @@ export function OperatorManagement() {
                         }).filter(Boolean).join(', ')}
                       </TableCell>
                       {activePresses.map(press => (
-                        <TableCell key={press} className="border-r border-gray-200 p-0">
+                        <TableCell key={press.id} className="border-r border-gray-200 p-0">
                           <div className="flex justify-center items-center h-full py-2">
                             {ploegEditMode ? (
                               <Checkbox
-                                checked={ploeg.presses.includes(press)}
-                                onCheckedChange={(checked) => {
+                                checked={ploeg.presses.includes(press.name)}
+                                onCheckedChange={async (checked) => {
                                   const newPresses = checked
-                                    ? [...ploeg.presses, press]
-                                    : ploeg.presses.filter(p => p !== press);
-                                  updatePloeg({ ...ploeg, presses: newPresses });
+                                    ? [...ploeg.presses, press.name]
+                                    : ploeg.presses.filter(p => p !== press.name);
+                                  try {
+                                    await pb.collection('ploegen').update(ploeg.id, {
+                                      presses: newPresses
+                                    });
+                                    onRefresh();
+                                  } catch (err) {
+                                    toast.error('Press update failed');
+                                  }
                                 }}
                               />
                             ) : (
-                              ploeg.presses.includes(press) ? (
+                              ploeg.presses.includes(press.name) ? (
                                 <Check className="w-5 h-5 text-green-600" />
                               ) : (
                                 <span className="text-gray-300">-</span>
@@ -802,8 +896,15 @@ export function OperatorManagement() {
                           {ploegEditMode ? (
                             <Checkbox
                               checked={ploeg.active}
-                              onCheckedChange={(checked) => {
-                                updatePloeg({ ...ploeg, active: !!checked });
+                              onCheckedChange={async (checked) => {
+                                try {
+                                  await pb.collection('ploegen').update(ploeg.id, {
+                                    active: !!checked
+                                  });
+                                  onRefresh();
+                                } catch (err) {
+                                  toast.error('Status update failed');
+                                }
                               }}
                             />
                           ) : (
@@ -849,7 +950,7 @@ export function OperatorManagement() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => deletePloeg(ploeg.id)}>
+                                  <AlertDialogAction onClick={() => handleDeletePloeg(ploeg.id, ploeg.name)}>
                                     Delete
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
@@ -866,6 +967,7 @@ export function OperatorManagement() {
         </TabsContent>
       </Tabs>
 
+      {/* Dialogs */}
       {/* Operator Dialog */}
       <Dialog open={isAddDialogOpen || !!editingOperator} onOpenChange={handleCloseDialog}>
         <DialogContent className="max-w-md">
@@ -903,20 +1005,16 @@ export function OperatorManagement() {
               <div className="grid gap-3">
                 <Label>Available Presses *</Label>
                 <div className="space-y-2 border rounded-md p-3">
-                  {activePresses.map((press) => (
-                    <div key={press} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`press-${press}`}
-                        checked={operatorFormData.presses.includes(press)}
-                        onCheckedChange={() => handlePressToggle(press)}
-                      />
-                      <label
-                        htmlFor={`press-${press}`}
-                        className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {press}
-                      </label>
-                    </div>
+                  {activePresses.map(press => (
+                    <Button
+                      key={press.id}
+                      type="button"
+                      variant={operatorFormData.presses.includes(press.name) ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handlePressToggle(press.name)}
+                    >
+                      {press.name}
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -975,20 +1073,16 @@ export function OperatorManagement() {
               <div className="grid gap-3">
                 <Label>Available Presses *</Label>
                 <div className="space-y-2 border rounded-md p-3">
-                  {activePresses.map((press) => (
-                    <div key={press} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`external-${press}`}
-                        checked={externalFormData.presses.includes(press)}
-                        onCheckedChange={() => handleExternalPressToggle(press)}
-                      />
-                      <label
-                        htmlFor={`external-${press}`}
-                        className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {press}
-                      </label>
-                    </div>
+                  {activePresses.map(press => (
+                    <Button
+                      key={press.id}
+                      type="button"
+                      variant={externalFormData.presses.includes(press.name) ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleExternalPressToggle(press.name)}
+                    >
+                      {press.name}
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -1036,20 +1130,31 @@ export function OperatorManagement() {
               Create a team of 2-3 operators who work together.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault();
             if (selectedPressForPloeg) {
               const finalPloegData = { ...ploegFormData, presses: [selectedPressForPloeg] };
-              if (editingPloeg) {
-                updatePloeg({ ...editingPloeg, ...finalPloegData });
-                toast.success('Ploeg updated successfully');
-              } else {
-                addPloeg(finalPloegData);
-                toast.success('Ploeg added successfully');
+              try {
+                if (editingPloeg) {
+                  await pb.collection('ploegen').update(editingPloeg.id, {
+                    name: finalPloegData.name,
+                    operatorIds: finalPloegData.operatorIds,
+                    active: finalPloegData.active,
+                    presses: finalPloegData.presses
+                  });
+                  toast.success('Ploeg updated successfully');
+                } else {
+                  await pb.collection('ploegen').create(finalPloegData);
+                  toast.success('Ploeg added successfully');
+                }
+                onRefresh();
+                setIsPloegDialogOpen(false);
+                setEditingPloeg(null);
+                setPloegFormData({ name: '', operatorIds: [], active: true });
+              } catch (err) {
+                console.error("Failed to save ploeg:", err);
+                toast.error('Failed to save ploeg');
               }
-              setIsPloegDialogOpen(false);
-              setEditingPloeg(null);
-              setPloegFormData({ name: '', operatorIds: [], active: true });
             } else {
               toast.error("Please select a press");
             }
@@ -1075,7 +1180,7 @@ export function OperatorManagement() {
                 >
                   <option value="">Select a press...</option>
                   {activePresses.map(press => (
-                    <option key={press} value={press}>{press}</option>
+                    <option key={press.id} value={press.name}>{press.name}</option>
                   ))}
                 </select>
               </div>
@@ -1132,6 +1237,6 @@ export function OperatorManagement() {
           </form>
         </DialogContent>
       </Dialog>
-    </div >
+    </div>
   );
 }

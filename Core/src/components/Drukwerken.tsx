@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PressType, useAuth, pb } from './AuthContext';
+import { drukwerkenCache, CacheStatus } from '../services/DrukwerkenCache';
 import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'; // Added useEffect
 
@@ -10,10 +11,11 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Edit, Trash2, Check, Search, ArrowUp, ArrowDown, Printer } from 'lucide-react';
+import { Plus, Edit, Trash2, Check, Search, ArrowUp, ArrowDown, Printer, RefreshCw, Database, Wrench } from 'lucide-react';
+import { TableVirtuoso } from 'react-virtuoso';
 import { PageHeader } from './PageHeader';
 import { formatNumber } from '../utils/formatNumber';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -67,7 +69,7 @@ const COL_WIDTHS = {
     red: '55px',
     delta: '45px',
     deltaPercent: '45px',
-    actions: '40px'
+    actions: '25px'
 };
 
 const FONT_SIZES = {
@@ -165,7 +167,41 @@ const FormulaResultWithTooltip = ({
     );
 };
 
-export function Drukwerken({ presses }: { presses: Press[] }) {
+export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
+    const [presses, setPresses] = useState<Press[]>(propsPresses || []);
+    const [isLoadingPresses, setIsLoadingPresses] = useState(false);
+
+    // Cache status state
+    const [cacheStatus, setCacheStatus] = useState<CacheStatus>({
+        loading: true,
+        statusText: 'Initializing...',
+        totalDocs: 0,
+        cachedDocs: 0,
+        newUpdates: 0
+    });
+
+    const fetchPressesLocal = useCallback(async () => {
+        try {
+            setIsLoadingPresses(true);
+            const records = await pb.collection('persen').getFullList();
+            setPresses(records.map((r: any) => ({
+                id: r.id,
+                name: r.naam,
+                active: r.active !== false,
+                archived: r.archived === true
+            })));
+        } catch (e) {
+            console.error("Failed to fetch presses in Drukwerken", e);
+        } finally {
+            setIsLoadingPresses(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!propsPresses) {
+            fetchPressesLocal();
+        }
+    }, [fetchPressesLocal, propsPresses]);
     const activePresses = presses
         .filter(p => p.active && !p.archived)
         .map(p => p.name);
@@ -176,7 +212,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         return acc;
     }, {} as Record<string, string>);
 
-    const { user, hasPermission } = useAuth();
+    const { user, hasPermission, getSystemSetting } = useAuth();
 
     const { subtab } = useParams<{ subtab: string }>();
     const navigate = useNavigate();
@@ -245,7 +281,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     const handleKaternSubmit = (katernData: Omit<Katern, 'id'>, werkorderId: string) => {
         setWerkorders(werkorders.map(wo => {
             if (wo.id === werkorderId) {
-                const newKatern = { ...katernData, id: `${wo.id}-${wo.katernen.length + 1}` };
+                const newKatern = { ...katernData, id: `${wo.id} -${wo.katernen.length + 1} ` };
                 return { ...wo, katernen: [...wo.katernen, newKatern] };
             }
             return wo;
@@ -253,7 +289,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
     };
 
     const defaultKatern: Katern = {
-        id: 'new-katern-1', // Temporary ID, will be replaced with `${newWerkorder.id}-1`
+        id: 'new-katern-1', // Temporary ID, will be replaced with `${ newWerkorder.id } -1`
         version: '',
         pages: null,
         exOmw: '',
@@ -275,7 +311,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         const newWerkorderId = Date.now().toString();
         const newKaternWithId: Katern = {
             ...defaultKatern,
-            id: `${newWerkorderId}-1`, // Assign a proper ID
+            id: `${newWerkorderId} -1`, // Assign a proper ID
         };
 
         const newWerkorder: Werkorder = {
@@ -485,7 +521,6 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 await pb.collection('drukwerken').create(pbData);
             }
 
-            fetchFinishedJobs(); // Refresh all jobs from server
             fetchCalculatedFields();
 
             // Clear the Werkorder form by resetting to a new blank state
@@ -604,100 +639,47 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([]);
 
-    const fetchFinishedJobs = useCallback(async () => {
-        try {
-            const currentYear = new Date().getFullYear();
-            let filter = '';
-            if (!hasPermission('drukwerken_view_all') && user?.press) {
-                if (user.pressId) {
-                    filter = `pers = "${user.pressId}"`;
-                } else {
-                    filter = `pers.naam = "${user.press}"`;
-                }
+    // Subscribe to Cache Service
+    useEffect(() => {
+        // Subscribe to updates
+        const unsubscribe = drukwerkenCache.subscribe(
+            (jobs) => {
+                setFinishedJobs(jobs);
+            },
+            (status) => {
+                setCacheStatus(status);
             }
+        );
 
-            // Phase 1: Load current year only (Fast load)
-            const yearFilterStr = `date ~ "${currentYear}-" || datum ~ ".${currentYear}" || date ~ "${currentYear}/"`;
-            const currentYearFilter = filter ? `(${filter}) && (${yearFilterStr})` : yearFilterStr;
-
-            const firstBatch = await pb.collection('drukwerken').getFullList({
-                sort: '-date,-created',
-                expand: 'pers',
-                filter: currentYearFilter
-            });
-
-            const mapJob = (r: any) => {
-                const jobDate = r.date ? r.date.split(' ')[0] : (r.created ? r.created.split('T')[0] : '');
-                return {
-                    id: r.id,
-                    date: jobDate,
-                    datum: jobDate ? jobDate.split('-').reverse().join('.') : '',
-                    orderNr: String(r.order_nummer || ''),
-                    orderName: r.klant_order_beschrijving || '',
-                    version: r.versie || '',
-                    pages: r.blz,
-                    exOmw: String(r.ex_omw || ''),
-                    netRun: r.netto_oplage,
-                    startup: !!r.opstart,
-                    c4_4: r.k_4_4,
-                    c4_0: r.k_4_0,
-                    c1_0: r.k_1_0,
-                    c1_1: r.k_1_1,
-                    c4_1: r.k_4_1,
-                    maxGross: r.max_bruto || 0,
-                    green: r.groen,
-                    red: r.rood,
-                    delta_number: r.delta || 0,
-                    delta_percentage: r.delta_percent || 0,
-                    delta: r.delta || 0,
-                    performance: '100%',
-                    pressId: r.pers,
-                    pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || '')
-                };
-            };
-
-            const initialJobs = firstBatch.map(mapJob);
-            setFinishedJobs(initialJobs);
-
-            // Phase 2: Load historical data silently in background
-            // PocketBase doesn't support negation of a group like !(a || b). 
-            // We must rewrite as (!a && !b).
-            const historicalYearFilter = `date !~ "${currentYear}-" && datum !~ ".${currentYear}" && date !~ "${currentYear}/"`;
-            const historicalFilter = filter ? `(${filter}) && (${historicalYearFilter})` : historicalYearFilter;
-
-            const secondBatch = await pb.collection('drukwerken').getFullList({
-                sort: '-date,-created',
-                expand: 'pers',
-                filter: historicalFilter
-            });
-
-            if (secondBatch.length > 0) {
-                const historicalJobs = secondBatch.map(mapJob);
-                setFinishedJobs(prev => {
-                    // Combine and re-sort
-                    const combined = [...prev, ...historicalJobs];
-                    return combined.sort((a, b) => {
-                        const dateA = a.date || '';
-                        const dateB = b.date || '';
-                        return dateB.localeCompare(dateA);
-                    });
-                });
-            }
-        } catch (error) {
-            console.error("Error fetching finished jobs:", error);
+        // Trigger Sync
+        if (user) {
+            drukwerkenCache.sync(user, hasPermission);
         }
+
+        return () => {
+            unsubscribe();
+        };
+    }, [user, hasPermission]); // Run once on mount/user change
+
+    // Background Update Check (Every 5 Minutes)
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            if (user) {
+                drukwerkenCache.checkForUpdates(user, hasPermission);
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+
+        return () => clearInterval(intervalId);
     }, [user, hasPermission]);
 
-    useEffect(() => {
-        fetchFinishedJobs();
-        fetchCalculatedFields();
-    }, [fetchFinishedJobs, fetchCalculatedFields]);
-
-    // Real-time refresh listeners
+    // Detect Realtime Changes (using the custom event or direct PB subscription if the service didn't handle it internaly yet)
+    // The service handles "checkForUpdates", but for immediate feedback we can still listen to global events
+    // or rely on the service to subscribe to PB realtime.
+    // Use the existing window event listener as a trigger for the cache service update check
     useEffect(() => {
         const handleDrukwerkenChange = () => {
-            console.log("Real-time update: refreshing finished jobs");
-            fetchFinishedJobs();
+            console.log("Real-time update: checking cache updates");
+            if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
         };
         const handleParametersChange = () => {
             console.log("Real-time update: refreshing parameters");
@@ -711,7 +693,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             window.removeEventListener('pb-drukwerken-changed', handleDrukwerkenChange);
             window.removeEventListener('pb-parameters-changed', handleParametersChange);
         };
-    }, [fetchFinishedJobs, fetchParameters, fetchCalculatedFields]);
+    }, [fetchParameters, user, hasPermission]);
+
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [searchQuery, setSearchQuery] = useState(() => {
@@ -864,7 +847,8 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
             }));
 
             toast.success("Wijzigingen opgeslagen.");
-            fetchFinishedJobs();
+            // Manual sync/update check or let realtime handle it
+            if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
             setIsAddJobDialogOpen(false);
             setEditingJobs([]);
 
@@ -933,7 +917,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         try {
             await pb.collection('drukwerken').delete(jobId);
             toast.success("Drukwerk verwijderd.");
-            fetchFinishedJobs();
+            if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
             fetchCalculatedFields();
         } catch (error) {
             console.error("Error deleting job:", error);
@@ -964,8 +948,44 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
 
     return (
         <div className="space-y-4">
+            {isLoadingPresses && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                        <p className="font-medium text-blue-900 text-lg">Persen Laden...</p>
+                    </div>
+                </div>
+            )}
             <PageHeader
-                title="Drukwerken Registratie"
+                title={
+                    <div className="flex items-center gap-4">
+                        <span>Drukwerken Registratie</span>
+                        {(cacheStatus.loading || cacheStatus.newUpdates > 0) && (
+                            <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
+                                {cacheStatus.loading ? (
+                                    <>
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                        <span>{cacheStatus.statusText}</span>
+                                        {cacheStatus.totalDocs > 0 && (
+                                            <span className="text-xs text-gray-400">({cacheStatus.cachedDocs}/{cacheStatus.totalDocs})</span>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Database className="w-3 h-3 text-blue-500" />
+                                        <span className="text-blue-600">{cacheStatus.newUpdates} updates found</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        {!cacheStatus.loading && cacheStatus.newUpdates === 0 && (
+                            <div className="flex items-center gap-2 text-xs text-gray-400 font-normal">
+                                <Check className="w-3 h-3" />
+                                <span>Up to date</span>
+                            </div>
+                        )}
+                    </div>
+                }
                 description="Beheer en registreer printopdrachten"
                 icon={Printer}
                 className="mb-2"
@@ -980,7 +1000,7 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                             <div className="flex gap-2 items-center flex-wrap justify-end">
                                 <Tabs value={yearFilter} onValueChange={setYearFilter} className="w-auto">
                                     <TabsList className="tab-pill-list h-9">
-                                        {yearOptions.map(opt => (
+                                        {yearOptions.map((opt: any) => (
                                             <TabsTrigger
                                                 key={opt.value}
                                                 value={opt.value}
@@ -1207,9 +1227,10 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                                                                         const numericValue = typeof result === 'number'
                                                                             ? result
                                                                             : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-                                                                        return `${formatNumber(numericValue * 100, 2)}%`;
+                                                                        return `${formatNumber(numericValue * 100, 2)
+                                                                            }% `;
                                                                     }
-                                                                    return `${formatNumber(katern.deltaPercentage * 100, 2)}%`;
+                                                                    return `${formatNumber(katern.deltaPercentage * 100, 2)}% `;
                                                                 })()}
                                                             </TableCell>
                                                             <TableCell className="border-r border-black">
@@ -1245,198 +1266,223 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
                 <TabsContent value="Gedrukt">
                     <Card>
                         <CardContent className="p-0">
-                            <Table
-                                className={`table-fixed w-full ${FONT_SIZES.body} border-collapse`}
-                                containerClassName="max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-auto"
-                                style={{ minWidth: '1600px' }}
-                            >
-                                <colgroup>
-                                    {user?.role?.toLowerCase() === 'admin' && <col style={{ width: COL_WIDTHS.press }} />}
-                                    <col style={{ width: COL_WIDTHS.date }} />
-                                    <col style={{ width: COL_WIDTHS.orderNr }} />
-                                    <col style={{ width: COL_WIDTHS.orderName }} />
-                                    <col style={{ width: COL_WIDTHS.pages }} />
-                                    <col style={{ width: COL_WIDTHS.exOmw }} />
-                                    <col style={{ width: COL_WIDTHS.netRun }} />
-                                    <col style={{ width: COL_WIDTHS.startup }} />
-                                    <col style={{ width: COL_WIDTHS.c4_4 }} />
-                                    <col style={{ width: COL_WIDTHS.c4_0 }} />
-                                    <col style={{ width: COL_WIDTHS.c1_0 }} />
-                                    <col style={{ width: COL_WIDTHS.c1_1 }} />
-                                    <col style={{ width: COL_WIDTHS.c4_1 }} />
-                                    <col style={{ width: COL_WIDTHS.maxGross }} />
-                                    <col style={{ width: COL_WIDTHS.green }} />
-                                    <col style={{ width: COL_WIDTHS.red }} />
-                                    <col style={{ width: COL_WIDTHS.delta }} />
-                                    <col style={{ width: COL_WIDTHS.deltaPercent }} />
-                                    <col style={{ width: COL_WIDTHS.actions }} />
-                                </colgroup>
-                                <TableHeader>
-                                    <TableRow className="sticky top-0 z-40 bg-white shadow-sm border-b-0 h-10">
-                                        {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="sticky top-0 z-40 bg-white"></TableHead>}
-                                        <TableHead colSpan={6} className="text-center bg-blue-100 border-r sticky top-0 z-40">Data</TableHead>
-                                        <TableHead colSpan={6} className="text-center bg-green-100 border-r sticky top-0 z-40">Wissels</TableHead>
-                                        <TableHead colSpan={3} className="text-center bg-yellow-100 border-r sticky top-0 z-40">Berekening</TableHead>
-                                        <TableHead colSpan={2} className="text-center bg-purple-100 border-r sticky top-0 z-40">Prestatie</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.actions }} className="sticky top-0 z-40 bg-white"></TableHead>
-                                    </TableRow>
-                                    <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm border-b h-10">
-                                        {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r sticky top-[40px] z-40">Pers</TableHead>}
-                                        <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r sticky top-[40px] z-40 bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r sticky top-[40px] z-40 bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r sticky top-[40px] z-40 bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r sticky top-[40px] z-40 bg-white"><div className="flex items-center justify-center">Pagina's {getSortIcon('pages')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center border-r leading-3 sticky top-[40px] z-40 bg-white"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r sticky top-[40px] z-40 bg-white"><div className="flex items-center justify-center">Oplage {getSortIcon('netRun')}</div></TableHead>
-                                        <TableHead onClick={() => requestSort('startup')} style={{ width: COL_WIDTHS.startup }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 sticky top-[40px] z-40 border-r"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.c4_4 }} className="px-1 text-center bg-gray-50 border-r sticky top-[40px] z-40">4/4</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.c4_0 }} className="px-1 text-center bg-gray-50 border-r sticky top-[40px] z-40">4/0</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.c1_0 }} className="px-1 text-center bg-gray-50 border-r sticky top-[40px] z-40">1/0</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.c1_1 }} className="px-1 text-center bg-gray-50 border-r sticky top-[40px] z-40">1/1</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.c4_1 }} className="px-1 text-center bg-gray-50 border-r sticky top-[40px] z-40">4/1</TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.maxGross }} className="text-center border-r sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span
-                                                    className="font-bold whitespace-nowrap"
-                                                    title={getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
-                                                >
-                                                    {getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
-                                                </span>
-                                                <div onClick={() => requestSort('maxGross')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
-                                                    {getSortIcon('maxGross')}
-                                                </div>
-                                            </div>
-                                        </TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.green }} className="text-center border-r sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span
-                                                    className="font-bold whitespace-nowrap"
-                                                    title={getFormulaForColumn('green')?.name || 'Groen'}
-                                                >
-                                                    {getFormulaForColumn('green')?.name || 'Groen'}
-                                                </span>
-                                                <div onClick={() => requestSort('green')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
-                                                    {getSortIcon('green')}
-                                                </div>
-                                            </div>
-                                        </TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.red }} className="text-center border-r sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span
-                                                    className="font-bold whitespace-nowrap"
-                                                    title={getFormulaForColumn('red')?.name || 'Rood'}
-                                                >
-                                                    {getFormulaForColumn('red')?.name || 'Rood'}
-                                                </span>
-                                                <div onClick={() => requestSort('red')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
-                                                    {getSortIcon('red')}
-                                                </div>
-                                            </div>
-                                        </TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.delta }} className="text-center border-r sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span className="font-bold">Delta</span>
-                                            </div>
-                                        </TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.deltaPercent }} className="text-center border-r sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span className="font-bold">Delta %</span>
-                                            </div>
-                                        </TableHead>
-                                        <TableHead style={{ width: COL_WIDTHS.actions }} className="text-center sticky top-[40px] z-40 bg-white">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span className="font-bold">Acties</span>
-                                            </div>
-                                        </TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {sortedJobs.map((job) => (
-                                        <TableRow key={job.id} className="h-8 hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group">
-                                            {user?.role?.toLowerCase() === 'admin' && (
-                                                <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70" title={job.pressName}>
-                                                    {job.pressName || '-'}
-                                                </TableCell>
-                                            )}
-                                            <TableCell className="py-1 px-2 text-center">{job.date}</TableCell>
-                                            <TableCell className="py-1 px-2 text-center">DT {job.orderNr}</TableCell>
-                                            <TableCell className="py-1 px-2">
-                                                <span className="font-medium mr-2">{job.orderName}</span>
-                                                <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1">{formatNumber(job.pages)} blz</TableCell>
-                                            <TableCell className="text-center py-1 px-1">{job.exOmw}</TableCell>
-                                            <TableCell className="text-right py-1 px-1 border-r border-black">{formatNumber(job.netRun)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">
-                                                <div className="flex justify-center">
-                                                    {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70">{formatNumber(job.c4_1)}</TableCell>
-                                            <TableCell className="py-1 px-1 text-right">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('maxGross');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.maxGross, 0);
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 text-right">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('green');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.green);
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 text-right border-r border-black">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('red');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.red);
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('delta_number');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.delta_number, 0);
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1 border-r border-black">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('delta_percentage');
-                                                    const result = formula
-                                                        ? evaluateFormula(formula.formula, job, parameters, activePresses)
-                                                        : job.delta_percentage;
-
-                                                    const percentageValue = typeof result === 'number'
-                                                        ? result
-                                                        : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-
-                                                    return percentageValue !== undefined ? `${formatNumber(percentageValue * 100, 2)}%` : '-';
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 border-r border-black">
-                                                <div className="flex gap-1 justify-center">
-                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
-                                                        <Edit className="w-3 h-3" />
-                                                    </Button>
-                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-red-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
-                                                        <Trash2 className="w-3 h-3" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                            <TableVirtuoso
+                                style={{ height: 'calc(100vh - 220px)', minWidth: '1600px' }}
+                                data={sortedJobs}
+                                fixedHeaderContent={() => (
+                                    <>
+                                        <TableRow className="border-b-0 bg-white h-10">
+                                            {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
+                                            <TableHead colSpan={6} className="text-center bg-blue-100 border-r border-black">Data</TableHead>
+                                            <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black">Wissels</TableHead>
+                                            <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black">Berekening</TableHead>
+                                            <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black">Prestatie</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black bg-white"></TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                        <TableRow className="border-b border-black bg-white shadow-sm h-10">
+                                            {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r">Pers</TableHead>}
+                                            <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Pagina's {getSortIcon('pages')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center border-r leading-3 bg-white"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Oplage {getSortIcon('netRun')}</div></TableHead>
+                                            <TableHead onClick={() => requestSort('startup')} style={{ width: COL_WIDTHS.startup }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border-r"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.c4_4 }} className="px-1 text-center bg-gray-50 border-r">4/4</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.c4_0 }} className="px-1 text-center bg-gray-50 border-r">4/0</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.c1_0 }} className="px-1 text-center bg-gray-50 border-r">1/0</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.c1_1 }} className="px-1 text-center bg-gray-50 border-r">1/1</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.c4_1 }} className="px-1 text-center bg-gray-50 border-r">4/1</TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.maxGross }} className="text-center border-r bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
+                                                        title={getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
+                                                    >
+                                                        {getFormulaForColumn('maxGross')?.name || 'Max Bruto'}
+                                                    </span>
+                                                    <div onClick={() => requestSort('maxGross')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('maxGross')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.green }} className="text-center border-r bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
+                                                        title={getFormulaForColumn('green')?.name || 'Groen'}
+                                                    >
+                                                        {getFormulaForColumn('green')?.name || 'Groen'}
+                                                    </span>
+                                                    <div onClick={() => requestSort('green')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('green')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.red }} className="text-center border-r bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span
+                                                        className="font-bold whitespace-nowrap"
+                                                        title={getFormulaForColumn('red')?.name || 'Rood'}
+                                                    >
+                                                        {getFormulaForColumn('red')?.name || 'Rood'}
+                                                    </span>
+                                                    <div onClick={() => requestSort('red')} className="cursor-pointer p-1 hover:bg-gray-200 rounded shrink-0">
+                                                        {getSortIcon('red')}
+                                                    </div>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.delta }} className="text-center border-r bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span className="font-bold">Delta</span>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.deltaPercent }} className="text-center border-r bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <span className="font-bold">Delta %</span>
+                                                </div>
+                                            </TableHead>
+                                            <TableHead style={{ width: COL_WIDTHS.actions }} className="text-center bg-white">
+                                                <div className="flex items-center gap-1 justify-center">
+                                                    <Wrench className="w-4 h-4 text-gray-700" />
+                                                </div>
+                                            </TableHead>
+                                        </TableRow>
+                                    </>
+                                )}
+                                itemContent={(index, job) => (
+                                    <>
+                                        {user?.role?.toLowerCase() === 'admin' && (
+                                            <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70" title={job.pressName}>
+                                                {job.pressName || '-'}
+                                            </TableCell>
+                                        )}
+                                        <TableCell className="py-1 px-2 text-center">{job.date}</TableCell>
+                                        <TableCell className="py-1 px-2 text-center">DT {job.orderNr}</TableCell>
+                                        <TableCell className="py-1 px-2">
+                                            <span className="font-medium mr-2">{job.orderName}</span>
+                                            <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
+                                        </TableCell>
+                                        <TableCell className="text-right py-1 px-1">{formatNumber(job.pages)} blz</TableCell>
+                                        <TableCell className="text-center py-1 px-1">{job.exOmw}</TableCell>
+                                        <TableCell className="text-right py-1 px-1 border-r border-black">{formatNumber(job.netRun)}</TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50">
+                                            <div className="flex justify-center">
+                                                {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
+                                        <TableCell className="text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70">{formatNumber(job.c4_1)}</TableCell>
+                                        <TableCell className="py-1 px-1 text-right">
+                                            {(() => {
+                                                const formula = getFormulaForColumn('maxGross');
+                                                return formula
+                                                    ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
+                                                    : formatNumber(job.maxGross, 0);
+                                            })()}
+                                        </TableCell>
+                                        <TableCell className="py-1 px-1 text-right">
+                                            {(() => {
+                                                const formula = getFormulaForColumn('green');
+                                                return formula
+                                                    ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
+                                                    : formatNumber(job.green);
+                                            })()}
+                                        </TableCell>
+                                        <TableCell className="py-1 px-1 text-right border-r border-black">
+                                            {(() => {
+                                                const formula = getFormulaForColumn('red');
+                                                return formula
+                                                    ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
+                                                    : formatNumber(job.red);
+                                            })()}
+                                        </TableCell>
+                                        <TableCell className="text-right py-1 px-1">
+                                            {(() => {
+                                                const formula = getFormulaForColumn('delta_number');
+                                                return formula
+                                                    ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
+                                                    : formatNumber(job.delta_number, 0);
+                                            })()}
+                                        </TableCell>
+                                        <TableCell className="text-right py-1 px-1 border-r border-black">
+                                            {(() => {
+                                                const formula = getFormulaForColumn('delta_percentage');
+                                                const result = formula
+                                                    ? evaluateFormula(formula.formula, job, parameters, activePresses)
+                                                    : job.delta_percentage;
+
+                                                const percentageValue = typeof result === 'number'
+                                                    ? result
+                                                    : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
+
+                                                return percentageValue !== undefined ? `${formatNumber(percentageValue * 100, 2)}% ` : '-';
+                                            })()}
+                                        </TableCell>
+                                        <TableCell className="py-1 px-1 border-r border-black">
+                                            <div className="flex gap-1 justify-center">
+                                                {(() => {
+                                                    const editLimit = getSystemSetting('drukwerken_edit_limit', 1);
+                                                    const referenceDate = job.date || job.created;
+                                                    const isWithinEditLimit = referenceDate ? differenceInDays(new Date(), new Date(referenceDate)) < Number(editLimit) : true;
+                                                    const canEdit = user?.role === 'admin' || user?.role === 'meestergast' || (user?.role === 'press' && isWithinEditLimit);
+
+                                                    if (!canEdit) return null;
+
+                                                    return (
+                                                        <>
+                                                            <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
+                                                                <Edit className="w-3 h-3" />
+                                                            </Button>
+                                                            {(user?.role === 'admin' || user?.role === 'meestergast') && (
+                                                                <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-re-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </Button>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </TableCell>
+                                    </>
+                                )}
+                                components={{
+                                    Table: ({ style, ...props }: any) => (
+                                        <table
+                                            {...props}
+                                            style={{ ...style, minWidth: '1600px', borderCollapse: 'collapse' }}
+                                            className={`table-fixed w-full ${FONT_SIZES.body}`}
+                                        >
+                                            <colgroup>
+                                                {user?.role?.toLowerCase() === 'admin' && <col style={{ width: COL_WIDTHS.press }} />}
+                                                <col style={{ width: COL_WIDTHS.date }} />
+                                                <col style={{ width: COL_WIDTHS.orderNr }} />
+                                                <col style={{ width: COL_WIDTHS.orderName }} />
+                                                <col style={{ width: COL_WIDTHS.pages }} />
+                                                <col style={{ width: COL_WIDTHS.exOmw }} />
+                                                <col style={{ width: COL_WIDTHS.netRun }} />
+                                                <col style={{ width: COL_WIDTHS.startup }} />
+                                                <col style={{ width: COL_WIDTHS.c4_4 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_1 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_1 }} />
+                                                <col style={{ width: COL_WIDTHS.maxGross }} />
+                                                <col style={{ width: COL_WIDTHS.green }} />
+                                                <col style={{ width: COL_WIDTHS.red }} />
+                                                <col style={{ width: COL_WIDTHS.delta }} />
+                                                <col style={{ width: COL_WIDTHS.deltaPercent }} />
+                                                <col style={{ width: COL_WIDTHS.actions }} />
+                                            </colgroup>
+                                            {props.children}
+                                        </table>
+                                    ),
+                                    TableRow: (props: any) => <tr {...props} className="h-8 hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group border-b border-gray-100" />
+                                }}
+                            />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -1452,3 +1498,5 @@ export function Drukwerken({ presses }: { presses: Press[] }) {
         </div>
     );
 }
+
+export default Drukwerken;

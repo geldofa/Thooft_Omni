@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useAuth } from './AuthContext';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useAuth, pb } from './AuthContext';
 import {
   Table,
   TableBody,
@@ -17,11 +17,61 @@ import { Button } from './ui/button';
 import { PageHeader } from './PageHeader';
 
 export function ActivityLog() {
-  const { activityLogs, user, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterPress, setFilterPress] = useState<string>('all');
   const [filterEntity, setFilterEntity] = useState<string>('all');
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const records = await pb.collection('activity_logs').getFullList({
+        sort: '-created'
+      });
+      setActivityLogs(records.map((r: any) => ({
+        id: r.id,
+        timestamp: new Date(r.created),
+        user: r.user,
+        action: r.action,
+        entity: r.entity,
+        entityId: r.entityId,
+        entityName: r.entityName,
+        details: r.details,
+        press: r.press,
+        oldValue: r.old_value,
+        newValue: r.new_value
+      })));
+    } catch (e) {
+      console.error("Failed to fetch activity logs", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+
+    let isSubscribed = true;
+    const subscribe = async () => {
+      try {
+        await pb.collection('activity_logs').subscribe('*', () => {
+          if (isSubscribed) fetchLogs();
+        });
+      } catch (err) {
+        console.error("Logs subscription failed:", err);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isSubscribed = false;
+      pb.collection('activity_logs').unsubscribe('*').catch(() => { });
+    };
+  }, [fetchLogs]);
 
   const formatDateTime = (date: Date) => {
     const d = new Date(date);
@@ -57,19 +107,33 @@ export function ActivityLog() {
 
       const matchesAction = filterAction === 'all' || log.action === filterAction;
 
-      // Press filter logic
-      let matchesPress = true;
-      if (!hasPermission('logs_view') && user?.press) {
-        // Strict filtering for press users
-        matchesPress = log.press === user.press;
+      // Permission Logic
+      // 1. If user has 'logs_view_all', they can see everything (subject to other filters like press)
+      // 2. If user ONLY has 'logs_view', they can only see their OWN logs
+      let matchesPermission = true;
+      if (hasPermission('logs_view_all')) {
+        matchesPermission = true;
+      } else if (hasPermission('logs_view')) {
+        matchesPermission = log.user === user?.username;
       } else {
-        // Normal filtering for others
+        matchesPermission = false; // Should not happen if route is protected, but safe fallback
+      }
+
+      // Press filter logic (Only relevant if they can see more than just their own, or if they want to filter their own by press)
+      let matchesPress = true;
+      if (hasPermission('logs_view_all')) {
         matchesPress = filterPress === 'all' || log.press === filterPress;
+      } else {
+        // If restricted to own logs, we don't really need press filter (it's hidden in UI), 
+        // but if it were visible, logic remains simple.
+        // However, the original code had specific logic for press role users. 
+        // Let's keep it consistent: strictly own logs for 'logs_view'.
+        matchesPress = true;
       }
 
       const matchesEntity = filterEntity === 'all' || log.entity === filterEntity;
 
-      return matchesSearch && matchesAction && matchesPress && matchesEntity;
+      return matchesPermission && matchesSearch && matchesAction && matchesPress && matchesEntity;
     });
   }, [activityLogs, searchQuery, filterAction, filterPress, filterEntity, user]);
 

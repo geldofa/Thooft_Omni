@@ -1,5 +1,5 @@
-import { useState, useRef, useMemo } from 'react';
-import { MaintenanceTask } from './AuthContext';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { MaintenanceTask, pb, Category, Press } from './AuthContext';
 import { useAuth, PressType } from './AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -12,7 +12,9 @@ import { formatNumber } from '../utils/formatNumber';
 import { PageHeader } from './PageHeader';
 
 interface MaintenanceChecklistProps {
-  tasks: MaintenanceTask[];
+  tasks?: MaintenanceTask[];
+  presses?: Press[];
+  categories?: Category[];
 }
 
 
@@ -34,8 +36,101 @@ const FONT_SIZES = {
   label: 'text-xs',      // Small subtext
 };
 
-export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
-  const { presses, categories } = useAuth();
+export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPresses, categories: initialCategories }: MaintenanceChecklistProps) {
+  const { } = useAuth();
+  const [tasks, setTasks] = useState<MaintenanceTask[]>(initialTasks || []);
+  const [presses, setPresses] = useState<Press[]>(initialPresses || []);
+  const [categories, setCategories] = useState<Category[]>(initialCategories || []);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialTasks) setTasks(initialTasks);
+  }, [initialTasks]);
+
+  useEffect(() => {
+    if (initialPresses) setPresses(initialPresses);
+  }, [initialPresses]);
+
+  useEffect(() => {
+    if (initialCategories) setCategories(initialCategories);
+  }, [initialCategories]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [records, pressRecords, catRecords] = await Promise.all([
+        pb.collection('onderhoud').getFullList({
+          sort: 'sort_order,created',
+          expand: 'category,pers,assigned_operator,assigned_team,tags',
+        }),
+        pb.collection('persen').getFullList(),
+        pb.collection('categorieen').getFullList()
+      ]);
+
+      setPresses(pressRecords.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true
+      })));
+
+      setCategories(catRecords.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+        active: r.active !== false,
+        subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+      })));
+
+      const flattened: MaintenanceTask[] = records.map((record: any) => {
+        const categoryName = record.expand?.category?.naam || 'Uncategorized';
+        const pressName = record.expand?.pers?.naam || 'Unknown';
+
+        return {
+          id: record.id,
+          task: record.task,
+          subtaskName: record.subtask,
+          taskSubtext: record.task_subtext,
+          subtaskSubtext: record.subtask_subtext,
+          category: categoryName,
+          categoryId: record.category,
+          press: pressName,
+          pressId: record.pers,
+          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
+          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
+          maintenanceInterval: record.interval,
+          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
+            record.interval_unit === 'Weken' ? 'weeks' :
+              record.interval_unit === 'Maanden' ? 'months' :
+                record.interval_unit === 'Jaren' ? 'years' : 'days',
+          assignedTo: [
+            ...(record.expand?.assigned_operator?.map((o: any) => o.naam) || []),
+            ...(record.expand?.assigned_team?.map((t: any) => t.name) || [])
+          ].join(', '),
+          opmerkingen: record.opmerkingen || '',
+          comment: record.comment || '',
+          commentDate: record.commentDate ? new Date(record.commentDate) : null,
+          sort_order: record.sort_order || 0,
+          isExternal: record.is_external || false,
+          tagIds: record.tags || [],
+          created: record.created,
+          updated: record.updated
+        };
+      });
+
+      setTasks(flattened);
+    } catch (e) {
+      console.error("Failed to fetch data in MaintenanceChecklist", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialTasks || !initialPresses || !initialCategories) {
+      fetchData();
+    }
+  }, [fetchData, initialTasks, initialPresses, initialCategories]);
   const [selectedPress, setSelectedPress] = useState<PressType | ''>('');
   const printRef = useRef<HTMLDivElement>(null);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]); // State for task IDs to print
@@ -128,6 +223,14 @@ export function MaintenanceChecklist({ tasks }: MaintenanceChecklistProps) {
 
   return (
     <div className="w-full mx-auto">
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <p className="font-medium text-blue-900 text-lg">Laden...</p>
+          </div>
+        </div>
+      )}
       <div className="no-print">
         <PageHeader
           title="Checklist Genereren"

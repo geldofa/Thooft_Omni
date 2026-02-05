@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useAuth, Category } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { pb, useAuth, Category, Press } from './AuthContext';
 import {
     DndContext,
     closestCenter,
@@ -45,7 +45,6 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-
     AlertDialogTrigger,
 } from './ui/alert-dialog';
 import {
@@ -62,8 +61,6 @@ import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
-
-
 
 function SortableItem(props: { id: string, name: string }) {
     const {
@@ -93,46 +90,82 @@ function SortableItem(props: { id: string, name: string }) {
 }
 
 function CategoryOrderConfiguration() {
-    const { presses, categories, updatePressCategoryOrder } = useAuth();
-    const activePresses = presses.filter(p => p.active && !p.archived);
-
-    // Check if we have presses to configure
-    const [selectedPressId, setSelectedPressId] = useState<string>(activePresses.length > 0 ? activePresses[0].id : '');
+    const [presses, setPresses] = useState<Press[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [isLoadingData, setIsLoadingData] = useState(false);
     const [order, setOrder] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [selectedPressId, setSelectedPressId] = useState<string>('');
 
-    // Provide sensors for DnD
-    const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-    );
+    const fetchData = useCallback(async () => {
+        try {
+            setIsLoadingData(true);
+            const [pressResult, catResult] = await Promise.all([
+                pb.collection('persen').getFullList(),
+                pb.collection('categorieen').getFullList()
+            ]);
 
-    // Load initial order when press changes
+            setPresses(pressResult.map((r: any) => ({
+                id: r.id,
+                name: r.naam,
+                active: r.active !== false,
+                archived: r.archived === true,
+                category_order: r.category_order
+            })));
+
+            setCategories(catResult.map((r: any) => ({
+                id: r.id,
+                name: r.naam,
+                pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+                active: r.active !== false,
+                subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+            })));
+        } catch (e) {
+            console.error("Failed to fetch data in CategoryOrderConfig", e);
+        } finally {
+            setIsLoadingData(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchData();
+            const unsubscribePress = pb.collection('persen').subscribe('*', () => fetchData());
+            const unsubscribeCat = pb.collection('categorieen').subscribe('*', () => fetchData());
+            return () => {
+                pb.collection('persen').unsubscribe('*');
+                pb.collection('categorieen').unsubscribe('*');
+            };
+        }
+    }, [isOpen, fetchData]);
+
+    const activePresses = presses.filter(p => p.active && !p.archived);
+
+    useEffect(() => {
+        if (activePresses.length > 0 && !selectedPressId) {
+            setSelectedPressId(activePresses[0].id);
+        }
+    }, [activePresses, selectedPressId]);
+
     useEffect(() => {
         if (!selectedPressId) return;
 
-        // Get categories linked to this press
         const linkedCategories = categories.filter(c => c.pressIds.includes(selectedPressId) && c.active);
         const linkedIds = linkedCategories.map(c => c.id);
-
         const currentPress = presses.find(p => p.id === selectedPressId);
-
-        // Saved order is now guaranteed to be an array (or undefined) by AuthContext
         const savedOrder: string[] = currentPress?.category_order || [];
 
-        console.log('[CategoryOrderConfig] Loading for press:', currentPress?.name, 'Saved Order:', savedOrder);
-        console.log('[CategoryOrderConfig] Linked IDs:', linkedIds);
-
-        // Merge saved order with current categories
-        // 1. Filter saved order to keep only valid linked IDs
-        // 2. Add any new linked categories that aren't in saved order
         const validSavedOrder = savedOrder.filter(id => linkedIds.includes(id));
         const newIds = linkedIds.filter(id => !validSavedOrder.includes(id));
 
         setOrder([...validSavedOrder, ...newIds]);
+    }, [selectedPressId, categories, presses]);
 
-    }, [selectedPressId, categories, presses, isOpen]);
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -149,7 +182,9 @@ function CategoryOrderConfiguration() {
         if (!selectedPressId) return;
         setIsSaving(true);
         try {
-            await updatePressCategoryOrder(selectedPressId, order);
+            await pb.collection('persen').update(selectedPressId, {
+                category_order: order
+            });
             toast.success("Categorievolgorde opgeslagen");
             setIsOpen(false);
         } catch (error) {
@@ -159,7 +194,6 @@ function CategoryOrderConfiguration() {
         }
     };
 
-    // Helper to get name
     const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || id;
 
     return (
@@ -186,7 +220,7 @@ function CategoryOrderConfiguration() {
                                 <SelectValue placeholder="Kies een pers" />
                             </SelectTrigger>
                             <SelectContent>
-                                {activePresses.filter(p => p && p.id && p.id.trim() !== '').map(p => (
+                                {activePresses.map(p => (
                                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -194,7 +228,9 @@ function CategoryOrderConfiguration() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto border rounded-md p-4 bg-gray-50/50">
-                        {order.length === 0 ? (
+                        {isLoadingData ? (
+                            <div className="text-center py-8">Laden...</div>
+                        ) : order.length === 0 ? (
                             <div className="text-center text-gray-500 py-8">Geen categorieën gevonden voor deze pers.</div>
                         ) : (
                             <DndContext
@@ -229,9 +265,94 @@ function CategoryOrderConfiguration() {
 }
 
 export function CategoryManagement() {
-    const { categories, addCategory, updateCategory, deleteCategory, addActivityLog, user, presses } = useAuth();
+    const { user, addActivityLog } = useAuth();
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [presses, setPresses] = useState<Press[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Get active presses for columns and selectors
+    const fetchData = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const [catResult, pressResult] = await Promise.all([
+                pb.collection('categorieen').getFullList(),
+                pb.collection('persen').getFullList()
+            ]);
+
+            setCategories(catResult.map((r: any) => ({
+                id: r.id,
+                name: r.naam,
+                pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+                active: r.active !== false,
+                subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+            })));
+
+            setPresses(pressResult.map((r: any) => ({
+                id: r.id,
+                name: r.naam,
+                active: r.active !== false,
+                archived: r.archived === true,
+                category_order: r.category_order
+            })));
+        } catch (e) {
+            console.error("Failed to fetch data in CategoryManagement", e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+        const unsubCat = pb.collection('categorieen').subscribe('*', () => fetchData());
+        const unsubPress = pb.collection('persen').subscribe('*', () => fetchData());
+        return () => {
+            pb.collection('categorieen').unsubscribe('*');
+            pb.collection('persen').unsubscribe('*');
+        };
+    }, [fetchData]);
+
+    const addCategory = async (category: Omit<Category, 'id'>) => {
+        try {
+            await pb.collection('categorieen').create({
+                naam: category.name,
+                pers_ids: category.pressIds,
+                active: category.active,
+                subtexts: category.subtexts
+            });
+            fetchData();
+            return true;
+        } catch (e) {
+            console.error("Add category failed", e);
+            return false;
+        }
+    };
+
+    const updateCategory = async (category: Category) => {
+        try {
+            await pb.collection('categorieen').update(category.id, {
+                naam: category.name,
+                pers_ids: category.pressIds,
+                active: category.active,
+                subtexts: category.subtexts
+            });
+            fetchData();
+            return true;
+        } catch (e) {
+            console.error("Update category failed", e);
+            return false;
+        }
+    };
+
+    const deleteCategoryLocal = async (id: string) => {
+        try {
+            await pb.collection('categorieen').delete(id);
+            fetchData();
+            return true;
+        } catch (e) {
+            console.error("Delete category failed", e);
+            return false;
+        }
+    };
+
     const activePressRecords = presses.filter(p => p.active && !p.archived);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -261,33 +382,21 @@ export function CategoryManagement() {
         const updates = editedCategories.map(async (editedCategory) => {
             const originalCategory = categories.find(cat => cat.id === editedCategory.id);
             if (originalCategory) {
-                // Compare specific fields instead of full JSON
                 const nameChanged = originalCategory.name !== editedCategory.name;
                 const subtextsChanged = JSON.stringify(originalCategory.subtexts || {}) !== JSON.stringify(editedCategory.subtexts || {});
                 const activeChanged = originalCategory.active !== editedCategory.active;
                 const pressIdsChanged = JSON.stringify(originalCategory.pressIds.sort()) !== JSON.stringify(editedCategory.pressIds.sort());
 
                 if (nameChanged || subtextsChanged || activeChanged || pressIdsChanged) {
-                    console.log('Updating category:', editedCategory.name, { nameChanged, subtextsChanged, activeChanged, pressIdsChanged });
                     return await updateCategory(editedCategory);
                 }
             }
             return null;
         });
 
-        const results = await Promise.all(updates);
-        const failures = results.filter(r => r === false).length;
-        const changes = results.filter(r => r !== null).length;
-
-        if (changes === 0) {
-            setEditMode(false);
-            return;
-        }
-
-        if (failures === 0) {
-            toast.success('Wijzigingen succesvol opgeslagen');
-            setEditMode(false);
-        }
+        await Promise.all(updates);
+        toast.success('Wijzigingen succesvol opgeslagen');
+        setEditMode(false);
     };
 
     const handleOpenDialog = (category?: Category) => {
@@ -307,8 +416,8 @@ export function CategoryManagement() {
                 pressIds: [],
                 active: true
             });
-            setIsAddDialogOpen(true);
         }
+        setIsAddDialogOpen(true);
     };
 
     const handleCloseDialog = () => {
@@ -345,16 +454,14 @@ export function CategoryManagement() {
         }
 
         let success = false;
-
         if (editingCategory) {
-            const updatedCategory: Category = {
+            success = await updateCategory({
                 ...editingCategory,
                 name: formData.name,
                 subtexts: formData.subtexts,
                 pressIds: formData.pressIds,
                 active: formData.active
-            };
-            success = await updateCategory(updatedCategory);
+            });
 
             if (success) {
                 toast.success('Categorie succesvol bijgewerkt');
@@ -369,7 +476,6 @@ export function CategoryManagement() {
             }
         } else {
             success = await addCategory(formData);
-
             if (success) {
                 toast.success('Categorie succesvol toegevoegd');
                 addActivityLog({
@@ -388,18 +494,19 @@ export function CategoryManagement() {
         }
     };
 
-    const handleDelete = (id: string, name: string) => {
-        deleteCategory(id);
-        toast.success(`Categorie "${name}" succesvol verwijderd`);
-
-        addActivityLog({
-            user: user?.username || 'Unknown',
-            action: 'Deleted',
-            entity: 'Category',
-            entityId: id,
-            entityName: name,
-            details: `Deleted category`
-        });
+    const handleDelete = async (id: string, name: string) => {
+        const success = await deleteCategoryLocal(id);
+        if (success) {
+            toast.success(`Categorie "${name}" succesvol verwijderd`);
+            addActivityLog({
+                user: user?.username || 'Unknown',
+                action: 'Deleted',
+                entity: 'Category',
+                entityId: id,
+                entityName: name,
+                details: `Deleted category`
+            });
+        }
     };
 
     const filteredCategories = categories.filter(cat => showInactive ? true : cat.active);
@@ -445,19 +552,23 @@ export function CategoryManagement() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-gray-50 hover:bg-gray-50">
+                        <TableRow className="bg-gray-50 hover:bg-gray-50 border-b">
                             <TableHead className="border-r border-gray-200 font-semibold text-gray-900">Naam</TableHead>
                             {activePressRecords.map(press => (
                                 <TableHead key={press.id} className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">{press.name}</TableHead>
                             ))}
                             <TableHead className="w-[100px] text-center border-r border-gray-200 font-semibold text-gray-900">Status</TableHead>
-                            {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900">Actions</TableHead>}
+                            {!editMode && <TableHead className="text-right w-[100px] font-semibold text-gray-900 pr-4">Acties</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {(editMode ? editedCategories : filteredCategories).length === 0 ? (
+                        {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={editMode ? 5 : 6} className="text-center py-12 text-gray-500">
+                                <TableCell colSpan={activePressRecords.length + 3} className="text-center py-12">Laden...</TableCell>
+                            </TableRow>
+                        ) : (editMode ? editedCategories : filteredCategories).length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={activePressRecords.length + 3} className="text-center py-12 text-gray-500">
                                     Geen categorieën gevonden.
                                 </TableCell>
                             </TableRow>
@@ -476,7 +587,7 @@ export function CategoryManagement() {
                                         )}
                                     </TableCell>
                                     {activePressRecords.map(press => (
-                                        <TableCell key={press.id} className="border-r border-gray-200 p-0">
+                                        <TableCell key={press.id} className="border-r border-gray-200 p-0 text-center">
                                             <div className="flex justify-center items-center h-full py-2">
                                                 {editMode ? (
                                                     <Checkbox
@@ -493,7 +604,7 @@ export function CategoryManagement() {
                                                         <div className="flex items-center justify-center gap-2">
                                                             <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
                                                             {category.subtexts?.[press.id] && (
-                                                                <span className="text-xs text-gray-500">{category.subtexts[press.id]}</span>
+                                                                <span className="text-xs text-gray-500 italic">{category.subtexts[press.id]}</span>
                                                             )}
                                                         </div>
                                                     ) : (
@@ -520,7 +631,7 @@ export function CategoryManagement() {
                                         )}
                                     </TableCell>
                                     {!editMode && (
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right pr-4">
                                             <div className="flex items-center justify-end gap-1">
                                                 <Button
                                                     variant="ghost"
@@ -543,12 +654,12 @@ export function CategoryManagement() {
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogCancel>Annuleren</AlertDialogCancel>
                                                             <AlertDialogAction
                                                                 onClick={() => handleDelete(category.id, category.name)}
                                                                 className="bg-red-500 hover:bg-red-600"
                                                             >
-                                                                Delete
+                                                                Verwijderen
                                                             </AlertDialogAction>
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
@@ -575,7 +686,7 @@ export function CategoryManagement() {
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit}>
-                        <div className="grid gap-4 py-4">
+                        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
                             <div className="grid gap-2">
                                 <Label htmlFor="categoryName">Naam *</Label>
                                 <Input
@@ -601,7 +712,7 @@ export function CategoryManagement() {
                                                     />
                                                     <label
                                                         htmlFor={`category-${press.id}`}
-                                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                                        className="text-sm font-medium leading-none cursor-pointer"
                                                     >
                                                         {press.name}
                                                     </label>
@@ -643,7 +754,7 @@ export function CategoryManagement() {
                             </div>
                         </div>
 
-                        <DialogFooter>
+                        <DialogFooter className="mt-4">
                             <Button type="button" variant="outline" onClick={handleCloseDialog}>
                                 Annuleren
                             </Button>

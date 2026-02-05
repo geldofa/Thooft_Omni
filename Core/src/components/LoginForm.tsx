@@ -31,7 +31,9 @@ export function LoginForm() {
     }
 
     const success = await login(username, password);
-    if (!success) {
+    if (success) {
+      sessionStorage.setItem('redirect_login', 'true');
+    } else {
       setError('Ongeldige gebruikersnaam of wachtwoord');
     }
   };
@@ -91,18 +93,13 @@ export function LoginForm() {
     setSearchingId(null);
 
     if (workingPw) {
-      // Typing effect
-      for (let i = 1; i <= workingPw.length; i++) {
-        setPassword(workingPw.substring(0, i));
-        await new Promise(resolve => setTimeout(resolve, 80));
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 400));
       setIsLoggingIn(true);
       const success = await login(acc.username, workingPw);
       setIsLoggingIn(false);
 
-      if (!success) {
+      if (success) {
+        sessionStorage.setItem('redirect_login', 'true');
+      } else {
         setError(`Automatisch inloggen mislukt voor ${acc.username}. Controleer het wachtwoord.`);
       }
     } else {

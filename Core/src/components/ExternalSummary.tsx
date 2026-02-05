@@ -1,13 +1,105 @@
-import { useMemo } from 'react';
-import { useAuth, MaintenanceTask, EXTERNAL_TAG_NAME } from './AuthContext';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useAuth, MaintenanceTask, EXTERNAL_TAG_NAME, GroupedTask, pb, Tag } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
 import { Calendar, User, Factory } from 'lucide-react';
 import { PageHeader } from './PageHeader';
 
-export function ExternalSummary() {
-    const { tasks, tags } = useAuth();
+interface ExternalSummaryProps {
+    tasks?: GroupedTask[];
+    tags?: Tag[];
+}
+
+export function ExternalSummary({ tasks: propsTasks, tags: propsTags }: ExternalSummaryProps) {
+    const [tasks, setTasks] = useState<GroupedTask[]>(propsTasks || []);
+    const [tags, setTags] = useState<Tag[]>(propsTags || []);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchData = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const [records, tagRecords] = await Promise.all([
+                pb.collection('onderhoud').getFullList({
+                    sort: 'sort_order,created',
+                    expand: 'category,pers,assigned_operator,assigned_team,tags',
+                }),
+                pb.collection('tags').getFullList()
+            ]);
+
+            const mappedTags = tagRecords.map((t: any) => ({
+                id: t.id,
+                naam: t.naam,
+                kleur: t.kleur,
+                active: t.active !== false,
+                system_managed: t.system_managed === true
+            }));
+            setTags(mappedTags);
+
+            const grouped: GroupedTask[] = [];
+            records.forEach((record: any) => {
+                const groupName = record.task;
+                const subtext = record.task_subtext;
+                const categoryName = record.expand?.category?.naam || 'Ongecategoriseerd';
+                const categoryId = record.category;
+                const pressName = record.expand?.pers?.naam || 'Onbekend';
+                const pressId = record.pers;
+
+                let group = grouped.find(g =>
+                    g.taskName === groupName &&
+                    g.pressId === pressId &&
+                    g.categoryId === categoryId
+                );
+
+                if (!group) {
+                    group = {
+                        id: record.id,
+                        taskName: groupName,
+                        taskSubtext: subtext,
+                        category: categoryName,
+                        categoryId: categoryId,
+                        press: pressName,
+                        pressId: pressId,
+                        subtasks: []
+                    };
+                    grouped.push(group);
+                }
+
+                group.subtasks.push({
+                    id: record.id,
+                    subtaskName: record.subtask,
+                    subtext: record.subtask_subtext,
+                    lastMaintenance: record.last_date ? new Date(record.last_date) : null,
+                    nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
+                    maintenanceInterval: record.interval,
+                    maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
+                        record.interval_unit === 'Weken' ? 'weeks' :
+                            record.interval_unit === 'Maanden' ? 'months' :
+                                record.interval_unit === 'Jaren' ? 'years' : 'days',
+                    assignedTo: [
+                        ...(record.expand?.assigned_operator?.map((o: any) => o.naam) || []),
+                        ...(record.expand?.assigned_team?.map((t: any) => t.name) || [])
+                    ].join(', '),
+                    comment: record.opmerkingen || '',
+                    sort_order: record.sort_order || 0,
+                    isExternal: record.is_external || false,
+                    tagIds: record.tags || []
+                } as any);
+            });
+
+            setTasks(grouped);
+        } catch (e) {
+            console.error("Failed to fetch data in ExternalSummary", e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!propsTasks || !propsTags) {
+            fetchData();
+        }
+    }, [fetchData, propsTasks, propsTags]);
 
     // Flatten all subtasks and filter those marked as external
     const externalTasks = useMemo(() => {
@@ -89,6 +181,14 @@ export function ExternalSummary() {
 
     return (
         <div className="w-full mx-auto">
+            {isLoading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                        <p className="font-medium text-blue-900 text-lg">Laden...</p>
+                    </div>
+                </div>
+            )}
             <PageHeader
                 title="Totaaloverzicht Externe Taken"
                 description="Alle taken die door externe partijen uitgevoerd moeten worden, verzameld over alle persen"

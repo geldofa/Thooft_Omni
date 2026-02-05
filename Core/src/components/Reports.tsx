@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { MaintenanceTask } from './AuthContext';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { MaintenanceTask, pb, Press } from './AuthContext';
 import { useAuth, PressType } from './AuthContext';
 import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
@@ -9,13 +9,93 @@ import { Printer, FileText } from 'lucide-react';
 import { PageHeader } from './PageHeader';
 
 interface ReportsProps {
-  tasks: MaintenanceTask[];
+  tasks?: MaintenanceTask[]; // Optional for backward compatibility during transition
+  presses?: Press[];
 }
 
 type OverdueFilter = 'all' | '1m' | '3m' | '1y';
 
-export function Reports({ tasks }: ReportsProps) {
-  const { presses } = useAuth();
+export function Reports({ tasks: initialTasks, presses: initialPresses }: ReportsProps) {
+  const { } = useAuth();
+  const [tasks, setTasks] = useState<MaintenanceTask[]>(initialTasks || []);
+  const [presses, setPresses] = useState<Press[]>(initialPresses || []);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialTasks) setTasks(initialTasks);
+  }, [initialTasks]);
+
+  useEffect(() => {
+    if (initialPresses) setPresses(initialPresses);
+  }, [initialPresses]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [records, pressRecords] = await Promise.all([
+        pb.collection('onderhoud').getFullList({
+          sort: 'sort_order,created',
+          expand: 'category,pers,assigned_operator,assigned_team,tags',
+        }),
+        pb.collection('persen').getFullList()
+      ]);
+
+      setPresses(pressRecords.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true
+      })));
+
+      const flattened: MaintenanceTask[] = records.map((record: any) => {
+        const categoryName = record.expand?.category?.naam || 'Uncategorized';
+        const pressName = record.expand?.pers?.naam || 'Unknown';
+
+        return {
+          id: record.id,
+          task: record.task,
+          subtaskName: record.subtask,
+          taskSubtext: record.task_subtext,
+          subtaskSubtext: record.subtask_subtext,
+          category: categoryName,
+          categoryId: record.category,
+          press: pressName,
+          pressId: record.pers,
+          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
+          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
+          maintenanceInterval: record.interval,
+          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
+            record.interval_unit === 'Weken' ? 'weeks' :
+              record.interval_unit === 'Maanden' ? 'months' :
+                record.interval_unit === 'Jaren' ? 'years' : 'days',
+          assignedTo: [
+            ...(record.expand?.assigned_operator?.map((o: any) => o.naam) || []),
+            ...(record.expand?.assigned_team?.map((t: any) => t.name) || [])
+          ].join(', '),
+          opmerkingen: record.opmerkingen || '',
+          comment: record.comment || '',
+          commentDate: record.commentDate ? new Date(record.commentDate) : null,
+          sort_order: record.sort_order || 0,
+          isExternal: record.is_external || false,
+          tagIds: record.tags || [],
+          created: record.created,
+          updated: record.updated
+        };
+      });
+
+      setTasks(flattened);
+    } catch (e) {
+      console.error("Failed to fetch data in Reports", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialTasks || !initialPresses) {
+      fetchData();
+    }
+  }, [fetchData, initialTasks, initialPresses]);
   const [selectedPress, setSelectedPress] = useState<PressType | 'all'>(() => {
     if (typeof sessionStorage !== 'undefined') {
       return (sessionStorage.getItem('reports_selectedPress') as PressType | 'all') || 'all';
@@ -215,6 +295,14 @@ export function Reports({ tasks }: ReportsProps) {
 
   return (
     <div className="w-full mx-auto">
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <p className="font-medium text-blue-900 text-lg">Laden...</p>
+          </div>
+        </div>
+      )}
       <div className="no-print">
         {/* HEADER ROW - LEFT ALIGNED TITLE, RIGHT ALIGNED BUTTON */}
         <PageHeader

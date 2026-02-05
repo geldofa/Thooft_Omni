@@ -4,7 +4,7 @@ import { LucideIcon } from 'lucide-react';
 // I'll stick to simple strings + props.
 
 interface PageHeaderProps {
-    title: string;
+    title: React.ReactNode;
     description?: string;
     icon?: LucideIcon | React.ElementType;
     actions?: React.ReactNode;

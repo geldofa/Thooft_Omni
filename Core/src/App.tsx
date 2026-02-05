@@ -1,7 +1,6 @@
-import { useEffect, useState, Profiler, lazy, Suspense, startTransition } from 'react';
+import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth, MaintenanceTask } from './components/AuthContext';
-import { GroupedTask } from './components/AuthContext';
+import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, EXTERNAL_TAG_NAME, Press, Category, Tag } from './components/AuthContext';
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
@@ -12,7 +11,7 @@ import { Badge } from './components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { PageHeader } from './components/PageHeader';
-import { ListChecks, Plus } from 'lucide-react';
+import { ListChecks, Plus, RefreshCw } from 'lucide-react';
 import { getStatusInfo } from './utils/StatusUtils';
 import { APP_TITLE } from './config';
 
@@ -29,24 +28,260 @@ const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m
 import { Home } from './components/Home';
 
 function MainApp() {
+  const navigate = useNavigate();
+  const [groupedTasks, setGroupedTasks] = useState<GroupedTask[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false); // Restore for UI compatibility
+
   const {
     user,
     addActivityLog,
-    presses,
-    tasks: groupedTasks,
-    addTask,
-    updateTask,
-    deleteTask,
-    fetchTasks,
-    fetchActivityLogs,
-    fetchUserAccounts,
     isFirstRun,
     checkFirstRun,
-    hasPermission
+    hasPermission,
+    fetchActivityLogs, // Restore missing functions
+    fetchUserAccounts,
+    isLoading: authLoading
   } = useAuth();
 
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoadingTasks(true);
+      const [records, tagRecords, pressRecords, catRecords] = await Promise.all([
+        pb.collection('onderhoud').getFullList({
+          sort: 'sort_order,created',
+          expand: 'category,pers,assigned_operator,assigned_team,tags',
+        }),
+        pb.collection('tags').getFullList(),
+        pb.collection('persen').getFullList(),
+        pb.collection('categorieen').getFullList()
+      ]);
+
+      setTags(tagRecords.map((t: any) => ({
+        id: t.id,
+        naam: t.naam,
+        kleur: t.kleur,
+        active: t.active !== false,
+        system_managed: t.system_managed === true
+      })));
+
+      setPresses(pressRecords.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true,
+        category_order: r.category_order
+      })));
+
+      setCategories(catRecords.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
+        active: r.active !== false,
+        subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
+      })));
+
+      const grouped: GroupedTask[] = [];
+      records.forEach((record: any) => {
+        const groupName = record.task;
+        const subtext = record.task_subtext;
+        const categoryName = record.expand?.category?.naam || 'Ongecategoriseerd';
+        const categoryId = record.category;
+        const pressName = record.expand?.pers?.naam || 'Onbekend';
+        const pressId = record.pers;
+
+        let group = grouped.find(g =>
+          g.taskName === groupName &&
+          g.pressId === pressId &&
+          g.categoryId === categoryId
+        );
+
+        if (!group) {
+          group = {
+            id: record.id,
+            taskName: groupName,
+            taskSubtext: subtext,
+            category: categoryName,
+            categoryId: categoryId,
+            press: pressName,
+            pressId: pressId,
+            subtasks: []
+          };
+          grouped.push(group);
+        }
+
+        group.subtasks.push({
+          id: record.id,
+          subtaskName: record.subtask,
+          subtext: record.subtask_subtext,
+          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
+          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
+          maintenanceInterval: record.interval,
+          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
+            record.interval_unit === 'Weken' ? 'weeks' :
+              record.interval_unit === 'Maanden' ? 'months' :
+                record.interval_unit === 'Jaren' ? 'years' : 'days',
+          assignedTo: [
+            ...(record.expand?.assigned_operator?.map((o: any) => o.naam || o.name || o.username || 'Onbekend') || []),
+            ...(record.expand?.assigned_team?.map((t: any) => t.naam || t.name || 'Onbekend') || [])
+          ].join(', ') || '',
+          assignedToIds: [
+            ...(record.assigned_operator || []),
+            ...(record.assigned_team || [])
+          ],
+          assignedToTypes: [
+            ...(record.assigned_operator || []).map(() => 'operator'),
+            ...(record.assigned_team || []).map(() => 'ploeg')
+          ],
+          comment: record.opmerkingen || '',
+          sort_order: record.sort_order || 0,
+          isExternal: record.is_external || false,
+          tagIds: record.tags || []
+        } as any);
+      });
+
+      setGroupedTasks(grouped);
+    } catch (e) {
+      console.error("Failed to fetch data in App", e);
+      toast.error("Fout bij het laden van gegevens");
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+
+    const subscribe = async () => {
+      try {
+        await pb.collection('onderhoud').subscribe('*', () => {
+          fetchData();
+        });
+      } catch (err) {
+        console.error("Task subscription failed:", err);
+      }
+    };
+
+    if (user?.id) {
+      subscribe();
+    }
+
+    return () => {
+      pb.collection('onderhoud').unsubscribe('*').catch(() => { });
+    };
+  }, [user?.id, fetchData]);
+
+  // Handle Post-Login Redirect
+  useEffect(() => {
+    if (user && sessionStorage.getItem('redirect_login') === 'true') {
+      sessionStorage.removeItem('redirect_login');
+      // Navigate to first available page (Tasks view)
+      // This will trigger the appropriate route redirects based on role
+      navigate('/Taken');
+    }
+  }, [user, navigate]);
+
+  const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
+    try {
+      const baseData = {
+        task: task.task,
+        task_subtext: task.taskSubtext,
+        category: task.categoryId,
+        pers: task.pressId,
+        last_date: task.lastMaintenance,
+        next_date: task.nextMaintenance,
+        interval: task.maintenanceInterval,
+        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
+              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
+        assigned_operator: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [],
+        assigned_team: task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [],
+        opmerkingen: task.opmerkingen,
+        comment: task.comment || '',
+        commentDate: task.commentDate,
+        sort_order: task.sort_order || 0,
+        is_external: task.isExternal || false,
+        tags: task.tagIds || []
+      };
+
+      if (task.subtasks && task.subtasks.length > 0) {
+        await Promise.all(task.subtasks.map(sub =>
+          pb.collection('onderhoud').create({
+            ...baseData,
+            subtask: sub.name,
+            subtask_subtext: sub.subtext,
+            opmerkingen: sub.opmerkingen || task.opmerkingen,
+            sort_order: sub.sort_order || 0,
+            is_external: sub.isExternal || task.isExternal || false
+          })
+        ));
+      } else {
+        await pb.collection('onderhoud').create({
+          ...baseData,
+          subtask: task.subtaskName || task.task,
+          subtask_subtext: task.subtaskSubtext || task.taskSubtext,
+        });
+      }
+      fetchData();
+      toast.success('Taak succesvol toegevoegd');
+    } catch (e) {
+      console.error("Add task failed:", e);
+      toast.error('Toevoegen mislukt');
+    }
+  };
+
+  const updateTask = async (task: MaintenanceTask, refresh: boolean = true) => {
+    try {
+      const operatorIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [];
+      const teamIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [];
+
+      await pb.collection('onderhoud').update(task.id, {
+        task: task.task,
+        subtask: task.subtaskName || task.task,
+        task_subtext: task.taskSubtext,
+        subtask_subtext: task.subtaskSubtext || task.taskSubtext,
+        category: task.categoryId,
+        pers: task.pressId,
+        last_date: task.lastMaintenance,
+        next_date: task.nextMaintenance,
+        interval: task.maintenanceInterval,
+        interval_unit: task.maintenanceIntervalUnit === 'days' ? 'Dagen' :
+          task.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
+            task.maintenanceIntervalUnit === 'months' ? 'Maanden' :
+              task.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Dagen',
+        assigned_operator: operatorIds,
+        assigned_team: teamIds,
+        opmerkingen: task.opmerkingen,
+        comment: task.comment || '',
+        commentDate: task.commentDate,
+        is_external: task.isExternal || false,
+        sort_order: task.sort_order || 0,
+        tags: task.tagIds || []
+      });
+      if (refresh) fetchData();
+      toast.success('Taak succesvol bijgewerkt');
+    } catch (e) {
+      console.error("Update task failed:", e);
+      toast.error('Bijwerken mislukt');
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      await pb.collection('onderhoud').delete(id);
+      fetchData();
+      toast.success('Taak verwijderd');
+    } catch (e) {
+      console.error("Delete task failed:", e);
+      toast.error('Verwijderen mislukt');
+    }
+  };
+
   // --- Router Hooks ---
-  const navigate = useNavigate();
+  // const navigate = useNavigate(); // Duplicate declaration removed
   const location = useLocation();
 
   useEffect(() => {
@@ -98,7 +333,7 @@ function MainApp() {
     setStatusFilter(statusFilter === status ? null : status);
   };
 
-  const currentPressTasks = groupedTasks.filter(group => group.press === location.pathname.split('/').pop());
+  const currentPressTasks = groupedTasks.filter(group => group.press === decodeURIComponent(location.pathname.split('/').pop() || ''));
   const allSubtasks = currentPressTasks.flatMap(group => group.subtasks);
 
   const statusCounts = allSubtasks.reduce((acc, subtask) => {
@@ -141,11 +376,11 @@ function MainApp() {
   useEffect(() => {
     const path = location.pathname.toLowerCase();
     if (path.startsWith('/taken')) {
-      fetchTasks();
+      fetchData();
     }
     else if (path === '/logboek') fetchActivityLogs();
     else if (path === '/beheer/accounts') fetchUserAccounts();
-  }, [location.pathname, fetchTasks, fetchActivityLogs, fetchUserAccounts]);
+  }, [location.pathname, fetchData, fetchActivityLogs, fetchUserAccounts]);
 
   // Ensure a valid press is selected when they load or active list changes
   useEffect(() => {
@@ -242,7 +477,7 @@ function MainApp() {
           await addTask(rest);
         }
       }
-      await fetchTasks(); // Final refresh after all updates
+      await fetchData(); // Final refresh after all updates
       setIsAddDialogOpen(false);
       setEditingTask(null);
       setEditingTaskGroup(null);
@@ -256,10 +491,16 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
-      <Toaster position="bottom-right" />
+      <Toaster position="top-right" />
       <ScrollToTop />
 
-      {isFirstRun ? (
+
+
+      {authLoading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      ) : isFirstRun ? (
         <OnboardingWizard onComplete={checkFirstRun} />
       ) : !user ? (
         <LoginForm />
@@ -274,14 +515,24 @@ function MainApp() {
                 {/* --- TAKEN --- */}
                 <Route path="/Taken" element={
                   activePresses.length > 0
-                    ? <Navigate to={`/Taken/${activePresses[0].name}`} replace />
+                    ? <Navigate to={`/Taken/${encodeURIComponent(activePresses[0].name)}`} replace />
                     : <Navigate to="/" replace />
                 } />
                 <Route path="/Taken/:pressName" element={
                   hasPermission('tasks_view') ? (
                     <div className="space-y-6">
                       <PageHeader
-                        title="Onderhoudstaken"
+                        title={
+                          <div className="flex items-center gap-4">
+                            <span>Onderhoudstaken</span>
+                            {isLoadingTasks && (
+                              <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <span>Laden...</span>
+                              </div>
+                            )}
+                          </div>
+                        }
                         description="Beheer en plan onderhoudstaken"
                         icon={ListChecks}
                         actions={
@@ -351,8 +602,8 @@ function MainApp() {
                       {activePresses.length > 1 && (
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
                           <Tabs
-                            value={location.pathname.split('/').pop()}
-                            onValueChange={(value) => navigate(`/Taken/${value}`)}
+                            value={decodeURIComponent(location.pathname.split('/').pop() || '')}
+                            onValueChange={(value) => navigate(`/Taken/${encodeURIComponent(value)}`)}
                             className="w-full sm:w-auto"
                           >
                             <TabsList className="tab-pill-list">
@@ -427,18 +678,18 @@ function MainApp() {
 
                 {/* --- EXTERN --- */}
                 <Route path="/Extern" element={
-                  hasPermission('extern_view') ? <ExternalSummary /> : <Navigate to="/" replace />
+                  hasPermission('extern_view') ? <ExternalSummary tasks={groupedTasks} tags={tags} /> : <Navigate to="/" replace />
                 } />
 
                 {/* --- BEHEER (MANAGEMENT) --- */}
                 <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
                 <Route path="/Beheer/:subtab" element={
-                  hasPermission('management_access') ? <ManagementLayout /> : <Navigate to="/" replace />
+                  hasPermission('management_access') ? <ManagementLayout tasks={groupedTasks} tags={tags} /> : <Navigate to="/" replace />
                 } />
 
                 {/* --- ANALYSIS & LOGS --- */}
-                <Route path="/Rapport" element={hasPermission('reports_view') ? <Reports tasks={tasks} /> : <Navigate to="/" replace />} />
-                <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} /> : <Navigate to="/" replace />} />
+                <Route path="/Rapport" element={hasPermission('reports_view') ? <Reports tasks={tasks} presses={presses} /> : <Navigate to="/" replace />} />
+                <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} presses={presses} categories={categories} /> : <Navigate to="/" replace />} />
                 <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
                 <Route path="/Feedback" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
 
@@ -491,8 +742,8 @@ function MainApp() {
 
 // Performance Profiler Callback
 function onRenderCallback(
-  _id: string,
-  _phase: 'mount' | 'update' | 'nested-update',
+  id: string,
+  phase: 'mount' | 'update' | 'nested-update',
   actualDuration: number,
   _baseDuration: number,
   _startTime: number,
@@ -505,61 +756,8 @@ function onRenderCallback(
 }
 
 function App() {
-  const [tasks] = useState<GroupedTask[]>([
-    {
-      id: '1',
-      taskName: 'HVAC System Maintenance',
-      taskSubtext: 'Comprehensive maintenance for all HVAC units',
-      category: 'HVAC',
-      categoryId: 'cat-hvac',
-      press: 'Lithoman',
-      pressId: 'press-litho',
-      subtasks: [
-        {
-          id: '1-1',
-          subtaskName: 'Filter Replacement',
-          subtext: 'All air handling units',
-          lastMaintenance: new Date('2025-10-15'),
-          nextMaintenance: new Date('2026-01-15'),
-          maintenanceInterval: 3,
-          maintenanceIntervalUnit: 'months',
-          assignedTo: 'John Smith',
-          comment: 'Completed on schedule.',
-          commentDate: new Date('2025-10-15T14:30:00'),
-          sort_order: 0,
-          isExternal: false
-        }
-      ]
-    },
-    {
-      id: '2',
-      taskName: 'Safety Equipment Checks',
-      taskSubtext: 'Regular inspection of all safety gear',
-      category: 'Safety',
-      categoryId: 'cat-safety',
-      press: 'C80',
-      pressId: 'press-c80',
-      subtasks: [
-        {
-          id: '2-1',
-          subtaskName: 'Fire Extinguisher Inspection',
-          subtext: 'All floors - 45 units total',
-          lastMaintenance: new Date('2025-09-01'),
-          nextMaintenance: new Date('2025-12-01'),
-          maintenanceInterval: 3,
-          maintenanceIntervalUnit: 'months',
-          assignedTo: 'Sarah Johnson',
-          comment: 'All extinguishers passed inspection.',
-          commentDate: new Date('2025-09-01T09:15:00'),
-          sort_order: 0,
-          isExternal: false
-        }
-      ]
-    }
-  ]);
-
   return (
-    <AuthProvider tasks={tasks}>
+    <AuthProvider>
       <Profiler id="MainApp" onRender={onRenderCallback}>
         <MainApp />
       </Profiler>

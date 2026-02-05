@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAuth, Press } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { pb, useAuth, Press } from './AuthContext';
 import {
   Table,
   TableBody,
@@ -37,7 +37,79 @@ import {
 import { toast } from 'sonner';
 
 export function PressManagement() {
-  const { presses, addPress, updatePress, deletePress, addActivityLog, user } = useAuth();
+  const { user, addActivityLog } = useAuth();
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchPresses = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const records = await pb.collection('persen').getFullList({
+        sort: 'naam'
+      });
+      setPresses(records.map((r: any) => ({
+        id: r.id,
+        name: r.naam,
+        active: r.active !== false,
+        archived: r.archived === true,
+        category_order: r.category_order
+      })));
+    } catch (e) {
+      console.error("Failed to fetch presses", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPresses();
+    const unsubscribe = pb.collection('persen').subscribe('*', () => fetchPresses());
+    return () => {
+      pb.collection('persen').unsubscribe('*');
+    };
+  }, [fetchPresses]);
+
+  const addPressLocal = async (press: Omit<Press, 'id'>) => {
+    try {
+      await pb.collection('persen').create({
+        naam: press.name,
+        active: press.active,
+        archived: press.archived
+      });
+      fetchPresses();
+      return true;
+    } catch (e) {
+      console.error("Add press failed", e);
+      return false;
+    }
+  };
+
+  const updatePressLocal = async (press: Press) => {
+    try {
+      await pb.collection('persen').update(press.id, {
+        naam: press.name,
+        active: press.active,
+        archived: press.archived
+      });
+      fetchPresses();
+      return true;
+    } catch (e) {
+      console.error("Update press failed", e);
+      return false;
+    }
+  };
+
+  const deletePressLocal = async (id: string) => {
+    try {
+      await pb.collection('persen').delete(id);
+      fetchPresses();
+      return true;
+    } catch (e) {
+      console.error("Delete press failed", e);
+      return false;
+    }
+  };
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPress, setEditingPress] = useState<Press | null>(null);
   const [formData, setFormData] = useState({
@@ -75,7 +147,7 @@ export function PressManagement() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.name.trim()) {
@@ -84,68 +156,82 @@ export function PressManagement() {
     }
 
     if (editingPress) {
-      const updatedPress = {
+      const success = await updatePressLocal({
         ...editingPress,
         ...formData
-      };
-      updatePress(updatedPress);
-      toast.success('Pers succesvol bijgewerkt');
+      });
 
+      if (success) {
+        toast.success('Pers succesvol bijgewerkt');
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Updated',
+          entity: 'Press',
+          entityId: editingPress.id,
+          entityName: formData.name,
+          details: `Updated press: ${formData.name}`
+        });
+        handleCloseDialog();
+      } else {
+        toast.error('Bijwerken van pers mislukt');
+      }
+    } else {
+      const success = await addPressLocal(formData);
+
+      if (success) {
+        toast.success('Pers succesvol toegevoegd');
+        addActivityLog({
+          user: user?.username || 'Unknown',
+          action: 'Created',
+          entity: 'Press',
+          entityId: 'new',
+          entityName: formData.name,
+          details: `Added new press: ${formData.name}`
+        });
+        handleCloseDialog();
+      } else {
+        toast.error('Toevoegen van pers mislukt');
+      }
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const success = await deletePressLocal(id);
+    if (success) {
+      toast.success(`Pers "${name}" succesvol verwijderd`);
       addActivityLog({
         user: user?.username || 'Unknown',
-        action: 'Updated',
+        action: 'Deleted',
         entity: 'Press',
-        entityId: editingPress.id,
-        entityName: formData.name,
-        details: `Updated press: ${formData.name}`
+        entityId: id,
+        entityName: name,
+        details: `Deleted press: ${name}`
       });
     } else {
-      addPress(formData);
-      toast.success('Pers succesvol toegevoegd');
-
-      addActivityLog({
-        user: user?.username || 'Unknown',
-        action: 'Created',
-        entity: 'Press',
-        entityId: Date.now().toString(),
-        entityName: formData.name,
-        details: `Added new press: ${formData.name}`
-      });
+      toast.error(`Verwijderen van pers "${name}" mislukt`);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDelete = (id: string, name: string) => {
-    deletePress(id);
-    toast.success(`Pers "${name}" succesvol verwijderd`);
-
-    addActivityLog({
-      user: user?.username || 'Unknown',
-      action: 'Deleted',
-      entity: 'Press',
-      entityId: id,
-      entityName: name,
-      details: `Deleted press: ${name}`
-    });
-  };
-
-  const handleArchive = (press: Press) => {
+  const handleArchive = async (press: Press) => {
     const updatedPress = {
       ...press,
       archived: !press.archived
     };
-    updatePress(updatedPress);
-    toast.success(`Press "${press.name}" ${updatedPress.archived ? 'archived' : 'unarchived'}`);
+    const success = await updatePressLocal(updatedPress);
 
-    addActivityLog({
-      user: user?.username || 'Unknown',
-      action: 'Updated',
-      entity: 'Press',
-      entityId: press.id,
-      entityName: press.name,
-      details: `${updatedPress.archived ? 'Archived' : 'Unarchived'} press: ${press.name}`
-    });
+    if (success) {
+      toast.success(`Press "${press.name}" ${updatedPress.archived ? 'archived' : 'unarchived'}`);
+      addActivityLog({
+        user: user?.username || 'Unknown',
+        action: 'Updated',
+        entity: 'Press',
+        entityId: press.id,
+        entityName: press.name,
+        details: `${updatedPress.archived ? 'Archived' : 'Unarchived'} press: ${press.name}`
+      });
+    } else {
+      toast.error(`Archiveren van pers "${press.name}" mislukt`);
+    }
   };
 
   return (
@@ -163,7 +249,7 @@ export function PressManagement() {
         }
       />
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -174,7 +260,11 @@ export function PressManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {presses.length === 0 ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center py-8">Laden...</TableCell>
+              </TableRow>
+            ) : presses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8 text-gray-500">
                   Geen persen gevonden. Voeg uw eerste pers toe om te beginnen.
@@ -183,17 +273,17 @@ export function PressManagement() {
             ) : (
               presses.map((press) => (
                 <TableRow key={press.id}>
-                  <TableCell>{press.name}</TableCell>
+                  <TableCell className="font-medium">{press.name}</TableCell>
                   <TableCell>
                     {press.active ? (
-                      <Badge variant="default">Actief</Badge>
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Actief</Badge>
                     ) : (
-                      <Badge variant="secondary">Inactief</Badge>
+                      <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">Inactief</Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     {press.archived ? (
-                      <Badge variant="outline">Gearchiveerd</Badge>
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Gearchiveerd</Badge>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
@@ -271,10 +361,10 @@ export function PressManagement() {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between border rounded-md p-3">
                 <div className="space-y-0.5">
                   <Label htmlFor="active">Actieve Status</Label>
-                  <p className="text-gray-500">
+                  <p className="text-xs text-gray-500">
                     Inactieve persen verschijnen niet bij het aanmaken van taken
                   </p>
                 </div>
