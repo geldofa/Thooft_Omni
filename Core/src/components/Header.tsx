@@ -9,7 +9,8 @@ import {
   FileText,
   MessageSquarePlus,
   Wrench,
-  FileBarChart
+  FileBarChart,
+  Rocket
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { startTransition } from 'react';
@@ -132,6 +133,10 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                       <FileText className="w-4 h-4" /> Logboek
                     </TabsTrigger>
                   )}
+
+                  <TabsTrigger value="/Roadmap" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
+                    <Rocket className="w-4 h-4" /> Roadmap
+                  </TabsTrigger>
 
                   {hasPermission('feedback_view') && (
                     <TabsTrigger value="/Feedback" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth, pb } from './AuthContext';
+import { Loader2, MessageSquare, Trash2, Archive, ChevronDown, ChevronRight, Edit, Plus } from 'lucide-react';
+import { useAuth, pb, FeedbackItem } from './AuthContext';
 import { Card, CardHeader, CardContent } from './ui/card';
 import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
@@ -13,44 +14,25 @@ import {
 } from "./ui/table";
 import { Badge } from './ui/badge';
 import { format } from 'date-fns';
-import { Loader2, MessageSquare, Trash2, Archive, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { FeedbackDialog } from './FeedbackDialog';
-import { Plus } from 'lucide-react';
-
-interface FeedbackItem {
-    id: string;
-    type: 'bug' | 'feature' | 'other';
-    message: string;
-    user_agent?: string;
-    url?: string;
-    created: string;
-    username?: string;
-    ip?: string;
-    contact_operator?: string;
-    status?: 'pending' | 'rejected' | 'review' | 'in_progress' | 'completed_success' | 'completed_impossible';
-    admin_comment?: string;
-    archived?: boolean;
-}
 
 const STATUS_LABELS: Record<string, string> = {
     pending: 'Nog niet gezien',
-    rejected: 'Afgekeurd',
-    review: 'Wordt bekeken',
+    planned: 'Gepland',
     in_progress: 'Bezig',
-    completed_success: 'Afgerond - Succesvol!',
-    completed_impossible: 'Afgerond - Niet mogelijk'
+    completed: 'Uitgevoerd',
+    rejected: 'Afgekeurd'
 };
 
 const STATUS_COLORS: Record<string, string> = {
     pending: 'bg-gray-100 text-gray-600',
-    rejected: 'bg-red-100 text-red-700',
-    review: 'bg-blue-100 text-blue-700',
+    planned: 'bg-blue-100 text-blue-700',
     in_progress: 'bg-orange-100 text-orange-700',
-    completed_success: 'bg-green-100 text-green-700',
-    completed_impossible: 'bg-gray-800 text-white'
+    completed: 'bg-green-100 text-green-700',
+    rejected: 'bg-red-100 text-red-700'
 };
 
 // --- CONFIGURATION CONSTANTS ---
@@ -78,6 +60,7 @@ export function FeedbackList() {
     const [loading, setLoading] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
     const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+    const [editingFeedback, setEditingFeedback] = useState<FeedbackItem | null>(null);
 
     // Editing state
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -87,12 +70,21 @@ export function FeedbackList() {
     const canSeeArchived = hasPermission('feedback_view');
 
     // Split feedback into sections
-    const activeFeedback = feedback.filter(f => !f.archived && f.status !== 'completed_success');
-    const completedFeedback = feedback.filter(f => !f.archived && f.status === 'completed_success');
+    const activeFeedback = feedback.filter(f => !f.archived && f.status !== 'completed');
+    const completedFeedback = feedback.filter(f => !f.archived && f.status === 'completed');
     const archivedFeedback = feedback.filter(f => f.archived);
 
     useEffect(() => {
         loadFeedback();
+
+        // Subscribe to real-time updates
+        pb.collection('feedback').subscribe('*', () => {
+            loadFeedback();
+        });
+
+        return () => {
+            pb.collection('feedback').unsubscribe('*');
+        };
     }, [user]);
 
     const loadFeedback = async () => {
@@ -101,20 +93,30 @@ export function FeedbackList() {
             const records = await pb.collection('feedback').getFullList<any>({
                 sort: '-created'
             });
-            setFeedback(records.map(r => ({
-                id: r.id,
-                type: r.type,
-                message: r.message,
-                user_agent: r.user_agent,
-                url: r.url,
-                created: r.created,
-                username: r.username,
-                ip: r.ip,
-                contact_operator: r.contact_operator,
-                status: r.status,
-                admin_comment: r.admin_comment,
-                archived: r.archived === true
-            })));
+            setFeedback(records.map(r => {
+                // Try context.operator as fallback for older records
+                let operator = r.contact_operator;
+                if (!operator && r.context) {
+                    try {
+                        const ctx = typeof r.context === 'string' ? JSON.parse(r.context) : r.context;
+                        operator = ctx?.operator;
+                    } catch { }
+                }
+                return {
+                    id: r.id,
+                    type: r.type,
+                    message: r.message,
+                    user_agent: r.user_agent,
+                    url: r.url,
+                    created: r.created,
+                    username: r.username,
+                    ip: r.ip,
+                    contact_operator: operator,
+                    status: r.status,
+                    admin_comment: r.admin_comment,
+                    archived: r.archived === true
+                };
+            }));
         } catch (e) {
             console.error("Failed to load feedback", e);
             toast.error("Fout bij laden feedback");
@@ -197,7 +199,7 @@ export function FeedbackList() {
                     <TableHead style={{ width: COL_WIDTHS.type }}>Type</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.message }}>Bericht</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.comment }}>{canManage ? 'Opmerking Beheer' : 'Reactie'}</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.user }}>Gebruiker</TableHead>
+                    <TableHead style={{ width: COL_WIDTHS.user }}>Contact</TableHead>
                     <TableHead style={{ width: COL_WIDTHS.date }} className="text-right">Datum</TableHead>
                     {canManage && <TableHead style={{ width: COL_WIDTHS.actions }} className="text-right">Acties</TableHead>}
                 </TableRow>
@@ -276,9 +278,9 @@ export function FeedbackList() {
                         </TableCell>
                         <TableCell>
                             <div className="flex flex-col">
-                                <span className={`font-medium ${FONT_SIZES.body}`}>{item.username || 'Anoniem'}</span>
+
                                 {item.contact_operator && (
-                                    <span className={`${FONT_SIZES.subtext} text-blue-600`}>Contact: {item.contact_operator}</span>
+                                    <span className={`${FONT_SIZES.text} text-blue-600`}>{item.contact_operator}</span>
                                 )}
                                 {canManage && item.ip && <span className="text-[10px] text-gray-400">{item.ip}</span>}
                             </div>
@@ -289,6 +291,18 @@ export function FeedbackList() {
                         {canManage && (
                             <TableCell className="text-right">
                                 <div className="flex gap-1 justify-end">
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0 hover:bg-blue-100"
+                                        onClick={() => {
+                                            setEditingFeedback(item);
+                                            setIsFeedbackOpen(true);
+                                        }}
+                                        title="Bewerken"
+                                    >
+                                        <Edit className="w-4 h-4 text-blue-500" />
+                                    </Button>
                                     {!isArchivedTable && (
                                         <Button
                                             size="sm"
@@ -404,7 +418,14 @@ export function FeedbackList() {
                     </div>
                 )}
             </CardContent>
-            <FeedbackDialog open={isFeedbackOpen} onOpenChange={setIsFeedbackOpen} />
+            <FeedbackDialog
+                open={isFeedbackOpen}
+                onOpenChange={(open) => {
+                    setIsFeedbackOpen(open);
+                    if (!open) setEditingFeedback(null);
+                }}
+                feedbackItem={editingFeedback}
+            />
         </Card>
     );
 }

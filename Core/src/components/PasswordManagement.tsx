@@ -35,6 +35,7 @@ export function PasswordManagement() {
   const { user, hasPermission, addActivityLog } = useAuth();
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [presses, setPresses] = useState<Press[]>([]);
+  const [operators, setOperators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const mapDbRoleToUi = (dbRole: string): UserRole => {
@@ -55,6 +56,22 @@ export function PasswordManagement() {
         pb.collection('persen').getFullList()
       ]);
 
+      // Role-based operator fetching
+      let operatorFilter = 'intern = true';
+      if (user?.role === 'press' && user.press) {
+        operatorFilter = `intern = true && pers_ids ~ "${user.press}"`;
+      }
+
+      const operatorResult = await pb.collection('operatoren').getFullList({
+        filter: operatorFilter,
+        sort: 'naam'
+      });
+
+      setOperators(operatorResult.map((r: any) => ({
+        id: r.id,
+        name: r.naam || r.name
+      })));
+
       setPresses(pressResult.map((r: any) => ({
         id: r.id,
         name: r.naam,
@@ -69,6 +86,7 @@ export function PasswordManagement() {
         name: r.name,
         role: mapDbRoleToUi(r.role),
         press: r.press,
+        operator_id: r.operator_id,
         email: r.email,
         created: r.created,
         updated: r.updated
@@ -101,6 +119,7 @@ export function PasswordManagement() {
         role: mapUiRoleToDb(account.role),
         press: account.press,
         pers: pressId,
+        operator_id: (account as any).operator_id || '',
         plain_password: account.password
       });
       return true;
@@ -119,7 +138,8 @@ export function PasswordManagement() {
         name: updates.name,
         role: mapUiRoleToDb(updates.role || usr.role),
         press: updates.press,
-        pers: pressId
+        pers: pressId,
+        operator_id: (updates as any).operator_id
       });
       return true;
     } catch (e: any) {
@@ -167,12 +187,14 @@ export function PasswordManagement() {
     name: string;
     role: UserRole;
     press: PressType;
+    operator_id?: string;
     password?: string; // Only for adding
   }>({
     username: '',
     name: '',
     role: 'press',
     press: 'Lithoman',
+    operator_id: '',
     password: ''
   });
 
@@ -190,6 +212,7 @@ export function PasswordManagement() {
         name: account.name || '',
         role: account.role,
         press: account.press || activePresses[0]?.name || 'Lithoman',
+        operator_id: (account as any).operator_id || '',
       });
     } else {
       setFormData({
@@ -197,6 +220,7 @@ export function PasswordManagement() {
         name: '',
         role: 'press',
         press: activePresses[0]?.name || 'Lithoman',
+        operator_id: '',
         password: ''
       });
       setEditingUser(null);
@@ -213,6 +237,7 @@ export function PasswordManagement() {
         name: '',
         role: 'press',
         press: activePresses[0]?.name || 'Lithoman',
+        operator_id: '',
         password: ''
       });
     }, 200); // Small delay to prevent title/field flash during close animation
@@ -230,8 +255,9 @@ export function PasswordManagement() {
       const success = await updateUserAccountLocal(editingUser, {
         name: formData.name,
         role: formData.role,
-        press: formData.role === 'press' ? formData.press : undefined
-      });
+        press: formData.role === 'press' ? formData.press : undefined,
+        operator_id: formData.operator_id
+      } as any);
 
       if (success) {
         toast.success(`Gebruiker ${editingUser} bijgewerkt`);
@@ -263,8 +289,9 @@ export function PasswordManagement() {
         name: formData.name,
         password: formData.password,
         role: formData.role,
-        press: formData.role === 'press' ? formData.press : undefined
-      });
+        press: formData.role === 'press' ? formData.press : undefined,
+        operator_id: formData.operator_id
+      } as any);
 
       if (success) {
         toast.success(`Gebruiker ${formData.username} aangemaakt`);
@@ -492,6 +519,26 @@ export function PasswordManagement() {
                 </Select>
               </div>
             )}
+
+            {/* Operator Link */}
+            <div className="grid gap-2">
+              <Label>Gekoppelde Operator</Label>
+              <Select
+                value={formData.operator_id || ''}
+                onValueChange={(val) => setFormData({ ...formData, operator_id: val === 'none' ? '' : val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer operator" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Geen operator</SelectItem>
+                  {operators.filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
+                    <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Koppel dit account aan een interne operator voor feedback.</p>
+            </div>
 
             {/* Password (Only if creating) */}
             {!editingUser && (

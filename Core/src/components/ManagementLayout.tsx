@@ -33,6 +33,26 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
     const [tags, setTags] = useState<Tag[]>(propsTags || []);
     const [isLoading, setIsLoading] = useState(true);
 
+    const isHighlightRuleActive = useCallback((rule: any) => {
+        if (!rule.enabled) return false;
+        const now = new Date();
+        const currentDay = now.getDay();
+        if (!rule.days || !rule.days.includes(currentDay)) return false;
+
+        if (rule.allDay) return true;
+
+        const [startH, startM] = (rule.startTime || '00:00').split(':').map(Number);
+        const [endH, endM] = (rule.endTime || '23:59').split(':').map(Number);
+        const currentH = now.getHours();
+        const currentM = now.getMinutes();
+
+        const startMinutes = (isNaN(startH) ? 0 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+        const endMinutes = (isNaN(endH) ? 23 : endH) * 60 + (isNaN(endM) ? 59 : endM);
+        const currentMinutes = currentH * 60 + currentM;
+
+        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    }, []);
+
     const fetchPersonnel = useCallback(async () => {
         try {
             setIsLoading(true);
@@ -88,13 +108,15 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                 pb.collection('tags').getFullList()
             ]);
 
-            setTags(tagRecords.map((t: any) => ({
+            const mappedTags = tagRecords.map((t: any) => ({
                 id: t.id,
                 naam: t.naam,
                 kleur: t.kleur,
                 active: t.active !== false,
-                system_managed: t.system_managed === true
-            })));
+                system_managed: t.system_managed === true,
+                highlights: t.highlights || []
+            }));
+            setTags(mappedTags);
 
             const grouped: GroupedTask[] = [];
             records.forEach((record: any) => {
@@ -143,17 +165,87 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                     comment: record.opmerkingen || '',
                     sort_order: record.sort_order || 0,
                     isExternal: record.is_external || false,
-                    tagIds: record.tags || []
+                    tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : [])
                 } as any);
             });
 
-            setTasks(grouped);
+            // Handle Highlights: Virtual Categories
+            const highlightCategories: GroupedTask[] = [];
+            mappedTags.forEach(tag => {
+                const activeRule = tag.highlights?.find((r: any) => r.enabled && r.method === 'category' && isHighlightRuleActive(r));
+                if (activeRule) {
+                    // For each original group, if it has subtasks with this tag, create a virtual group in this tag's category
+                    grouped.forEach((origGroup: any) => {
+                        const tagMatchingSubtasks = origGroup.subtasks.filter((st: any) => {
+                            const tagIds = Array.isArray(st.tagIds) ? st.tagIds : (st.tagIds ? [st.tagIds] : []);
+                            const hasTag = tagIds.includes(tag.id);
+
+                            if (!hasTag) return false;
+
+                            // Check cutoff if defined
+                            if (activeRule.cutoffDays != null && activeRule.cutoffDays !== '') {
+                                const cutoff = Number(activeRule.cutoffDays);
+                                // Skip check if cutoff is invalid
+                                if (!isNaN(cutoff)) {
+                                    const now = new Date();
+                                    // Reset time to compare dates properly
+                                    now.setHours(0, 0, 0, 0);
+
+                                    const nextDate = st.nextMaintenance ? new Date(st.nextMaintenance) : new Date();
+                                    nextDate.setHours(0, 0, 0, 0);
+
+                                    const diffTime = nextDate.getTime() - now.getTime();
+                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                                    // Debug logging
+                                    if (st.subtaskName.toLowerCase().includes('plaatrollen') || diffDays > 0) {
+                                        console.log(`[HighlightDebug] Task: ${st.subtaskName}`);
+                                        console.log(`[HighlightDebug] Rule Cutoff: ${activeRule.cutoffDays} (parsed: ${cutoff})`);
+                                        console.log(`[HighlightDebug] Days until maintenance: ${diffDays}`);
+                                        console.log(`[HighlightDebug] Should hide? ${diffDays > cutoff ? 'YES' : 'NO'}`);
+                                    }
+
+                                    // Show if diffDays is less than cutoff (e.g. < 14 days)
+                                    // Also include overdue tasks (negative days)
+                                    if (diffDays > cutoff) {
+                                        return false;
+                                    }
+                                }
+                            } else {
+                                if (st.subtaskName.toLowerCase().includes('plaatrollen')) {
+                                    console.log(`[HighlightDebug] Task: ${st.subtaskName} - Rule has NO CUTOFF defined. Value: ${activeRule.cutoffDays}`);
+                                }
+                            }
+
+                            return true;
+                        });
+
+                        if (tagMatchingSubtasks.length > 0) {
+                            highlightCategories.push({
+                                ...origGroup,
+                                id: `highlight-${tag.id}-${origGroup.id}`,
+                                categoryId: `highlight-${tag.id}`,
+                                category: tag.naam, // Category name = Tag name
+                                highlightColor: tag.kleur,
+                                subtasks: tagMatchingSubtasks.map((s: any) => ({
+                                    ...s,
+                                    isHighlight: true,
+                                    highlightColor: tag.kleur,
+                                    highlightTag: tag.naam
+                                }))
+                            });
+                        }
+                    });
+                }
+            });
+
+            setTasks([...highlightCategories, ...grouped]);
         } catch (e) {
             console.error("Failed to fetch management data", e);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [isHighlightRuleActive]);
 
     useEffect(() => {
         if (!propsTasks || !propsTags) {
@@ -165,21 +257,26 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
         fetchPersonnel();
 
         // Subscribe to changes
-        const unsubscribe = Promise.all([
-            pb.collection('operatoren').subscribe('*', () => fetchPersonnel()),
-            pb.collection('ploegen').subscribe('*', () => fetchPersonnel()),
-            pb.collection('onderhoud').subscribe('*', () => fetchManagementData()),
-            pb.collection('tags').subscribe('*', () => fetchManagementData())
-        ]);
+        const sub = async () => {
+            try {
+                await Promise.all([
+                    pb.collection('operatoren').subscribe('*', () => fetchPersonnel()),
+                    pb.collection('ploegen').subscribe('*', () => fetchPersonnel()),
+                    pb.collection('onderhoud').subscribe('*', () => fetchManagementData()),
+                    pb.collection('tags').subscribe('*', () => fetchManagementData())
+                ]);
+            } catch (err) {
+                console.error("Management subscriptions failed:", err);
+            }
+        };
+
+        sub();
 
         return () => {
-            unsubscribe.then(subs => subs.forEach(unsub => {
-                if (typeof unsub === 'function') unsub();
-            }));
-            pb.collection('operatoren').unsubscribe('*');
-            pb.collection('ploegen').unsubscribe('*');
-            pb.collection('onderhoud').unsubscribe('*');
-            pb.collection('tags').unsubscribe('*');
+            pb.collection('operatoren').unsubscribe('*').catch(() => { });
+            pb.collection('ploegen').unsubscribe('*').catch(() => { });
+            pb.collection('onderhoud').unsubscribe('*').catch(() => { });
+            pb.collection('tags').unsubscribe('*').catch(() => { });
         };
     }, [fetchPersonnel, fetchManagementData]);
 

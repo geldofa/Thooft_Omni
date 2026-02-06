@@ -39,6 +39,9 @@ export interface Subtask {
   opmerkingen?: string;
   isExternal?: boolean;
   tagIds?: string[];
+  isHighlight?: boolean;
+  highlightColor?: string;
+  highlightTag?: string;
 }
 
 export interface MaintenanceTask {
@@ -143,6 +146,24 @@ export interface Category {
   active: boolean;
 }
 
+export interface FeedbackItem {
+  id: string;
+  type: 'bug' | 'feature' | 'other';
+  message: string;
+  user_agent?: string;
+  url?: string;
+  created: string;
+  username?: string;
+  ip?: string;
+  contact_operator?: string;
+  status?: 'pending' | 'planned' | 'in_progress' | 'completed' | 'rejected';
+  admin_comment?: string;
+  archived?: boolean;
+  show_on_roadmap?: boolean;
+  roadmap_status?: 'planned' | 'in_progress' | 'completed';
+  roadmap_title?: string;
+}
+
 export const EXTERNAL_TAG_NAME = 'Extern';
 
 export interface Tag {
@@ -158,6 +179,7 @@ export interface Tag {
     startTime: string; // "HH:mm"
     endTime: string; // "HH:mm"
     method: 'category' | 'dot';
+    cutoffDays?: number | null;
   }[];
 }
 
@@ -1004,6 +1026,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message,
         user: user?.username || 'Anonymous',
         status: 'pending',
+        contact_operator: context?.operator || '',
         context
       });
       return true;

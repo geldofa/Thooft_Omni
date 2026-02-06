@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
+import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight, Zap, GripVertical } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +51,34 @@ interface MaintenanceTableProps {
   statusFilter?: string | null;
 }
 
+// --- HELPERS ---
+const lightenColor = (hex: string, percent: number) => {
+  if (!hex || hex === 'transparent') return 'rgba(0,0,0,0.05)';
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map(char => char + char).join('');
+  }
+  const num = parseInt(cleanHex, 16);
+  const amt = Math.round(2.55 * percent);
+  const R = (num >> 16) + amt;
+  const G = (num >> 8 & 0x00FF) + amt;
+  const B = (num & 0x0000FF) + amt;
+  return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 + (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 + (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!hex || hex === 'transparent') return 'rgba(0,0,0,0.05)';
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map(char => char + char).join('');
+  }
+  const num = parseInt(cleanHex, 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 // --- HELPER INTERFACES ---
 interface SortableColumnHeaderProps {
   label: string;
@@ -67,10 +95,11 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   const [, setIsLoading] = useState(false);
 
   // Active press ID can be derived from the first task if not provided
-  const activePressId = tasks[0]?.pressId;
+  // Active press ID can be derived from the first real task if not provided
+  const activePressId = tasks.find(t => t.pressId && t.pressId !== 'system')?.pressId || tasks[0]?.pressId;
 
   const fetchData = useCallback(async () => {
-    if (!activePressId) return;
+    if (!activePressId || activePressId === 'system') return;
     try {
       setIsLoading(true);
       const [catResult, tagResult, pressResult] = await Promise.all([
@@ -92,7 +121,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
         naam: r.naam,
         kleur: r.kleur,
         active: r.active !== false,
-        system_managed: r.system_managed === true
+        system_managed: r.system_managed === true,
+        highlights: r.highlights || []
       })));
 
       if (pressResult && pressResult.category_order) {
@@ -140,7 +170,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     isExternal: subtask.isExternal || false,
     comment: subtask.comment,
     created: new Date().toISOString(),
-    updated: new Date().toISOString()
+    updated: new Date().toISOString(),
+    tagIds: subtask.tagIds || []
   });
 
   const formatDate = (date: Date | null) => {
@@ -226,23 +257,43 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   };
 
   const isHighlightRuleActive = (rule: any) => {
-    if (!rule.enabled) return false;
+    if (!rule || !rule.enabled) return false;
     const now = new Date();
-    const currentDay = now.getDay();
-    if (!rule.days.includes(currentDay)) return false;
+    const currentDay = now.getDay(); // 0-6
+    if (!rule.days || !Array.isArray(rule.days) || !rule.days.includes(currentDay)) return false;
 
     if (rule.allDay) return true;
+
+    if (!rule.startTime || !rule.endTime) return false;
 
     const [startH, startM] = rule.startTime.split(':').map(Number);
     const [endH, endM] = rule.endTime.split(':').map(Number);
     const currentH = now.getHours();
     const currentM = now.getMinutes();
 
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
+    const startMinutes = (isNaN(startH) ? 0 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+    const endMinutes = (isNaN(endH) ? 23 : endH) * 60 + (isNaN(endM) ? 59 : endM);
     const currentMinutes = currentH * 60 + currentM;
 
     return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  };
+
+  const isTaskWithinCutoff = (nextMaintenance: Date | string | null, cutoffDays: number | null | undefined) => {
+    if (cutoffDays == null || cutoffDays === '' as any) return true;
+
+    const cutoff = Number(cutoffDays);
+    if (isNaN(cutoff)) return true; // Treat invalid cutoff as "no cutoff"
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const nextDate = nextMaintenance ? new Date(nextMaintenance) : new Date();
+    nextDate.setHours(0, 0, 0, 0);
+
+    const diffTime = nextDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays <= cutoff;
   };
 
   // Flatten subtasks for status filtering and counting
@@ -275,6 +326,12 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     categoryOrder.forEach((id, index) => idToIndex.set(id, index));
 
     return categoryIdsWithTasks.sort((idA, idB) => {
+      // Explicitly prioritize Highlights
+      const isHighA = idA === 'highlights' || idA.startsWith('highlight-');
+      const isHighB = idB === 'highlights' || idB.startsWith('highlight-');
+      if (isHighA && !isHighB) return -1;
+      if (!isHighA && isHighB) return 1;
+
       const indexA = idToIndex.has(idA) ? idToIndex.get(idA)! : 99999;
       const indexB = idToIndex.has(idB) ? idToIndex.get(idB)! : 99999;
 
@@ -476,9 +533,36 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
               className="px-3 py-1.5"
             >
               <div className="flex items-start">
+                <div className="w-5 flex-shrink-0 flex justify-center mt-1">
+                  {(() => {
+                    // Check for DOT highlight rules in any subtask
+                    const activeDotTag = tags?.find(tag =>
+                      relevantSubtasks.some(st =>
+                        st.tagIds?.includes(tag.id) &&
+                        tag.highlights?.some(h =>
+                          h.enabled &&
+                          h.method === 'dot' &&
+                          isHighlightRuleActive(h) &&
+                          isTaskWithinCutoff(st.nextMaintenance, h.cutoffDays)
+                        )
+                      )
+                    );
+
+                    if (activeDotTag) {
+                      return (
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse shadow-sm"
+                          style={{ backgroundColor: activeDotTag.kleur }}
+                          title={`Gemarkeerd door tag: ${activeDotTag.naam}`}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
                 {hasPermission('tasks_edit') && (
-                  <div className="w-6 flex-shrink-0 flex justify-center mt-1">
-                    {/* Spacer for Drag Handle space */}
+                  <div className="w-6 flex-shrink-0 flex justify-center mt-1 text-gray-400">
+                    <GripVertical className="w-4 h-4 cursor-grab active:cursor-grabbing" />
                   </div>
                 )}
                 <div className="w-6 flex-shrink-0 flex justify-center mt-1">
@@ -499,24 +583,6 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     onClick={(e) => toggleGroupedTask(groupedTask.id, e)}
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      {(() => {
-                        // Check for DOT highlight rules in any subtask
-                        const activeDotTag = tags?.find(tag =>
-                          relevantSubtasks.some(st => st.tagIds?.includes(tag.id)) &&
-                          tag.highlights?.some(h => h.enabled && h.method === 'dot' && isHighlightRuleActive(h))
-                        );
-
-                        if (activeDotTag) {
-                          return (
-                            <div
-                              className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse shadow-sm"
-                              style={{ backgroundColor: activeDotTag.kleur }}
-                              title={`Gemarkeerd door tag: ${activeDotTag.naam}`}
-                            />
-                          );
-                        }
-                        return null;
-                      })()}
                       <span className="font-medium text-gray-900">{groupedTask.taskName}</span>
                       <Badge variant="secondary" className="ml-2">
                         {formatNumber(relevantSubtasks.length)} subtaken
@@ -685,16 +751,41 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
             >
               <td className="px-3 py-1.5">
                 <div className="flex items-start">
+                  <div className="w-5 flex-shrink-0 flex justify-center mt-1">
+                    {(() => {
+                      // Check for DOT highlight rules for this subtask
+                      const activeDotTag = tags?.find(tag =>
+                        subtask.tagIds?.includes(tag.id) &&
+                        tag.highlights?.some(h =>
+                          h.enabled &&
+                          h.method === 'dot' &&
+                          isHighlightRuleActive(h) &&
+                          isTaskWithinCutoff(subtask.nextMaintenance, h.cutoffDays)
+                        )
+                      );
+
+                      if (activeDotTag) {
+                        return (
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse shadow-sm"
+                            style={{ backgroundColor: activeDotTag.kleur }}
+                            title={`Gemarkeerd door tag: ${activeDotTag.naam}`}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                   {hasPermission('tasks_edit') && (
-                    <div className="w-6 flex-shrink-0 flex justify-center mt-1">
-                      {/* Spacer */}
+                    <div className="w-6 flex-shrink-0 flex justify-center mt-1 text-gray-400">
+                      {/* Spacer for Drag Handle space */}
                     </div>
                   )}
                   <div className="w-6 flex-shrink-0"></div>
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <div className="">{subtask.subtaskName}</div>
+                      {subtask.subtaskName}
                       {Array.isArray(subtask.tagIds) && subtask.tagIds.map((tagId: string) => {
                         const tag = tags?.find((t: any) => t.id === tagId);
                         return (
@@ -1000,32 +1091,47 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
     const showAsCollapsed = isCollapsed || (statusFilter && filteredCount === 0);
 
+    const highlightColor = categoryGroupedTasks[0]?.highlightColor;
+    const isHighlight = categoryId.startsWith('highlight-');
+    // For the labels row, use a light tint and a darker version of the tag color for text
+    const lightHeaderBg = highlightColor ? hexToRgba(highlightColor, 0.15) : '';
+    const headerTextColor = highlightColor ? lightenColor(highlightColor, -40) : '#374151';
+
     return (
       <div
         className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
       >
         {/* Category Header */}
         <div
-          className="flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+          className={`flex items-center px-3 py-2 border-b cursor-pointer transition-colors ${isHighlight ? '' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}
+          style={isHighlight ? {
+            backgroundColor: highlightColor,
+            borderColor: highlightColor,
+            color: 'white'
+          } : {}}
           onClick={(e) => onToggle(categoryId, e)}
         >
 
           <div className="w-6 flex-shrink-0 flex justify-center">
             {showAsCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-gray-500" />
+              <ChevronRight className={`w-4 h-4 ${isHighlight ? 'text-white' : 'text-gray-500'}`} />
             ) : (
-              <ChevronDown className="w-4 h-4 text-gray-500" />
+              <ChevronDown className={`w-4 h-4 ${isHighlight ? 'text-white' : 'text-gray-500'}`} />
             )}
           </div>
-          <div className="flex-1 flex items-center">
-            <span className={`text-gray-900 font-medium ${FONT_SIZES.section}`}>{categoryName}</span>
+          <div className="flex-1 flex items-center gap-2">
+            {isHighlight && <Zap className="w-4 h-4 text-white fill-white" />}
+            <span className={`font-medium ${FONT_SIZES.section} ${isHighlight ? 'text-white' : 'text-gray-900'}`}>{categoryName}</span>
             {/* [NEW] Subtext Rendering */}
             {pressId && categories.find(c => c.id === categoryId)?.subtexts?.[pressId] && (
-              <span className="ml-3 text-gray-500 text-sm font-normal italic">
+              <span className={`ml-3 text-sm font-normal italic ${isHighlight ? 'text-white/80' : 'text-gray-500'}`}>
                 {categories.find(c => c.id === categoryId)?.subtexts?.[pressId]}
               </span>
             )}
-            <Badge variant="secondary" className="ml-auto">
+            <Badge
+              variant={isHighlight ? "outline" : "secondary"}
+              className={`ml-auto ${isHighlight ? 'bg-white/20 text-white border-none' : ''}`}
+            >
               {filteredCount}
             </Badge>
           </div>
@@ -1036,43 +1142,94 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           <div className="overflow-x-auto">
             <table className={`w-full text-left ${FONT_SIZES.body}`}>
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-200">
+                <tr
+                  style={isHighlight ? { backgroundColor: lightHeaderBg } : {}}
+                  className={`${isHighlight ? '' : 'bg-gray-50/50'} border-b border-gray-200`}
+                >
                   <SortableColumnHeader
                     label="Taak / Subtaak"
                     sortKey="task"
-                    className={`px-3 py-2 text-left text-gray-700`}
-                    style={{ width: COL_WIDTHS.task, paddingLeft: hasPermission('tasks_edit') ? '60px' : '36px' }}
+                    className={`px-3 py-2 text-left`}
+                    style={{
+                      width: COL_WIDTHS.task,
+                      paddingLeft: hasPermission('tasks_edit') ? '60px' : '36px',
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
                   />
                   <SortableColumnHeader
                     label="Laatst Onderhoud"
                     sortKey="lastMaintenance"
-                    className="px-3 py-2 text-left text-gray-700"
-                    style={{ width: COL_WIDTHS.lastMaintenance }}
+                    className="px-3 py-2 text-left"
+                    style={{
+                      width: COL_WIDTHS.lastMaintenance,
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
                   />
                   <SortableColumnHeader
                     label="Volgend Onderhoud"
                     sortKey="nextMaintenance"
-                    className="px-3 py-2 text-left text-gray-700"
-                    style={{ width: COL_WIDTHS.nextMaintenance }}
+                    className="px-3 py-2 text-left"
+                    style={{
+                      width: COL_WIDTHS.nextMaintenance,
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
                   />
                   {user?.role !== 'press' && (
-                    <th className="px-3 py-2 text-left text-gray-700" style={{ width: COL_WIDTHS.interval }}>Interval</th>
+                    <th
+                      className="px-3 py-2 text-left"
+                      style={{
+                        width: COL_WIDTHS.interval,
+                        color: isHighlight ? headerTextColor : '#374151',
+                        backgroundColor: isHighlight ? lightHeaderBg : undefined
+                      }}
+                    >
+                      Interval
+                    </th>
                   )}
                   <SortableColumnHeader
                     label="Status"
                     sortKey="status"
-                    className="px-3 py-2 text-center text-gray-700"
-                    style={{ width: COL_WIDTHS.status }}
+                    className="px-3 py-2 text-center"
+                    style={{
+                      width: COL_WIDTHS.status,
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
                   />
                   <SortableColumnHeader
                     label="Toegewezen aan"
                     sortKey="assignedTo"
-                    className="px-3 py-2 text-left text-gray-700"
-                    style={{ width: COL_WIDTHS.assigned }}
+                    className="px-3 py-2 text-left"
+                    style={{
+                      width: COL_WIDTHS.assigned,
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
                   />
-                  <th className="px-3 py-2 text-left text-gray-700" style={{ width: COL_WIDTHS.remarks }}>Opmerkingen</th>
+                  <th
+                    className="px-3 py-2 text-left"
+                    style={{
+                      width: COL_WIDTHS.remarks,
+                      color: isHighlight ? headerTextColor : '#374151',
+                      backgroundColor: isHighlight ? lightHeaderBg : undefined
+                    }}
+                  >
+                    Opmerkingen
+                  </th>
                   {hasPermission('tasks_edit') && (
-                    <th className="px-3 py-2 text-right text-gray-700" style={{ width: COL_WIDTHS.actions }}>Acties</th>
+                    <th
+                      className="px-3 py-2 text-right"
+                      style={{
+                        width: COL_WIDTHS.actions,
+                        color: isHighlight ? headerTextColor : '#374151',
+                        backgroundColor: isHighlight ? lightHeaderBg : undefined
+                      }}
+                    >
+                      Acties
+                    </th>
                   )}
                 </tr>
               </thead>
@@ -1086,7 +1243,10 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
 
                   if (relevantSubtasks.length === 0) return null;
 
-                  const isSingleTask = groupedTask.subtasks.length === 1;
+                  const isSingleTask = groupedTask.subtasks.length === 1 && (
+                    groupedTask.taskName === groupedTask.subtasks[0].subtaskName ||
+                    (Boolean(groupedTask.subtasks[0].isHighlight) && groupedTask.taskName === groupedTask.subtasks[0].subtaskName)
+                  );
                   const isGroupedTaskCollapsed = collapsedGroupedTasks.has(groupedTask.id);
 
                   return (
@@ -1130,32 +1290,37 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
           </div>
         ) : (
           <div className="space-y-4">
-            {orderedCategoryIds.map((categoryId) => (
-              <CategorySection
-                key={categoryId}
-                categoryId={categoryId}
-                categoryName={categories.find(c => c.id === categoryId)?.name || 'Unknown Category'}
-                pressId={tasks.length > 0 ? tasks[0].pressId : null} // [NEW] Pass derived PressID
-                onToggle={(id, e) => toggleCategory(id, e)}
-                isCollapsed={collapsedCategories.has(categoryId)}
-                user={user}
-                categoryGroupedTasks={groupedTasksByCategoryId[categoryId]}
-                statusFilter={statusFilter ?? null}
-                getStatusInfo={getStatusInfo}
-                getSortedTasks={getSortedTasks}
-                collapsedGroupedTasks={collapsedGroupedTasks}
-                toggleGroupedTask={toggleGroupedTask}
-                onEditGroup={onEditGroup}
-                handleDelete={handleDelete}
-                formatDate={formatDate}
-                formatDateTime={formatDateTime}
-                formatInterval={formatInterval}
-                handleQuickEdit={handleQuickEdit}
-                toMaintenanceTask={toMaintenanceTask}
-                onEdit={onEdit}
-                sortConfig={sortConfig}
-              />
-            ))}
+            {orderedCategoryIds.map((categoryId) => {
+              const tag = categoryId.startsWith('highlight-') ? tags?.find(t => categoryId === `highlight-${t.id}`) : null;
+              const categoryName = tag ? tag.naam : (categories.find(c => c.id === categoryId)?.name || 'Onbekend');
+
+              return (
+                <CategorySection
+                  key={categoryId}
+                  categoryId={categoryId}
+                  categoryName={categoryName}
+                  pressId={tasks.length > 0 ? tasks[0].pressId : null} // [NEW] Pass derived PressID
+                  onToggle={(id, e) => toggleCategory(id, e)}
+                  isCollapsed={collapsedCategories.has(categoryId)}
+                  user={user}
+                  categoryGroupedTasks={groupedTasksByCategoryId[categoryId]}
+                  statusFilter={statusFilter ?? null}
+                  getStatusInfo={getStatusInfo}
+                  getSortedTasks={getSortedTasks}
+                  collapsedGroupedTasks={collapsedGroupedTasks}
+                  toggleGroupedTask={toggleGroupedTask}
+                  onEditGroup={onEditGroup}
+                  handleDelete={handleDelete}
+                  formatDate={formatDate}
+                  formatDateTime={formatDateTime}
+                  formatInterval={formatInterval}
+                  handleQuickEdit={handleQuickEdit}
+                  toMaintenanceTask={toMaintenanceTask}
+                  onEdit={onEdit}
+                  sortConfig={sortConfig}
+                />
+              );
+            })}
           </div>
         )}
       </div>

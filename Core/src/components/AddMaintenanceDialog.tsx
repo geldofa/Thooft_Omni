@@ -154,7 +154,8 @@ export function AddMaintenanceDialog({
         naam: r.naam,
         kleur: r.kleur,
         active: r.active !== false,
-        system_managed: r.system_managed === true
+        system_managed: r.system_managed === true,
+        highlights: r.highlights || []
       })));
     } catch (e) {
       console.error("Failed to fetch data in AddMaintenanceDialog", e);
@@ -346,9 +347,9 @@ export function AddMaintenanceDialog({
       categoryId: taskFormData.category,
       press: selectedPress?.name || '',
       pressId: taskFormData.press,
-      assignedTo: '', // Assignments are handled in QuickEditDialog
-      assignedToIds: [],
-      assignedToTypes: [],
+      assignedTo: taskFormData.assignedTo, // Use the free text field for display only
+      assignedToIds: editTask?.assignedToIds || [],
+      assignedToTypes: editTask?.assignedToTypes || [],
       comment: taskFormData.opmerkingen, // Map opmerkingen to comment for MaintenanceTask compatibility
       commentDate,
       subtaskName: taskFormData.subtaskName || taskFormData.task,
@@ -382,6 +383,8 @@ export function AddMaintenanceDialog({
           maintenanceInterval: taskFormData.maintenanceInterval !== initialValues.maintenanceInterval ? taskFormData.maintenanceInterval : (initialTask?.maintenanceInterval || taskFormData.maintenanceInterval),
           maintenanceIntervalUnit: taskFormData.maintenanceIntervalUnit !== initialValues.maintenanceIntervalUnit ? taskFormData.maintenanceIntervalUnit : (initialTask?.maintenanceIntervalUnit || taskFormData.maintenanceIntervalUnit),
           assignedTo: (taskFormData.assignedTo !== initialValues.assignedTo && taskFormData.assignedTo !== '') ? taskFormData.assignedTo : (initialTask?.assignedTo || ''),
+          assignedToIds: initialTask?.assignedToIds || [],
+          assignedToTypes: initialTask?.assignedToTypes || [],
           opmerkingen: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
           comment: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
           commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
@@ -501,28 +504,37 @@ export function AddMaintenanceDialog({
                 <div className="grid gap-2">
                   <Label>Tags</Label>
                   <div className="flex flex-wrap gap-2 border rounded-md p-3 min-h-[46px] bg-gray-50/30">
-                    {tags.filter(t => t.active).map(tag => (
-                      <Button
-                        key={tag.id}
-                        type="button"
-                        variant={taskFormData.tagIds.includes(tag.id) ? 'default' : 'outline'}
-                        size="sm"
-                        className="gap-2 h-7"
-                        style={taskFormData.tagIds.includes(tag.id) ? { backgroundColor: tag.kleur } : {}}
-                        onClick={() => {
-                          setTaskFormData(prev => {
-                            const isSelected = prev.tagIds.includes(tag.id);
-                            const newTagIds = isSelected
-                              ? prev.tagIds.filter(id => id !== tag.id)
-                              : [...prev.tagIds, tag.id];
+                    {tags.filter(t => t.active).map(tag => {
+                      const isSelected = taskFormData.tagIds.includes(tag.id);
+                      return (
+                        <Button
+                          key={tag.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={`gap-2 h-7 transition-all ${isSelected ? 'border-transparent' : 'hover:bg-gray-100'}`}
+                          style={{
+                            backgroundColor: isSelected ? tag.kleur : 'transparent',
+                            borderColor: tag.kleur,
+                            color: isSelected ? '#fff' : tag.kleur,
+                            borderWidth: '1px'
+                          }}
+                          onClick={() => {
+                            setTaskFormData(prev => {
+                              const isSelected = prev.tagIds.includes(tag.id);
+                              const newTagIds = isSelected
+                                ? prev.tagIds.filter(id => id !== tag.id)
+                                : [...prev.tagIds, tag.id];
 
-                            return { ...prev, tagIds: newTagIds };
-                          });
-                        }}
-                      >
-                        {tag.naam}
-                      </Button>
-                    ))}
+                              return { ...prev, tagIds: newTagIds };
+                            });
+                          }}
+                        >
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white mr-1" />}
+                          {tag.naam}
+                        </Button>
+                      );
+                    })}
                     {tags.filter(t => t.active).length === 0 && (
                       <span className="text-xs text-gray-500">Geen actieve tags gevonden. Maak ze aan in Categorie Beheer.</span>
                     )}

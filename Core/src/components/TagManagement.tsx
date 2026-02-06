@@ -73,7 +73,7 @@ export function TagManagement() {
         fetchTags();
         pb.collection('tags').subscribe('*', () => fetchTags());
         return () => {
-            pb.collection('tags').unsubscribe('*');
+            pb.collection('tags').unsubscribe('*').catch(() => { });
         };
     }, [fetchTags]);
 
@@ -254,7 +254,8 @@ export function TagManagement() {
             allDay: true,
             startTime: '08:00',
             endTime: '17:00',
-            method: 'category' as const
+            method: 'category' as const,
+            cutoffDays: null as number | null
         };
         const newHighlights = [...(tag.highlights || []), newRule];
         const success = await updateTagLocal({ ...tag, highlights: newHighlights });
@@ -500,6 +501,30 @@ export function TagManagement() {
                                             </Select>
                                         </div>
 
+                                        <div className="flex flex-col gap-1 min-w-[100px]">
+                                            <Label className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Deadline</Label>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs text-gray-500 whitespace-nowrap">&lt;</span>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="∞"
+                                                    value={(rule.cutoffDays !== null && rule.cutoffDays !== undefined && !isNaN(rule.cutoffDays)) ? rule.cutoffDays : ''}
+                                                    onChange={(e) => {
+                                                        const valStr = e.target.value;
+                                                        const val = valStr === '' ? null : parseInt(valStr);
+                                                        const finalVal = (val === null || isNaN(val)) ? null : val;
+
+                                                        const newHighlights = [...(tag.highlights || [])];
+                                                        newHighlights[idx] = { ...rule, cutoffDays: finalVal };
+                                                        updateTagLocal({ ...tag, highlights: newHighlights });
+                                                    }}
+                                                    className="h-8 w-14 text-xs p-1"
+                                                />
+                                                <span className="text-xs text-gray-500">dg</span>
+                                            </div>
+                                        </div>
+
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -610,6 +635,6 @@ export function TagManagement() {
                     </form>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     );
 }

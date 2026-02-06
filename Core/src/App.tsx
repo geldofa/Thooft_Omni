@@ -1,4 +1,4 @@
-import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback } from 'react';
+import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Category, Tag } from './components/AuthContext';
 import { LoginForm } from './components/LoginForm';
@@ -25,6 +25,7 @@ const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({
 const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: m.Toolbox })));
 const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
 const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
+const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
 import { Home } from './components/Home';
 
 function MainApp() {
@@ -46,25 +47,27 @@ function MainApp() {
     isLoading: authLoading
   } = useAuth();
 
-  const isHighlightRuleActive = (rule: any) => {
-    if (!rule.enabled) return false;
+  const isHighlightRuleActive = useCallback((rule: any) => {
+    if (!rule || !rule.enabled) return false;
     const now = new Date();
-    const currentDay = now.getDay();
-    if (!rule.days.includes(currentDay)) return false;
+    const currentDay = now.getDay(); // 0-6
+    if (!rule.days || !Array.isArray(rule.days) || !rule.days.includes(currentDay)) return false;
 
     if (rule.allDay) return true;
+
+    if (!rule.startTime || !rule.endTime) return false;
 
     const [startH, startM] = rule.startTime.split(':').map(Number);
     const [endH, endM] = rule.endTime.split(':').map(Number);
     const currentH = now.getHours();
     const currentM = now.getMinutes();
 
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
+    const startMinutes = (isNaN(startH) ? 0 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+    const endMinutes = (isNaN(endH) ? 23 : endH) * 60 + (isNaN(endM) ? 59 : endM);
     const currentMinutes = currentH * 60 + currentM;
 
     return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  };
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -79,29 +82,33 @@ function MainApp() {
         pb.collection('categorieen').getFullList()
       ]);
 
-      setTags(tagRecords.map((t: any) => ({
+      const mappedTags = tagRecords.map((t: any) => ({
         id: t.id,
         naam: t.naam,
         kleur: t.kleur,
         active: t.active !== false,
-        system_managed: t.system_managed === true
-      })));
+        system_managed: t.system_managed === true,
+        highlights: t.highlights || []
+      }));
+      setTags(mappedTags);
 
-      setPresses(pressRecords.map((r: any) => ({
+      const mappedPresses = pressRecords.map((r: any) => ({
         id: r.id,
         name: r.naam,
         active: r.active !== false,
         archived: r.archived === true,
         category_order: r.category_order
-      })));
+      }));
+      setPresses(mappedPresses);
 
-      setCategories(catRecords.map((r: any) => ({
+      const mappedCategories = catRecords.map((r: any) => ({
         id: r.id,
         name: r.naam,
         pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
         active: r.active !== false,
         subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
-      })));
+      }));
+      setCategories(mappedCategories);
 
       const grouped: GroupedTask[] = [];
       records.forEach((record: any) => {
@@ -162,44 +169,42 @@ function MainApp() {
           comment: record.opmerkingen || '',
           sort_order: record.sort_order || 0,
           isExternal: record.is_external || false,
-          tagIds: record.tags || []
+          tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : [])
         } as any);
       });
 
       // Handle Highlights: Virtual Categories
       const highlightCategories: GroupedTask[] = [];
-      tags.forEach(tag => {
-        const activeRule = tag.highlights?.find(r => r.enabled && r.method === 'category' && isHighlightRuleActive(r));
+
+      mappedTags.forEach(tag => {
+        if (!tag.highlights || tag.highlights.length === 0) return;
+
+        const activeRule = tag.highlights?.find((r: any) => r.enabled && r.method === 'category' && isHighlightRuleActive(r));
+
         if (activeRule) {
-          // Find all tasks with this tag
-          const matchingSubtasks: any[] = [];
-          grouped.forEach(group => {
-            group.subtasks.forEach(subtask => {
-              if (subtask.tagIds?.includes(tag.id)) {
-                matchingSubtasks.push({
-                  ...subtask,
+          // For each original group, if it has subtasks with this tag, create a virtual group in this tag's category
+          grouped.forEach((origGroup: any) => {
+            const tagMatchingSubtasks = origGroup.subtasks.filter((st: any) => {
+              const tagIds = Array.isArray(st.tagIds) ? st.tagIds : (st.tagIds ? [st.tagIds] : []);
+              return tagIds.includes(tag.id);
+            });
+
+            if (tagMatchingSubtasks.length > 0) {
+              highlightCategories.push({
+                ...origGroup,
+                id: `highlight-${tag.id}-${origGroup.id}`,
+                categoryId: `highlight-${tag.id}`,
+                category: tag.naam, // Category name = Tag name
+                highlightColor: tag.kleur,
+                subtasks: tagMatchingSubtasks.map((s: any) => ({
+                  ...s,
                   isHighlight: true,
                   highlightColor: tag.kleur,
                   highlightTag: tag.naam
-                });
-              }
-            });
+                }))
+              });
+            }
           });
-
-          if (matchingSubtasks.length > 0) {
-            highlightCategories.push({
-              id: `highlight-${tag.id}`,
-              taskName: `Highlight: ${tag.naam}`,
-              taskSubtext: `Automatische highlight op basis van tag '${tag.naam}'`,
-              category: 'Highlights',
-              categoryId: 'highlights',
-              press: 'Systeem',
-              pressId: 'system',
-              subtasks: matchingSubtasks,
-              isHighlightGroup: true,
-              highlightColor: tag.kleur
-            });
-          }
         }
       });
 
@@ -232,6 +237,7 @@ function MainApp() {
 
     return () => {
       pb.collection('onderhoud').unsubscribe('*').catch(() => { });
+      pb.collection('tags').unsubscribe('*').catch(() => { });
     };
   }, [user?.id, fetchData]);
 
@@ -325,9 +331,10 @@ function MainApp() {
       });
       if (refresh) fetchData();
       toast.success('Taak succesvol bijgewerkt');
-    } catch (e) {
+    } catch (e: any) {
       console.error("Update task failed:", e);
-      toast.error('Bijwerken mislukt');
+      if (e.response) console.error("Response data:", e.response);
+      toast.error(`Bijwerken mislukt: ${e.message}`);
     }
   };
 
@@ -395,10 +402,29 @@ function MainApp() {
     setStatusFilter(statusFilter === status ? null : status);
   };
 
-  const currentPressTasks = groupedTasks.filter(group => group.press === decodeURIComponent(location.pathname.split('/').pop() || ''));
-  const allSubtasks = currentPressTasks.flatMap(group => group.subtasks);
+  const currentPressTasks = useMemo(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    const press = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
+    if (!press || press === 'Taken') return [];
 
-  const statusCounts = allSubtasks.reduce((acc, subtask) => {
+    return groupedTasks.map(group => {
+      if (group.isHighlightGroup) {
+        // Filter subtasks to only those belonging to the current press
+        const pressSubtasks = group.subtasks.filter((st: any) =>
+          (st.press && st.press.toLowerCase() === press.toLowerCase()) ||
+          (st.pressId && st.pressId === press)
+        );
+        if (pressSubtasks.length > 0) {
+          return { ...group, subtasks: pressSubtasks };
+        }
+        return null;
+      }
+      return (group.press && group.press.toLowerCase() === press.toLowerCase()) ? group : null;
+    }).filter((g): g is GroupedTask => g !== null);
+  }, [groupedTasks, location.pathname]);
+  const allSubtasks = currentPressTasks.flatMap((group: any) => group.subtasks);
+
+  const statusCounts = allSubtasks.reduce((acc: any, subtask: any) => {
     const status = getStatusInfo(subtask.nextMaintenance).key;
     if (status !== 'Gepland') {
       acc[status] = (acc[status] || 0) + 1;
@@ -754,6 +780,7 @@ function MainApp() {
                 <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} presses={presses} categories={categories} /> : <Navigate to="/" replace />} />
                 <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
                 <Route path="/Feedback" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
+                <Route path="/Roadmap" element={<Roadmap />} />
 
                 {/* --- TOOLBOX --- */}
                 <Route path="/Toolbox" element={<Navigate to="/Toolbox/Tools" replace />} />

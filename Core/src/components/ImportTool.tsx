@@ -61,17 +61,27 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
     'dagen': 'days',
     'day': 'days',
     'days': 'days',
+    'd': 'days',
+    'dd': 'days',
     'week': 'weeks',
     'weken': 'weeks',
     'weeks': 'weeks',
+    'w': 'weeks',
+    'wk': 'weeks',
     'maand': 'months',
     'maanden': 'months',
     'month': 'months',
     'months': 'months',
+    'm': 'months',
+    'mnd': 'months',
     'jaar': 'years',
     'jaren': 'years',
     'year': 'years',
     'years': 'years',
+    'j': 'years',
+    'jr': 'years',
+    'y': 'years',
+    'yr': 'years',
 };
 
 export function ImportTool({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'preview') => void }) {
@@ -450,10 +460,20 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             TARGET_FIELDS.forEach(target => {
                 const csvHeader = mappings[target.systemField];
                 let val = csvHeader ? row[csvHeader] : null;
-
-                if (target.systemField === 'maintenanceIntervalUnit' && val) {
-                    const cleaned = val.toLowerCase().trim();
-                    val = UNIT_MAPPING[cleaned] || 'months';
+                if (target.systemField === 'maintenanceIntervalUnit') {
+                    if (val) {
+                        const cleaned = val.toString().toLowerCase().trim();
+                        if (UNIT_MAPPING[cleaned]) {
+                            val = UNIT_MAPPING[cleaned];
+                        } else {
+                            console.warn(`[Import] Unrecognized interval unit: "${val}". Defaulting to 'months'.`);
+                            val = 'months';
+                        }
+                    } else {
+                        // Default to months if missing, or maybe we should default to days? 
+                        // For now, consistent behavior with previous logic (implicit fallback)
+                        val = 'months';
+                    }
                 }
 
                 if (target.systemField === 'maintenanceInterval') {
