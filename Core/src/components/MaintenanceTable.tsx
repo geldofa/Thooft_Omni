@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { QuickEditDialog } from './QuickEditDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight, Zap, GripVertical } from 'lucide-react';
+import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight, Zap } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -560,11 +560,6 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     return null;
                   })()}
                 </div>
-                {hasPermission('tasks_edit') && (
-                  <div className="w-6 flex-shrink-0 flex justify-center mt-1 text-gray-400">
-                    <GripVertical className="w-4 h-4 cursor-grab active:cursor-grabbing" />
-                  </div>
-                )}
                 <div className="w-6 flex-shrink-0 flex justify-center mt-1">
                   <button
                     onClick={(e) => toggleGroupedTask(groupedTask.id, e)}
@@ -781,7 +776,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                       {/* Spacer for Drag Handle space */}
                     </div>
                   )}
-                  <div className="w-6 flex-shrink-0"></div>
+                  <div className="flex-shrink-0"></div>
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">

@@ -160,29 +160,20 @@ class DrukwerkenCacheService {
     private async fullResync(user: any, hasPermission: (perm: any) => boolean, filter: string, totalItems: number) {
         this.notifyStatus({ loading: true, statusText: 'Starting full sync...', newUpdates: 0 });
 
-        // Assume initial cache count
+        // Update stats
         const currentCacheCount = await db.jobs.count();
         this.notifyStatus({ totalDocs: totalItems, cachedDocs: currentCacheCount });
 
-        // 2. Fetch Current Year (Chunked 20) first
-        const currentYear = new Date().getFullYear();
-        const currentYearFilter = `(date~ "${currentYear}-" || datum~ ".${currentYear}" || date~ "${currentYear}/")`;
-        const primaryFilter = filter ? `(${filter}) && (${currentYearFilter})` : currentYearFilter;
-
         let page = 1;
-        const pageSize = 20;
-
-        if (currentCacheCount > 0) {
-            this.notifyStatus({ statusText: 'Looking for updates...' });
-        } else {
-            this.notifyStatus({ statusText: `Loading ${currentYear} data...` });
-        }
+        let pageSize = 50; // Start with a decent batch for quick initial render
 
         while (true) {
+            this.notifyStatus({ statusText: `Loading data (page ${page})...` });
+
             const result = await pb.collection('drukwerken').getList(page, pageSize, {
                 sort: '-date,-created',
                 expand: 'pers',
-                filter: primaryFilter
+                filter: filter
             });
 
             const jobs = result.items.map(i => this.mapJob(i, user, hasPermission));
@@ -190,44 +181,22 @@ class DrukwerkenCacheService {
             if (jobs.length > 0) {
                 await db.jobs.bulkPut(jobs);
                 const realCount = await db.jobs.count();
+                // Ensure we don't show more than totalItems if local DB has leftovers from other filters
                 const displayCount = Math.min(realCount, totalItems);
                 this.notifyStatus({ cachedDocs: displayCount });
                 await this.notifyJobs();
+
+                // After first successful page, we can mark a partial sync success to avoid full resync on refresh
+                if (page === 1) {
+                    await db.syncState.put({ id: 'global', lastSync: new Date() });
+                }
             }
 
             if (page >= result.totalPages) break;
+
             page++;
-        }
-
-        // 3. Background Load Older Years (Chunked 100)
-        const historicalYearFilter = `date!~ "${currentYear}-" && datum!~ ".${currentYear}" && date!~ "${currentYear}/"`;
-        const historicalFilter = filter ? `(${filter}) && (${historicalYearFilter})` : historicalYearFilter;
-
-        page = 1;
-        const historicalPageSize = 100;
-
-        if (currentCacheCount === 0) {
-            this.notifyStatus({ statusText: `Loading historical data...` });
-        }
-
-        while (true) {
-            const result = await pb.collection('drukwerken').getList(page, historicalPageSize, {
-                sort: '-date,-created',
-                expand: 'pers',
-                filter: historicalFilter
-            });
-
-            const jobs = result.items.map(i => this.mapJob(i, user, hasPermission));
-            if (jobs.length > 0) {
-                await db.jobs.bulkPut(jobs);
-                const realCount = await db.jobs.count();
-                const displayCount = Math.min(realCount, totalItems);
-                this.notifyStatus({ cachedDocs: displayCount });
-                await this.notifyJobs();
-            }
-
-            if (page >= result.totalPages) break;
-            page++;
+            // Subsequent pages can be larger for better throughput
+            if (page === 2) pageSize = 150;
         }
 
         await db.syncState.put({ id: 'global', lastSync: new Date() });

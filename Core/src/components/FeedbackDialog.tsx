@@ -27,6 +27,8 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
     // Roadmap fields
     const [showOnRoadmap, setShowOnRoadmap] = useState(false);
     const [roadmapTitle, setRoadmapTitle] = useState('');
+    const [completedVersion, setCompletedVersion] = useState('');
+    const [completedAt, setCompletedAt] = useState('');
 
     const isAdmin = user?.role === 'admin';
 
@@ -46,6 +48,8 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 setStatus(statusMap[feedbackItem.status || 'pending'] || 'pending');
                 setShowOnRoadmap(feedbackItem.show_on_roadmap || false);
                 setRoadmapTitle(feedbackItem.roadmap_title || feedbackItem.message);
+                setCompletedVersion(feedbackItem.completed_version || '');
+                setCompletedAt(feedbackItem.completed_at ? new Date(feedbackItem.completed_at).toISOString().split('T')[0] : '');
             } else {
                 // New feedback mode
                 setType('bug');
@@ -54,6 +58,8 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 setShowOnRoadmap(false);
                 setStatus('pending');
                 setRoadmapTitle('');
+                setCompletedVersion('');
+                setCompletedAt('');
 
                 fetch('https://api.ipify.org?format=json')
                     .then(res => res.json())
@@ -140,7 +146,9 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     contact_operator: selectedOperator,
                     status: status,
                     show_on_roadmap: showOnRoadmap,
-                    roadmap_title: roadmapTitle || message
+                    roadmap_title: roadmapTitle || message,
+                    completed_version: completedVersion,
+                    completed_at: completedAt ? new Date(completedAt).toISOString() : null
                 };
 
                 await pb.collection('feedback').update(feedbackItem.id, updates);
@@ -237,6 +245,31 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            {['planned', 'in_progress', 'completed'].includes(status) && (
+                                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="completed_version">Versie</Label>
+                                        <input
+                                            id="completed_version"
+                                            value={completedVersion}
+                                            onChange={(e) => setCompletedVersion(e.target.value)}
+                                            placeholder="v0.1.0"
+                                            className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="completed_at">Datum</Label>
+                                        <input
+                                            id="completed_at"
+                                            type="date"
+                                            value={completedAt}
+                                            onChange={(e) => setCompletedAt(e.target.value)}
+                                            className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                     <DialogFooter>

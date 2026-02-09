@@ -162,6 +162,8 @@ export interface FeedbackItem {
   show_on_roadmap?: boolean;
   roadmap_status?: 'planned' | 'in_progress' | 'completed';
   roadmap_title?: string;
+  completed_version?: string;
+  completed_at?: string;
 }
 
 export const EXTERNAL_TAG_NAME = 'Extern';

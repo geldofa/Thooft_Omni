@@ -37,7 +37,9 @@ export function Roadmap() {
                 status: r.status,
                 show_on_roadmap: r.show_on_roadmap,
                 roadmap_title: r.roadmap_title || r.message,
-                contact_operator: r.contact_operator
+                contact_operator: r.contact_operator,
+                completed_version: r.completed_version,
+                completed_at: r.completed_at
             }));
 
             setItems(mappedItems);
@@ -76,8 +78,24 @@ export function Roadmap() {
                             {item.message}
                         </p>
                     )}
-                    <div className="text-[9px] text-gray-400 pt-1 mt-1 border-t border-gray-50 flex justify-between">
-                        <span>{new Date(item.created).toLocaleDateString()}</span>
+                    <div className="text-[9px] text-gray-400 pt-1 mt-1 border-t border-gray-50 flex flex-col gap-1">
+                        <div className="flex justify-between items-center">
+                            <span>{new Date(item.created).toLocaleDateString()}</span>
+                            {['planned', 'in_progress', 'completed'].includes(item.status) && item.completed_version && (
+                                <span className={`px-1.5 py-0.5 rounded font-bold border ${item.status === 'completed' ? 'bg-green-50 text-green-600 border-green-100' :
+                                    item.status === 'in_progress' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                                        'bg-blue-50 text-blue-600 border-blue-100'
+                                    }`}>
+                                    {item.completed_version}
+                                </span>
+                            )}
+                        </div>
+                        {['planned', 'in_progress', 'completed'].includes(item.status) && item.completed_at && (
+                            <div className="text-[8px] italic text-gray-400">
+                                {item.status === 'completed' ? 'Voltooid op: ' : 'Gepland voor: '}
+                                {new Date(item.completed_at).toLocaleDateString()}
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
