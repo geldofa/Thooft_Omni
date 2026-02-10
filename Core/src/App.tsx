@@ -21,11 +21,10 @@ const ActivityLog = lazy(() => import('./components/ActivityLog').then(m => ({ d
 const Reports = lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
 const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
-const FeedbackList = lazy(() => import('./components/FeedbackList').then(m => ({ default: m.FeedbackList })));
 const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: m.Toolbox })));
 const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
 const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
-const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
+const RoadmapV2 = lazy(() => import('./components/RoadmapV2').then(m => ({ default: m.RoadmapV2 })));
 import { ForceRefreshDialog } from './components/ForceRefreshDialog';
 import { Home } from './components/Home';
 
@@ -886,8 +885,9 @@ function MainApp() {
                 <Route path="/Rapport" element={hasPermission('reports_view') ? <Reports tasks={tasks} presses={presses} /> : <Navigate to="/" replace />} />
                 <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} presses={presses} categories={categories} /> : <Navigate to="/" replace />} />
                 <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
-                <Route path="/Feedback" element={hasPermission('feedback_view') ? <FeedbackList /> : <Navigate to="/" replace />} />
-                <Route path="/Roadmap" element={<Roadmap />} />
+                <Route path="/Feedback" element={<Navigate to="/Roadmap" replace />} />
+                <Route path="/Roadmap" element={<RoadmapV2 />} />
+                <Route path="/RoadmapV2" element={<Navigate to="/Roadmap" replace />} />
 
                 {/* --- TOOLBOX --- */}
                 <Route path="/Toolbox" element={<Navigate to="/Toolbox/Tools" replace />} />

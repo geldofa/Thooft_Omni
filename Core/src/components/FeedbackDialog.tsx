@@ -177,7 +177,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[80vw] min-w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{feedbackItem ? 'Feedback Bewerken' : 'Feedback Versturen'}</DialogTitle>
                 </DialogHeader>

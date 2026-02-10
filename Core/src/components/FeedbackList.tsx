@@ -34,11 +34,6 @@ const STATUS_COLORS: Record<string, string> = {
     rejected: 'bg-red-100 text-red-700'
 };
 
-const TYPE_LABELS: Record<string, string> = {
-    bug: 'Probleem',
-    feature: 'Suggestie',
-    general: 'Opmerking'
-};
 
 // --- CONFIGURATION CONSTANTS ---
 // EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
@@ -49,7 +44,7 @@ const COL_WIDTHS = {
     comment: '30%',
     user: '140px',
     date: '120px',
-    actions: '95px'
+    actions: '105px'
 };
 
 const FONT_SIZES = {
@@ -59,7 +54,7 @@ const FONT_SIZES = {
     subtext: 'text-xs'       // Dates and extra info
 };
 
-export function FeedbackList() {
+export function FeedbackList({ compact = false }: { compact?: boolean }) {
     const { user, hasPermission } = useAuth();
     const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -177,12 +172,12 @@ export function FeedbackList() {
         <Table className={`table-fixed ${FONT_SIZES.body}`}>
             <TableHeader className="bg-gray-50">
                 <TableRow>
-                    <TableHead style={{ width: COL_WIDTHS.status }}>Status</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.type }}>Type</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.message }}>Bericht</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.comment }}>{canManage ? 'Opmerking Beheer' : 'Reactie'}</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.user }}>Contact</TableHead>
-                    <TableHead style={{ width: COL_WIDTHS.date }} className="text-right">Datum</TableHead>
+                    <TableHead style={{ width: compact ? '200px' : COL_WIDTHS.status }}>Status</TableHead>
+                    {!compact && <TableHead style={{ width: COL_WIDTHS.type }}>Type</TableHead>}
+                    <TableHead style={{ width: compact ? 'auto' : COL_WIDTHS.message }}>Bericht</TableHead>
+                    {!compact && <TableHead style={{ width: COL_WIDTHS.comment }}>{canManage ? 'Opmerking Beheer' : 'Reactie'}</TableHead>}
+                    <TableHead style={{ width: compact ? '180px' : COL_WIDTHS.user }}>Contact</TableHead>
+                    {!compact && <TableHead style={{ width: COL_WIDTHS.date }} className="text-right">Datum</TableHead>}
                     {canManage && <TableHead style={{ width: COL_WIDTHS.actions }} className="text-right">Acties</TableHead>}
                 </TableRow>
             </TableHeader>
@@ -218,36 +213,34 @@ export function FeedbackList() {
                                 )}
                             </div>
                         </TableCell>
-                        <TableCell>
-                            <Badge variant={item.type === 'bug' ? 'destructive' : 'secondary'} className="font-normal border-0">
-                                {TYPE_LABELS[item.type] || item.type}
-                            </Badge>
-                        </TableCell>
                         <TableCell className="align-top py-4">
-                            <div className={`font-medium ${FONT_SIZES.body} whitespace-pre-wrap`}>{item.message}</div>
-                            {item.url && canManage && (
+                            <div className={`font-medium ${FONT_SIZES.body} whitespace-pre-wrap truncate max-w-full`} title={item.message}>{item.message}</div>
+                            {item.url && canManage && !compact && (
                                 <div className={`${FONT_SIZES.subtext} text-gray-400 mt-1 truncate max-w-[300px]`} title={item.url}>
                                     Op: {item.url}
                                 </div>
                             )}
                         </TableCell>
-                        <TableCell className="align-top py-4">
-                            <div className={`${FONT_SIZES.body} text-gray-600`}>
-                                {item.admin_comment || '-'}
-                            </div>
-                        </TableCell>
+                        {!compact && (
+                            <TableCell className="align-top py-4">
+                                <div className={`${FONT_SIZES.body} text-gray-600`}>
+                                    {item.admin_comment || '-'}
+                                </div>
+                            </TableCell>
+                        )}
                         <TableCell>
                             <div className="flex flex-col">
-
                                 {item.contact_operator && (
                                     <span className={`${FONT_SIZES.text} text-blue-600`}>{item.contact_operator}</span>
                                 )}
                                 {canManage && item.ip && <span className="text-[10px] text-gray-400">{item.ip}</span>}
                             </div>
                         </TableCell>
-                        <TableCell className={`text-right ${FONT_SIZES.subtext} text-gray-500 whitespace-nowrap`}>
-                            {formatDate(item.created)}
-                        </TableCell>
+                        {!compact && (
+                            <TableCell className={`text-right ${FONT_SIZES.subtext} text-gray-500 whitespace-nowrap`}>
+                                {formatDate(item.created)}
+                            </TableCell>
+                        )}
                         {canManage && (
                             <TableCell className="text-right">
                                 <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
@@ -294,21 +287,24 @@ export function FeedbackList() {
 
     return (
         <Card className="w-full shadow-sm bg-white overflow-hidden">
-            <CardHeader>
-                <PageHeader
-                    title={canManage ? 'Feedback Beheer' : 'Feedback Overzicht'}
-                    icon={MessageSquare}
-                    actions={
-                        <Button
-                            onClick={() => setIsFeedbackOpen(true)}
-                            className="gap-2"
-                        >
-                            <Plus className="w-4 h-4" /> Feedback
-                        </Button>
-                    }
-                    className="mb-2"
-                />
-            </CardHeader>
+            {!compact && (
+                <CardHeader>
+                    <PageHeader
+                        title="Feedback"
+                        description="Alle suggesties, problemen en vragen van gebruikers."
+                        icon={MessageSquare}
+                        actions={
+                            <Button
+                                onClick={() => setIsFeedbackOpen(true)}
+                                className="gap-2"
+                            >
+                                <Plus className="w-4 h-4" /> Feedback
+                            </Button>
+                        }
+                        className="mb-2"
+                    />
+                </CardHeader>
+            )}
             <CardContent className="space-y-6">
                 {loading ? (
                     <div className="flex justify-center p-8">
@@ -334,11 +330,21 @@ export function FeedbackList() {
                     <div className="space-y-8">
                         {/* Active Feedback */}
                         {activeFeedback.length > 0 && (
-                            <div className="space-y-3">
-                                <h3 className={`${FONT_SIZES.section} font-semibold text-gray-900 flex items-center gap-2 px-1`}>
-                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                    Openstaande Feedback ({activeFeedback.length})
-                                </h3>
+                            <div className="space-y-3 pt-4">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className={`${FONT_SIZES.section} font-semibold text-gray-900 flex items-center gap-2`}>
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        Openstaande Feedback ({activeFeedback.length})
+                                    </h3>
+                                    <Button
+                                        onClick={() => setIsFeedbackOpen(true)}
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 gap-1.5 text-xs font-semibold border-blue-200 text-blue-700 hover:bg-blue-50"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" /> Nieuw
+                                    </Button>
+                                </div>
                                 <div className="rounded-md border overflow-hidden bg-white shadow-sm">
                                     {renderFeedbackTable(activeFeedback)}
                                 </div>

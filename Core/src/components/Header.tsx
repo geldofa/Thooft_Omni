@@ -7,7 +7,6 @@ import {
   ListChecks,
   Users,
   FileText,
-  MessageSquarePlus,
   Wrench,
   FileBarChart,
   Rocket
@@ -124,9 +123,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   )}
 
                   {/* Common End Section */}
-                  {(hasPermission('logs_view') || hasPermission('feedback_view')) && (
-                    <div className="w-px h-6 bg-slate-200 mx-1" />
-                  )}
+                  <div className="w-px h-6 bg-slate-200 mx-1" />
 
                   {hasPermission('logs_view') && (
                     <TabsTrigger value="/Logboek" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
@@ -137,12 +134,6 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   <TabsTrigger value="/Roadmap" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
                     <Rocket className="w-4 h-4" /> Roadmap
                   </TabsTrigger>
-
-                  {hasPermission('feedback_view') && (
-                    <TabsTrigger value="/Feedback" className="tab-pill-trigger data-[state=active]:!bg-blue-600 data-[state=active]:!text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-100">
-                      <MessageSquarePlus className="w-4 h-4" /> Feedback
-                    </TabsTrigger>
-                  )}
 
                 </TabsList>
               </Tabs>

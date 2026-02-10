@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { pb, FeedbackItem } from './AuthContext';
 import { Card, CardContent } from './ui/card';
+import { Button } from './ui/button';
 import { PageHeader } from './PageHeader';
 import { Rocket, Loader2, Bug, Construction } from 'lucide-react';
 import { toast } from 'sonner';
@@ -162,6 +163,16 @@ export function Roadmap() {
                     icon={Rocket}
                     iconColor="text-blue-600"
                     iconBgColor="bg-blue-100"
+                    actions={
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-white border-blue-200 text-blue-600 hover:bg-blue-50"
+                            onClick={() => window.location.href = '/RoadmapV2'}
+                        >
+                            Try Roadmap V2 (Beta)
+                        </Button>
+                    }
                 />
             </div>
 
