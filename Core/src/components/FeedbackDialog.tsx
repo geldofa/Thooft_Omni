@@ -71,56 +71,42 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
             const loadOperators = async () => {
                 try {
                     if (user?.role === 'admin') {
-                        // Admin: all operators
+                        // Admin: all internal operators
                         const records = await pb.collection('operatoren').getFullList({
-                            filter: 'intern = true',
+                            filter: 'dienstverband = "Intern"',
                             sort: 'naam'
                         });
                         setOperators(records.map((r: any) => ({ id: r.id, name: r.naam || r.name })));
-                    } else if (user?.role === 'press') {
-                        // Press: operators from their press, or their linked operator
-                        const pressId = user.press;
+                    } else if (user?.role === 'meestergast') {
+                        // Meestergast: only their linked operator
                         const operatorId = (user as any).operator_id;
-
                         if (operatorId) {
-                            // If user has a linked operator, use that
                             const record = await pb.collection('operatoren').getOne(operatorId);
                             const operatorName = record.naam || record.name;
                             setOperators([{ id: record.id, name: operatorName }]);
                             setSelectedOperator(operatorName);
-                        } else if (pressId) {
-                            // Otherwise show operators from their press
-                            const records = await pb.collection('operatoren').getFullList({
-                                filter: `intern = true && pers_ids ~ "${pressId}"`,
-                                sort: 'naam'
-                            });
-                            setOperators(records.map((r: any) => ({ id: r.id, name: r.naam || r.name })));
                         } else {
-                            // Link operators to specific press for external users? 
-                            // For now, if no pressId, no operators listed
-                            setOperators([]);
-                        }
-                    } else {
-                        // Other users: check for linked operator_id first
-                        const operatorId = (user as any).operator_id;
-                        if (operatorId) {
-                            try {
-                                const record = await pb.collection('operatoren').getOne(operatorId);
-                                const operatorName = record.naam || record.name;
-                                setOperators([{ id: record.id, name: operatorName }]);
-                                setSelectedOperator(operatorName);
-                            } catch {
-                                // Fallback to user's display name
-                                const userName = user?.name || user?.username || 'Unknown';
-                                setOperators([{ id: 'self', name: userName }]);
-                                setSelectedOperator(userName);
-                            }
-                        } else {
-                            // Fallback to user's display name
                             const userName = user?.name || user?.username || 'Unknown';
                             setOperators([{ id: 'self', name: userName }]);
                             setSelectedOperator(userName);
                         }
+                    } else if (user?.role === 'press') {
+                        // Press: active operators for that press (internal)
+                        const pressId = user.press;
+                        if (pressId) {
+                            const records = await pb.collection('operatoren').getFullList({
+                                filter: `dienstverband = "Intern" && (presses ~ "${pressId}")`,
+                                sort: 'naam'
+                            });
+                            setOperators(records.map((r: any) => ({ id: r.id, name: r.naam || r.name })));
+                        } else {
+                            setOperators([]);
+                        }
+                    } else {
+                        // Other roles: fallback to user identification
+                        const userName = user?.name || user?.username || 'Unknown';
+                        setOperators([{ id: 'self', name: userName }]);
+                        setSelectedOperator(userName);
                     }
                 } catch (err) {
                     console.error("Failed to fetch operators for feedback", err);
@@ -130,9 +116,11 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
         }
     }, [open, feedbackItem, user]);
 
+    const canEdit = !feedbackItem || isAdmin;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message.trim()) return;
+        if (!message.trim() || !canEdit) return;
 
 
 
@@ -164,7 +152,15 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     operator: selectedOperator
                 };
 
-                await sendFeedback(type, message, context);
+                const additionalData = isAdmin ? {
+                    status: status,
+                    show_on_roadmap: showOnRoadmap,
+                    roadmap_title: roadmapTitle || message,
+                    completed_version: completedVersion,
+                    completed_at: completedAt ? new Date(completedAt).toISOString() : null
+                } : {};
+
+                await sendFeedback(type, message, context, additionalData);
                 toast.success('Feedback sent!');
             }
 
@@ -193,18 +189,18 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                                 <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="bug">Bug Report</SelectItem>
-                                <SelectItem value="feature">Feature Request</SelectItem>
-                                <SelectItem value="general">General Comment</SelectItem>
+                                <SelectItem value="bug">Probleem</SelectItem>
+                                <SelectItem value="feature">Functie</SelectItem>
+                                <SelectItem value="general">Opmerking</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     {/* Contact Person Selector */}
                     <div className="space-y-2">
-                        <Label htmlFor="operator">Contact Operator (Optional)</Label>
-                        <Select value={selectedOperator} onValueChange={setSelectedOperator} disabled={user?.role !== 'admin' && user?.role !== 'press'}>
+                        <Label htmlFor="operator">Contactpersoon (Optioneel)</Label>
+                        <Select value={selectedOperator} onValueChange={setSelectedOperator} disabled={user?.role === 'meestergast' || (user?.role !== 'admin' && user?.role !== 'press')}>
                             <SelectTrigger id="operator">
-                                <SelectValue placeholder="Select contact person" />
+                                <SelectValue placeholder="Selecteer contactpersoon" />
                             </SelectTrigger>
                             <SelectContent>
                                 {(operators || []).filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
@@ -212,7 +208,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                                         {op.name}
                                     </SelectItem>
                                 ))}
-                                <SelectItem value="other">Other / Not Listed</SelectItem>
+                                <SelectItem value="other">Andere / Niet in lijst</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -225,6 +221,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                             placeholder="Describe the issue or idea..."
                             required
                             className="resize-none h-32"
+                            disabled={!canEdit}
                         />
                     </div>
 
@@ -273,8 +270,8 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                         </div>
                     )}
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit" disabled={isSubmitting}>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Annuleren</Button>
+                        <Button type="submit" disabled={isSubmitting || !message.trim() || !canEdit}>
                             {isSubmitting ? 'Sending...' : feedbackItem ? 'Opslaan' : 'Feedback versturen'}
                         </Button>
                     </DialogFooter>

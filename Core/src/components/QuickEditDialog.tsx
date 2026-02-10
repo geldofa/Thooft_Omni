@@ -265,11 +265,6 @@ export function QuickEditDialog({
         await onSave(updatedTask);
       }
 
-      const updateCount = tasksToUpdate.length;
-      toast.success(updateCount > 1
-        ? `${updateCount} taken succesvol bijgewerkt`
-        : 'Taak succesvol bijgewerkt'
-      );
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to save tasks:', error);

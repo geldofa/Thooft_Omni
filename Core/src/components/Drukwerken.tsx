@@ -21,7 +21,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
 import { Switch } from './ui/switch';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
+
 import { AddFinishedJobDialog } from './AddFinishedJobDialog';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 import {
     evaluateFormula,
     Katern,
@@ -104,7 +106,6 @@ const FormulaResultWithTooltip = ({
     const renderCalculationFlow = () => {
         const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
         const safeParams = parameters[pressName] || {};
-        const pages = Number((job as any).pages || 1);
         const exOmw = Number((job as any).exOmw || 1);
 
         interface CalcPart {
@@ -323,7 +324,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         return acc;
     }, {} as Record<string, string>), [presses]);
 
-    const { user, hasPermission, getSystemSetting } = useAuth();
+    const { user, hasPermission, getSystemSetting, addActivityLog } = useAuth();
 
     const { subtab } = useParams<{ subtab: string }>();
     const navigate = useNavigate();
@@ -333,6 +334,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
     const [showComparison, setShowComparison] = useState(false);
+
+    // Delete Confirmation State
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
+    const [deleteMessage, setDeleteMessage] = useState({ title: '', description: '' });
 
     // Parameters state - one set per press
     const [parameters, setParameters] = useState<Record<string, Record<string, any>>>(() => {
@@ -553,29 +559,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         });
     };
 
-    const handleDeleteKatern = (werkorderId: string, katernId: string) => {
-        const order = werkorders.find(wo => wo.id === werkorderId);
-        if (!order) return;
 
-        if (order.katernen.length <= 1) {
-            if (window.confirm("Dit is de laatste versie in deze order. Wilt u de volledige werkorder verwijderen?")) {
-                handleDeleteWerkorder(werkorderId);
-            }
-            return;
-        }
-
-        if (window.confirm("Weet je zeker dat je deze versie (katern) wilt verwijderen?")) {
-            setWerkorders(prev => prev.map(wo => {
-                if (wo.id === werkorderId) {
-                    return {
-                        ...wo,
-                        katernen: wo.katernen.filter(k => k.id !== katernId)
-                    };
-                }
-                return wo;
-            }));
-        }
-    };
 
     const handleSaveOrderToFinished = async (werkorder: Werkorder) => {
         if (!hasPermission('drukwerken_view_all') && !user?.pressId) {
@@ -664,14 +648,31 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     max_bruto: processedKatern.maxGross,
                     groen: processedKatern.green || 0,
                     rood: processedKatern.red || 0,
-                    delta: processedKatern.delta || 0,
+                    delta: processedKatern.delta,
                     delta_percent: processedKatern.deltaPercentage || 0,
-                    opmerking: '', // No field in UI yet
-                    pers: user?.pressId // Link to press
+                    pers: user?.pressId,
+                    status: 'check',
+                    opmerking: ''
                 };
 
-                // Save to PocketBase
                 await pb.collection('drukwerken').create(pbData);
+
+                // Log creation
+                await addActivityLog({
+                    action: 'Created',
+                    entity: 'FinishedJob',
+                    entityId: 'new',
+                    entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
+                    details: `Drukwerk afgepunt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
+                    newValue: [
+                        `Order: ${werkorder.orderNr}`,
+                        `Blz: ${processedKatern.pages}`,
+                        `Netto: ${processedKatern.netRun}`,
+                        `Versie: ${processedKatern.version || '-'}`
+                    ].join('|||'),
+                    user: user?.username || 'System',
+                    press: user?.press
+                });
             }
 
             fetchCalculatedFields();
@@ -991,7 +992,20 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         try {
             // 1. Delete removed jobs
             if (deletedIds.length > 0) {
-                await Promise.all(deletedIds.map(id => pb.collection('drukwerken').delete(id)));
+                await Promise.all(deletedIds.map(async (id) => {
+                    await pb.collection('drukwerken').delete(id);
+                    // Log deletion
+                    await addActivityLog({
+                        action: 'Deleted',
+                        entity: 'FinishedJob',
+                        entityId: id,
+                        entityName: id,
+                        details: `Bulk bewerking: Drukwerk verwijderd (${id})`,
+                        oldValue: `ID: ${id}`,
+                        user: user?.username || 'System',
+                        press: user?.press
+                    });
+                }));
             }
 
             // 2. Update or Create jobs
@@ -1027,8 +1041,38 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
                 if (isNew) {
                     await pb.collection('drukwerken').create(pbData);
+                    // Log creation
+                    await addActivityLog({
+                        action: 'Created',
+                        entity: 'FinishedJob',
+                        entityId: 'new',
+                        entityName: `${job.orderNr} - ${job.orderName}`,
+                        details: `Bulk bewerking: Drukwerk aangemaakt (${job.orderNr})`,
+                        newValue: [
+                            `Order: ${job.orderNr}`,
+                            `Blz: ${job.pages}`,
+                            `Netto: ${job.netRun}`
+                        ].join('|||'),
+                        user: user?.username || 'System',
+                        press: user?.press
+                    });
                 } else {
                     await pb.collection('drukwerken').update(job.id, pbData);
+                    // Log update
+                    await addActivityLog({
+                        action: 'Updated',
+                        entity: 'FinishedJob',
+                        entityId: job.id,
+                        entityName: `${job.orderNr} - ${job.orderName}`,
+                        details: `Bulk bewerking: Drukwerk bijgewerkt (${job.orderNr})`,
+                        newValue: [
+                            `Order: ${job.orderNr}`,
+                            `Blz: ${job.pages}`,
+                            `Netto: ${job.netRun}`
+                        ].join('|||'),
+                        user: user?.username || 'System',
+                        press: user?.press
+                    });
                 }
             }));
 
@@ -1101,17 +1145,86 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         setIsAddJobDialogOpen(true);
     };
 
-    const handleDeleteJob = async (jobId: string) => {
-        if (!confirm("Weet u zeker dat u dit drukwerk wilt verwijderen?")) return;
-        try {
-            await pb.collection('drukwerken').delete(jobId);
-            toast.success("Drukwerk verwijderd.");
-            if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
-            fetchCalculatedFields();
-        } catch (error) {
-            console.error("Error deleting job:", error);
-            toast.error("Fout bij verwijderen drukwerk.");
+    const confirmDelete = async () => {
+        if (!deleteAction) return;
+
+        if (deleteAction.type === 'werkorder') {
+            handleDeleteWerkorder(deleteAction.id);
+        } else if (deleteAction.type === 'katern' && deleteAction.secondaryId) {
+            // Check if it's the last katern to delete the whole order
+            const order = werkorders.find(wo => wo.id === deleteAction.id);
+            if (order && order.katernen.length <= 1) {
+                handleDeleteWerkorder(deleteAction.id);
+            } else {
+                setWerkorders(prev => prev.map(wo => {
+                    if (wo.id === deleteAction.id) {
+                        return {
+                            ...wo,
+                            katernen: wo.katernen.filter(k => k.id !== deleteAction.secondaryId)
+                        };
+                    }
+                    return wo;
+                }));
+            }
+        } else if (deleteAction.type === 'job') {
+            try {
+                await pb.collection('drukwerken').delete(deleteAction.id);
+                // Log deletion
+                await addActivityLog({
+                    action: 'Deleted',
+                    entity: 'FinishedJob',
+                    entityId: deleteAction.id,
+                    entityName: deleteAction.id,
+                    details: `Drukwerk verwijderd via lijst`,
+                    oldValue: `ID: ${deleteAction.id}`,
+                    user: user?.username || 'System',
+                    press: user?.press
+                });
+
+                toast.success("Drukwerk verwijderd.");
+                if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
+                fetchCalculatedFields();
+            } catch (error) {
+                console.error("Error deleting job:", error);
+                toast.error("Fout bij verwijderen drukwerk.\n" + error);
+            }
         }
+        setDeleteAction(null);
+    };
+
+    const requestDeleteWerkorder = (id: string, isFullOrder = false) => {
+        setDeleteAction({ type: 'werkorder', id });
+        setDeleteMessage({
+            title: "Werkorder verwijderen",
+            description: isFullOrder
+                ? "Dit is de laatste versie in deze order. Wilt u de volledige werkorder verwijderen?"
+                : "Weet je zeker dat je deze gehele werkorder wilt verwijderen?"
+        });
+        setDeleteModalOpen(true);
+    };
+
+    const requestDeleteKatern = (werkorderId: string, katernId: string) => {
+        const order = werkorders.find(wo => wo.id === werkorderId);
+        if (order && order.katernen.length <= 1) {
+            requestDeleteWerkorder(werkorderId, true);
+            return;
+        }
+
+        setDeleteAction({ type: 'katern', id: werkorderId, secondaryId: katernId });
+        setDeleteMessage({
+            title: "Versie verwijderen",
+            description: "Weet je zeker dat je deze versie (katern) wilt verwijderen?"
+        });
+        setDeleteModalOpen(true);
+    };
+
+    const requestDeleteJob = (jobId: string) => {
+        setDeleteAction({ type: 'job', id: jobId });
+        setDeleteMessage({
+            title: "Drukwerk verwijderen",
+            description: "Weet u zeker dat u dit drukwerk wilt verwijderen?"
+        });
+        setDeleteModalOpen(true);
     };
 
 
@@ -1277,9 +1390,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                 size="sm"
                                                                 className="h-9 w-9 p-0 hover:bg-red-100 text-red-500"
                                                                 onClick={() => {
-                                                                    if (window.confirm("Weet je zeker dat je deze gehele werkorder wilt verwijderen?")) {
-                                                                        handleDeleteWerkorder(wo.id);
-                                                                    }
+                                                                    requestDeleteWerkorder(wo.id);
                                                                 }}
                                                             >
                                                                 <Trash2 className="w-4 h-4" />
@@ -1427,7 +1538,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                         size="sm"
                                                                         variant="ghost"
                                                                         className="hover:bg-red-100 text-red-500"
-                                                                        onClick={() => handleDeleteKatern(wo.id, katern.id)}
+                                                                        onClick={() => requestDeleteKatern(wo.id, katern.id)}
                                                                     >
                                                                         <Trash2 className="w-4 h-4" />
                                                                     </Button>
@@ -1634,7 +1745,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                     <Edit className="w-3 h-3" />
                                                                 </Button>
                                                                 {(user?.role === 'admin' || user?.role === 'meestergast') && (
-                                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-re-100 text-red-500" onClick={() => handleDeleteJob(job.id)}>
+                                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-red-100 text-red-500" onClick={() => requestDeleteJob(job.id)}>
                                                                         <Trash2 className="w-3 h-3" />
                                                                     </Button>
                                                                 )}
@@ -1694,6 +1805,16 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     onCalculate={(job) => processJobFormulas(job) as FinishedPrintJob}
                 />
             )}
+
+            <ConfirmationModal
+                open={deleteModalOpen}
+                onOpenChange={setDeleteModalOpen}
+                onConfirm={confirmDelete}
+                title={deleteMessage.title}
+                description={deleteMessage.description}
+                confirmText="Verwijderen"
+                variant="destructive"
+            />
         </TooltipProvider>
     );
 }

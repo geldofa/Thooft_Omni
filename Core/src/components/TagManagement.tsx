@@ -185,7 +185,9 @@ export function TagManagement() {
                     entity: 'Tag',
                     entityId: editingTag.id,
                     entityName: formData.naam,
-                    details: `Updated tag: ${formData.naam}`
+                    details: `Updated tag: ${formData.naam}`,
+                    oldValue: `Naam: ${editingTag.naam}|||Kleur: ${editingTag.kleur}|||Status: ${editingTag.active ? 'Actief' : 'Inactief'}`,
+                    newValue: `Naam: ${formData.naam}|||Kleur: ${formData.kleur}|||Status: ${formData.active ? 'Actief' : 'Inactief'}`
                 });
                 handleCloseDialog();
             } else {
@@ -202,7 +204,8 @@ export function TagManagement() {
                     entity: 'Tag',
                     entityId: 'new',
                     entityName: formData.naam,
-                    details: `Added new tag: ${formData.naam}`
+                    details: `Created new tag: ${formData.naam}`,
+                    newValue: `Naam: ${formData.naam}|||Kleur: ${formData.kleur}|||Status: ${formData.active ? 'Actief' : 'Inactief'}`
                 });
                 handleCloseDialog();
             } else {
@@ -221,7 +224,8 @@ export function TagManagement() {
                 entity: 'Tag',
                 entityId: id,
                 entityName: name,
-                details: `Deleted tag`
+                details: `Deleted tag: ${name}`,
+                oldValue: `Naam: ${name}`
             });
         } else {
             toast.error(`Verwijderen van tag "${name}" mislukt`);

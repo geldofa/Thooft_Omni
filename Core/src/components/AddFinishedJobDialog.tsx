@@ -14,9 +14,10 @@ import { Label } from './ui/label';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
-import { FinishedPrintJob } from './Drukwerken';
+import { FinishedPrintJob } from '../utils/drukwerken-utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Trash2, Plus } from 'lucide-react';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 
 interface AddFinishedJobDialogProps {
     open: boolean;
@@ -38,6 +39,8 @@ export function AddFinishedJobDialog({
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [orderNr, setOrderNr] = useState('');
     const [orderName, setOrderName] = useState('');
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [jobToDelete, setJobToDelete] = useState<string | null>(null);
 
     useEffect(() => {
         if (open) {
@@ -125,12 +128,18 @@ export function AddFinishedJobDialog({
             return;
         }
 
-        if (window.confirm("Weet je zeker dat je deze versie wilt verwijderen?")) {
-            setJobs(prev => prev.filter(j => j.id !== jobId));
-            if (!jobId.startsWith('temp-')) {
-                setDeletedIds(prev => [...prev, jobId]);
-            }
+        setJobToDelete(jobId);
+        setDeleteModalOpen(true);
+    };
+
+    const confirmDelete = () => {
+        if (!jobToDelete) return;
+
+        setJobs(prev => prev.filter(j => j.id !== jobToDelete));
+        if (!jobToDelete.startsWith('temp-')) {
+            setDeletedIds(prev => [...prev, jobToDelete]);
         }
+        setJobToDelete(null);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -290,7 +299,16 @@ export function AddFinishedJobDialog({
                         <Button type="submit">Opslaan</Button>
                     </DialogFooter>
                 </form>
+                <ConfirmationModal
+                    open={deleteModalOpen}
+                    onOpenChange={setDeleteModalOpen}
+                    onConfirm={confirmDelete}
+                    title="Versie verwijderen"
+                    description="Weet je zeker dat je deze versie wilt verwijderen?"
+                    confirmText="Verwijderen"
+                    variant="destructive"
+                />
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

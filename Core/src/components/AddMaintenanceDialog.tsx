@@ -362,22 +362,30 @@ export function AddMaintenanceDialog({
 
     if (onUpdateGroup && initialGroup) {
       // Handle group update - Propagate core fields from the form to all tasks in the group
+      const groupCommentModified = taskFormData.opmerkingen !== previousComment;
+
       const updatedTasks = subtasks.map((st, index) => {
-        // Find if this subtask was in the initial group to keep its ID and other fields
         const initialTask = initialGroup.find(it => it.id === st.id);
+
+        // Effective comment: use group-level if modified, else subtask's own
+        const effectiveComment = groupCommentModified ? taskFormData.opmerkingen : (st.opmerkingen || taskFormData.opmerkingen);
+
+        // Update date if effective comment changed from initialTask
+        const commentDate = (groupCommentModified || (initialTask && effectiveComment !== initialTask.opmerkingen))
+          ? new Date()
+          : (initialTask?.commentDate || st.commentDate || null);
 
         return {
           ...st,
-          id: st.id, // This is either an existing ID or a temp one if new
-          task: taskFormData.task, // Enforce the Group Name from the form
-          subtaskName: st.name, // Use the specific subtask name from the subtasks state
-          taskSubtext: taskFormData.taskSubtext, // Enforce the Group Subtext from the form
-          subtaskSubtext: st.subtext, // Use the specific subtask subtext from the subtasks state
+          id: st.id,
+          task: taskFormData.task,
+          subtaskName: st.name,
+          taskSubtext: taskFormData.taskSubtext,
+          subtaskSubtext: st.subtext,
           categoryId: taskFormData.category,
           category: selectedCategory?.name || '',
           pressId: taskFormData.press,
           press: selectedPress?.name || '',
-          // Propagation logic: Only overwrite if the value in the form was actually changed from its initial state
           lastMaintenance: taskFormData.lastMaintenance !== initialValues.lastMaintenance ? taskFormData.lastMaintenance : (initialTask?.lastMaintenance || taskFormData.lastMaintenance),
           nextMaintenance: taskFormData.nextMaintenance !== initialValues.nextMaintenance ? taskFormData.nextMaintenance : (initialTask?.nextMaintenance || taskFormData.nextMaintenance),
           maintenanceInterval: taskFormData.maintenanceInterval !== initialValues.maintenanceInterval ? taskFormData.maintenanceInterval : (initialTask?.maintenanceInterval || taskFormData.maintenanceInterval),
@@ -385,12 +393,12 @@ export function AddMaintenanceDialog({
           assignedTo: (taskFormData.assignedTo !== initialValues.assignedTo && taskFormData.assignedTo !== '') ? taskFormData.assignedTo : (initialTask?.assignedTo || ''),
           assignedToIds: initialTask?.assignedToIds || [],
           assignedToTypes: initialTask?.assignedToTypes || [],
-          opmerkingen: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
-          comment: initialTask?.opmerkingen || st.opmerkingen || taskFormData.opmerkingen,
-          commentDate: (initialTask?.opmerkingen || st.opmerkingen) ? (initialTask?.commentDate || st.commentDate || new Date()) : taskFormData.commentDate,
-          sort_order: index, // Use current array index as sort order
-          isExternal: taskFormData.isExternal, // Propagation
-          tagIds: taskFormData.tagIds, // Propagation
+          opmerkingen: effectiveComment,
+          comment: effectiveComment,
+          commentDate,
+          sort_order: index,
+          isExternal: taskFormData.isExternal,
+          tagIds: taskFormData.tagIds,
           created: initialTask?.created || new Date().toISOString(),
           updated: new Date().toISOString()
         } as MaintenanceTask;

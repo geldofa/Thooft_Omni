@@ -63,7 +63,7 @@ export function PressManagement() {
 
   useEffect(() => {
     fetchPresses();
-    const unsubscribe = pb.collection('persen').subscribe('*', () => fetchPresses());
+    pb.collection('persen').subscribe('*', () => fetchPresses());
     return () => {
       pb.collection('persen').unsubscribe('*');
     };
@@ -169,7 +169,9 @@ export function PressManagement() {
           entity: 'Press',
           entityId: editingPress.id,
           entityName: formData.name,
-          details: `Updated press: ${formData.name}`
+          details: `Updated press: ${formData.name}`,
+          oldValue: `Naam: ${editingPress.name}|||Status: ${editingPress.active ? 'Actief' : 'Inactief'}`,
+          newValue: `Naam: ${formData.name}|||Status: ${formData.active ? 'Actief' : 'Inactief'}`
         });
         handleCloseDialog();
       } else {
@@ -186,7 +188,8 @@ export function PressManagement() {
           entity: 'Press',
           entityId: 'new',
           entityName: formData.name,
-          details: `Added new press: ${formData.name}`
+          details: `Added new press: ${formData.name}`,
+          newValue: `Naam: ${formData.name}|||Status: ${formData.active ? 'Actief' : 'Inactief'}`
         });
         handleCloseDialog();
       } else {
@@ -205,7 +208,8 @@ export function PressManagement() {
         entity: 'Press',
         entityId: id,
         entityName: name,
-        details: `Deleted press: ${name}`
+        details: `Deleted press: ${name}`,
+        oldValue: `Naam: ${name}`
       });
     } else {
       toast.error(`Verwijderen van pers "${name}" mislukt`);
@@ -227,7 +231,9 @@ export function PressManagement() {
         entity: 'Press',
         entityId: press.id,
         entityName: press.name,
-        details: `${updatedPress.archived ? 'Archived' : 'Unarchived'} press: ${press.name}`
+        details: `${updatedPress.archived ? 'Archived' : 'Unarchived'} press: ${press.name}`,
+        oldValue: `Gearchiveerd: ${press.archived ? 'Ja' : 'Nee'}`,
+        newValue: `Gearchiveerd: ${updatedPress.archived ? 'Ja' : 'Nee'}`
       });
     } else {
       toast.error(`Archiveren van pers "${press.name}" mislukt`);

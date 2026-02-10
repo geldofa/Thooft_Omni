@@ -59,7 +59,7 @@ export function PasswordManagement() {
       // Role-based operator fetching
       let operatorFilter = 'intern = true';
       if (user?.role === 'press' && user.press) {
-        operatorFilter = `intern = true && pers_ids ~ "${user.press}"`;
+        operatorFilter = `intern = true && (presses ~ "${user.press}" || presses ~ "${user.pressId || ''}")`;
       }
 
       const operatorResult = await pb.collection('operatoren').getFullList({
@@ -267,7 +267,9 @@ export function PasswordManagement() {
           entity: 'User Account',
           entityId: editingUser,
           entityName: editingUser,
-          details: `Updated account details for ${editingUser}`
+          details: `Updated account: ${editingUser}`,
+          oldValue: `Gebruiker: ${editingUser}`,
+          newValue: `Naam: ${formData.name}|||Rol: ${formData.role}|||Pers: ${formData.press}`
         });
         setIsUserDialogOpen(false);
       }
@@ -301,7 +303,8 @@ export function PasswordManagement() {
           entity: 'User Account',
           entityId: formData.username,
           entityName: formData.username,
-          details: `Created new user account: ${formData.username}`
+          details: `Created new user account: ${formData.username}`,
+          newValue: `Gebruikersnaam: ${formData.username}|||Naam: ${formData.name}|||Rol: ${formData.role}|||Pers: ${formData.press}`
         });
         setIsUserDialogOpen(false);
       }
@@ -318,7 +321,8 @@ export function PasswordManagement() {
       entity: 'User Account',
       entityId: deletingUser,
       entityName: deletingUser,
-      details: `Deleted user account: ${deletingUser}`
+      details: `Deleted user account: ${deletingUser}`,
+      oldValue: `Gebruikersnaam: ${deletingUser}`
     });
     setDeletingUser(null);
   };
@@ -345,7 +349,8 @@ export function PasswordManagement() {
       entity: 'Password',
       entityId: passwordUser,
       entityName: passwordUser,
-      details: `Changed password for ${passwordUser}`
+      details: `Changed password for ${passwordUser}`,
+      newValue: `Wachtwoord gewijzigd voor ${passwordUser}`
     });
 
     setPasswordUser(null);

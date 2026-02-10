@@ -131,8 +131,8 @@ function CategoryOrderConfiguration() {
     useEffect(() => {
         if (isOpen) {
             fetchData();
-            const unsubscribePress = pb.collection('persen').subscribe('*', () => fetchData());
-            const unsubscribeCat = pb.collection('categorieen').subscribe('*', () => fetchData());
+            pb.collection('persen').subscribe('*', () => fetchData());
+            pb.collection('categorieen').subscribe('*', () => fetchData());
             return () => {
                 pb.collection('persen').unsubscribe('*');
                 pb.collection('categorieen').unsubscribe('*');
@@ -302,8 +302,8 @@ export function CategoryManagement() {
 
     useEffect(() => {
         fetchData();
-        const unsubCat = pb.collection('categorieen').subscribe('*', () => fetchData());
-        const unsubPress = pb.collection('persen').subscribe('*', () => fetchData());
+        pb.collection('categorieen').subscribe('*', () => fetchData());
+        pb.collection('persen').subscribe('*', () => fetchData());
         return () => {
             pb.collection('categorieen').unsubscribe('*');
             pb.collection('persen').unsubscribe('*');
@@ -471,7 +471,9 @@ export function CategoryManagement() {
                     entity: 'Category',
                     entityId: editingCategory.id,
                     entityName: formData.name,
-                    details: `Updated category presses count: ${formData.pressIds.length}`
+                    details: `Updated category: ${formData.name}`,
+                    oldValue: `Naam: ${editingCategory.name}|||Persen: ${editingCategory.pressIds.length}`,
+                    newValue: `Naam: ${formData.name}|||Persen: ${formData.pressIds.length}`
                 });
             }
         } else {
@@ -484,7 +486,8 @@ export function CategoryManagement() {
                     entity: 'Category',
                     entityId: 'new',
                     entityName: formData.name,
-                    details: `Added new category with ${formData.pressIds.length} presses`
+                    details: `Added new category: ${formData.name}`,
+                    newValue: `Naam: ${formData.name}|||Persen: ${formData.pressIds.length}`
                 });
             }
         }
@@ -504,7 +507,8 @@ export function CategoryManagement() {
                 entity: 'Category',
                 entityId: id,
                 entityName: name,
-                details: `Deleted category`
+                details: `Deleted category: ${name}`,
+                oldValue: `Naam: ${name}`
             });
         }
     };

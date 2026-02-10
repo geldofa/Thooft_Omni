@@ -80,7 +80,8 @@ export function Roadmap() {
                     )}
                     <div className="text-[9px] text-gray-400 pt-1 mt-1 border-t border-gray-50 flex flex-col gap-1">
                         <div className="flex justify-between items-center">
-                            <span>{new Date(item.created).toLocaleDateString()}</span>
+                            <span>{item.status === 'completed' ? 'Voltooid op: ' : 'Gepland voor: '}{new Date(item.created).toLocaleDateString()}</span>
+
                             {['planned', 'in_progress', 'completed'].includes(item.status) && item.completed_version && (
                                 <span className={`px-1.5 py-0.5 rounded font-bold border ${item.status === 'completed' ? 'bg-green-50 text-green-600 border-green-100' :
                                     item.status === 'in_progress' ? 'bg-orange-50 text-orange-600 border-orange-100' :
@@ -90,12 +91,6 @@ export function Roadmap() {
                                 </span>
                             )}
                         </div>
-                        {['planned', 'in_progress', 'completed'].includes(item.status) && item.completed_at && (
-                            <div className="text-[8px] italic text-gray-400">
-                                {item.status === 'completed' ? 'Voltooid op: ' : 'Gepland voor: '}
-                                {new Date(item.completed_at).toLocaleDateString()}
-                            </div>
-                        )}
                     </div>
                 </CardContent>
             </Card>

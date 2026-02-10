@@ -270,7 +270,9 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
           entity: 'Operator',
           entityId: editingOperator.id,
           entityName: operatorFormData.name,
-          details: `Updated operator presses: ${operatorFormData.presses.join(', ')}`
+          details: `Updated operator: ${operatorFormData.name}`,
+          oldValue: `Naam: ${editingOperator.name}|||Persen: ${editingOperator.presses.join(', ')}`,
+          newValue: `Naam: ${operatorFormData.name}|||Persen: ${operatorFormData.presses.join(', ')}`
         });
       } else {
         await pb.collection('operatoren').create({
@@ -289,7 +291,8 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
           entity: 'Operator',
           entityId: 'new',
           entityName: operatorFormData.name,
-          details: `Added new operator with presses: ${operatorFormData.presses.join(', ')}`
+          details: `Added new operator: ${operatorFormData.name}`,
+          newValue: `Naam: ${operatorFormData.name}|||Persen: ${operatorFormData.presses.join(', ')}`
         });
       }
       onRefresh();
@@ -312,7 +315,8 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
         entity: 'Operator',
         entityId: id,
         entityName: name,
-        details: `Deleted operator`
+        details: `Deleted operator: ${name}`,
+        oldValue: `Naam: ${name}`
       });
     } catch (err) {
       console.error("Failed to delete operator:", err);
@@ -420,7 +424,9 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
           entity: 'External Entity',
           entityId: editingExternal.id,
           entityName: externalFormData.name,
-          details: `Updated external entity presses: ${externalFormData.presses.join(', ')}`
+          details: `Updated external entity: ${externalFormData.name}`,
+          oldValue: `Naam: ${editingExternal.name}|||Persen: ${editingExternal.presses.join(', ')}`,
+          newValue: `Naam: ${externalFormData.name}|||Persen: ${externalFormData.presses.join(', ')}`
         });
       } else {
         await pb.collection('operatoren').create({
@@ -437,7 +443,8 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
           entity: 'External Entity',
           entityId: 'new',
           entityName: externalFormData.name,
-          details: `Added new external entity with presses: ${externalFormData.presses.join(', ')}`
+          details: `Added new external entity: ${externalFormData.name}`,
+          newValue: `Naam: ${externalFormData.name}|||Persen: ${externalFormData.presses.join(', ')}`
         });
       }
       onRefresh();
@@ -460,7 +467,8 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
         entity: 'External Entity',
         entityId: id,
         entityName: name,
-        details: `Deleted external entity`
+        details: `Deleted external entity: ${name}`,
+        oldValue: `Naam: ${name}`
       });
     } catch (err) {
       console.error("Failed to delete external entity:", err);
@@ -480,7 +488,8 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
         entity: 'Ploeg',
         entityId: id,
         entityName: name,
-        details: `Deleted team/ploeg`
+        details: `Deleted team/ploeg: ${name}`,
+        oldValue: `Naam: ${name}`
       });
     } catch (err) {
       console.error("Failed to delete ploeg:", err);

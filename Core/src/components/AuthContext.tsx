@@ -253,7 +253,7 @@ interface AuthContextType {
   userAccounts: UserAccount[];
   presses: Press[];
   fetchUserAccounts: () => Promise<void>;
-  sendFeedback: (type: string, message: string, context?: any) => Promise<boolean>;
+  sendFeedback: (type: string, message: string, context?: any, additionalData?: Partial<FeedbackItem>) => Promise<boolean>;
   fetchFeedback: () => Promise<any[]>;
   resolveFeedback?: (id: string) => Promise<boolean>;
   updateFeedback?: (id: string, data: any) => Promise<boolean>;
@@ -287,6 +287,8 @@ interface AuthContextType {
   authenticateSuperuser: (email: string, password: string) => Promise<boolean>;
   getSystemSetting: (key: string, defaultValue: any) => any;
   updateSystemSetting: (key: string, value: any) => Promise<boolean>;
+  refreshTriggeredAt: string | null;
+  triggerGlobalRefresh: () => Promise<boolean>;
   isLoading: boolean;
 }
 
@@ -305,6 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus | null>(null);
   const [systemSettings, setSystemSettings] = useState<Record<string, any>>({});
+  const [refreshTriggeredAt, setRefreshTriggeredAt] = useState<string | null>(null);
   const [presses, setPresses] = useState<Press[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -332,12 +335,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: log.user || 'System',
         action: log.action || '',
         entity: log.entity || '',
+        entity_id: log.entityId || '',
         entityId: log.entityId || '',
+        entity_name: log.entityName || '',
         entityName: log.entityName || '',
         press: log.press || '',
         details: log.details || `${log.action} ${log.entityName || ''}`,
+        old_value: log.oldValue || '',
         oldValue: log.oldValue || '',
-        newValue: log.newValue || ''
+        new_value: log.newValue || '',
+        newValue: log.newValue || '',
+        // Lowercase variants for extreme compatibility
+        entityid: log.entityId || '',
+        entityname: log.entityName || '',
+        oldvalue: log.oldValue || '',
+        newvalue: log.newValue || ''
       };
       await pb.collection('activity_logs').create(data);
     } catch (e: any) {
@@ -458,7 +470,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const records = await pb.collection('activity_logs').getFullList();
       records.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
       setActivityLogs(records.map((r: any) => ({
-        id: r.id, timestamp: new Date(r.created), user: r.user, action: r.action, entity: r.entity, entityId: r.entityId, entityName: r.entityName, details: r.details, press: r.press
+        id: r.id,
+        timestamp: new Date(r.created),
+        user: r.user,
+        action: r.action,
+        entity: r.entity,
+        entityId: r.entity_id || r.entityId,
+        entityName: r.entity_name || r.entityName,
+        details: r.details,
+        press: r.press,
+        oldValue: r.old_value || r.oldValue,
+        newValue: r.new_value || r.newValue
       })));
     } catch (e) {
       console.error("Fetch logs failed", e);
@@ -480,6 +502,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       console.error("Failed to set testing mode:", e);
       toast.error(`Kon test modus niet instellen: ${e.message}`);
+    }
+  };
+
+  const triggerGlobalRefresh = async () => {
+    try {
+      const now = new Date().toISOString();
+      let record;
+      try {
+        record = await pb.collection('app_settings').getFirstListItem('key="force_refresh_trigger"');
+        await pb.collection('app_settings').update(record.id, { value: now });
+      } catch (e) {
+        await pb.collection('app_settings').create({ key: 'force_refresh_trigger', value: now });
+      }
+      return true;
+    } catch (e) {
+      console.error("Failed to trigger global refresh:", e);
+      toast.error("Kan globale refresh niet triggeren");
+      return false;
     }
   };
 
@@ -1021,15 +1061,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
 
-  const sendFeedback = async (type: string, message: string, context?: any): Promise<boolean> => {
+  const sendFeedback = async (type: string, message: string, context?: any, additionalData?: Partial<FeedbackItem>): Promise<boolean> => {
     try {
       await pb.collection('feedback').create({
         type,
         message,
         user: user?.username || 'Anonymous',
-        status: 'pending',
+        status: additionalData?.status || 'pending',
         contact_operator: context?.operator || '',
-        context
+        context,
+        ...additionalData
       });
       return true;
     } catch (e) {
@@ -1112,6 +1153,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]); // Only reload if user identity changes
 
 
+  useEffect(() => {
+    // Realtime subscription for system settings (specifically for forced refresh)
+    const subscribe = async () => {
+      try {
+        await pb.collection('app_settings').subscribe('*', (e) => {
+          if (e.action === 'update' || e.action === 'create') {
+            const key = e.record.key;
+            const value = e.record.value;
+
+            setSystemSettings(prev => ({ ...prev, [key]: value }));
+
+            if (key === 'force_refresh_trigger') {
+              setRefreshTriggeredAt(value);
+            }
+          }
+        });
+      } catch (err) {
+        console.error("AuthContext app_settings subscription failed:", err);
+      }
+    };
+
+    subscribe();
+    return () => {
+      pb.collection('app_settings').unsubscribe('*').catch(() => { });
+    };
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -1156,6 +1224,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticateSuperuser,
       getSystemSetting,
       updateSystemSetting,
+      refreshTriggeredAt,
+      triggerGlobalRefresh,
       isLoading
     }}>
       {children}

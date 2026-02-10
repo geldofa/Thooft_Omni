@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Loader2, MessageSquare, Trash2, Archive, ChevronDown, ChevronRight, Edit, Plus } from 'lucide-react';
+import { Loader2, MessageSquare, Trash2, Archive, ChevronDown, ChevronRight, Edit, Plus, Check } from 'lucide-react';
 import { useAuth, pb, FeedbackItem } from './AuthContext';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 import { Card, CardHeader, CardContent } from './ui/card';
 import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
@@ -15,8 +16,6 @@ import {
 import { Badge } from './ui/badge';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Textarea } from './ui/textarea';
 import { FeedbackDialog } from './FeedbackDialog';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -33,6 +32,12 @@ const STATUS_COLORS: Record<string, string> = {
     in_progress: 'bg-orange-100 text-orange-700',
     completed: 'bg-green-100 text-green-700',
     rejected: 'bg-red-100 text-red-700'
+};
+
+const TYPE_LABELS: Record<string, string> = {
+    bug: 'Probleem',
+    feature: 'Suggestie',
+    general: 'Opmerking'
 };
 
 // --- CONFIGURATION CONSTANTS ---
@@ -61,10 +66,8 @@ export function FeedbackList() {
     const [showArchived, setShowArchived] = useState(false);
     const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
     const [editingFeedback, setEditingFeedback] = useState<FeedbackItem | null>(null);
-
-    // Editing state
-    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-    const [commentText, setCommentText] = useState('');
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
     const canManage = hasPermission('feedback_manage');
     const canSeeArchived = hasPermission('feedback_view');
@@ -114,7 +117,9 @@ export function FeedbackList() {
                     contact_operator: operator,
                     status: r.status,
                     admin_comment: r.admin_comment,
-                    archived: r.archived === true
+                    archived: r.archived === true,
+                    completed_version: r.completed_version,
+                    completed_at: r.completed_at
                 };
             }));
         } catch (e) {
@@ -125,29 +130,24 @@ export function FeedbackList() {
         }
     };
 
-    const handleStatusChange = async (id: string, newStatus: string) => {
-        try {
-            setFeedback(prev => prev.map(item =>
-                item.id === id ? { ...item, status: newStatus as any } : item
-            ));
-            await pb.collection('feedback').update(id, { status: newStatus });
-            toast.success("Status bijgewerkt");
-        } catch (e) {
-            toast.error("Fout bij updaten status");
-            loadFeedback();
-        }
+    const handleDelete = (id: string) => {
+        setItemToDelete(id);
+        setDeleteModalOpen(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Weet je zeker dat je deze feedback wilt verwijderen?")) return;
+    const confirmDelete = async () => {
+        if (!itemToDelete) return;
 
         try {
+            const id = itemToDelete;
             setFeedback(prev => prev.filter(item => item.id !== id));
             await pb.collection('feedback').delete(id);
             toast.success("Feedback verwijderd");
         } catch (e) {
             toast.error("Fout bij verwijderen");
             loadFeedback();
+        } finally {
+            setItemToDelete(null);
         }
     };
 
@@ -161,24 +161,6 @@ export function FeedbackList() {
         } catch (e) {
             toast.error("Fout bij archiveren");
             loadFeedback();
-        }
-    };
-
-    const startEditingComment = (item: FeedbackItem) => {
-        setEditingCommentId(item.id);
-        setCommentText(item.admin_comment || '');
-    };
-
-    const saveComment = async (id: string) => {
-        try {
-            setFeedback(prev => prev.map(item =>
-                item.id === id ? { ...item, admin_comment: commentText } : item
-            ));
-            setEditingCommentId(null);
-            await pb.collection('feedback').update(id, { admin_comment: commentText });
-            toast.success("Reactie opgeslagen");
-        } catch (e) {
-            toast.error("Fout bij opslaan reactie");
         }
     };
 
@@ -206,36 +188,39 @@ export function FeedbackList() {
             </TableHeader>
             <TableBody>
                 {items.map((item) => (
-                    <TableRow key={item.id} className={`hover:bg-gray-50/50 ${isArchivedTable ? 'opacity-60' : ''}`}>
+                    <TableRow
+                        key={item.id}
+                        className={`hover:bg-gray-50/50 group ${isArchivedTable ? 'opacity-60' : ''} ${canManage ? 'cursor-pointer' : ''}`}
+                        onClick={() => {
+                            if (canManage) {
+                                setEditingFeedback(item);
+                                setIsFeedbackOpen(true);
+                            }
+                        }}
+                    >
                         <TableCell>
-                            {canManage && !isArchivedTable ? (
-                                <Select
-                                    value={item.status || 'pending'}
-                                    onValueChange={(val) => handleStatusChange(item.id, val)}
-                                >
-                                    <SelectTrigger className={`h-8 w-[140px] border-0 text-xs font-medium ${STATUS_COLORS[item.status || 'pending']}`}>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                                            <SelectItem key={key} value={key}>
-                                                <span className="flex items-center gap-2">
-                                                    <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[key].split(' ')[0]}`} />
-                                                    {label}
-                                                </span>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            ) : (
-                                <Badge variant="outline" className={`font-normal whitespace-nowrap border-0 ${STATUS_COLORS[item.status || 'pending']}`}>
-                                    {STATUS_LABELS[item.status || 'pending']}
+                            <div className="flex items-center justify-between gap-2 overflow-hidden">
+                                <Badge variant="outline" className={`font-normal whitespace-nowrap border-0 flex items-center gap-1.5 ${STATUS_COLORS[item.status || 'pending']}`}>
+                                    {item.status === 'completed' ? (
+                                        <Check className="w-4 h-4 text-green-600" />
+                                    ) : (
+                                        STATUS_LABELS[item.status || 'pending']
+                                    )}
                                 </Badge>
-                            )}
+
+                                {item.completed_version && (
+                                    <Badge variant="outline" className={`text-[10px] h-5 px-1.5 font-medium border-0 whitespace-nowrap ${STATUS_COLORS[item.status || 'pending']}`}>
+                                        {item.completed_version}
+                                        {item.status === 'completed' && item.completed_at && (
+                                            <> | {format(new Date(item.completed_at), 'dd/MM/yyyy')}</>
+                                        )}
+                                    </Badge>
+                                )}
+                            </div>
                         </TableCell>
                         <TableCell>
-                            <Badge variant={item.type === 'bug' ? 'destructive' : 'secondary'} className="capitalize">
-                                {item.type}
+                            <Badge variant={item.type === 'bug' ? 'destructive' : 'secondary'} className="font-normal border-0">
+                                {TYPE_LABELS[item.type] || item.type}
                             </Badge>
                         </TableCell>
                         <TableCell className="align-top py-4">
@@ -247,34 +232,9 @@ export function FeedbackList() {
                             )}
                         </TableCell>
                         <TableCell className="align-top py-4">
-                            {canManage && !isArchivedTable ? (
-                                editingCommentId === item.id ? (
-                                    <div className="space-y-2">
-                                        <Textarea
-                                            value={commentText}
-                                            onChange={(e) => setCommentText(e.target.value)}
-                                            className="text-xs min-h-[60px]"
-                                            placeholder="Schrijf een interne opmerking of reactie..."
-                                            autoFocus
-                                        />
-                                        <div className="flex gap-2 justify-end">
-                                            <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)} className="h-6 text-xs">Annuleren</Button>
-                                            <Button size="sm" onClick={() => saveComment(item.id)} className="h-6 text-xs">Opslaan</Button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div
-                                        onClick={() => startEditingComment(item)}
-                                        className={`${FONT_SIZES.body} text-gray-500 cursor-pointer hover:text-gray-900 min-h-[1.5em] border border-transparent hover:border-dashed hover:border-gray-300 rounded px-1 -ml-1`}
-                                    >
-                                        {item.admin_comment || <span className="text-gray-300 italic text-xs">Klik om opmerking toe te voegen...</span>}
-                                    </div>
-                                )
-                            ) : (
-                                <div className={`${FONT_SIZES.body} text-gray-600`}>
-                                    {item.admin_comment || '-'}
-                                </div>
-                            )}
+                            <div className={`${FONT_SIZES.body} text-gray-600`}>
+                                {item.admin_comment || '-'}
+                            </div>
                         </TableCell>
                         <TableCell>
                             <div className="flex flex-col">
@@ -290,7 +250,7 @@ export function FeedbackList() {
                         </TableCell>
                         {canManage && (
                             <TableCell className="text-right">
-                                <div className="flex gap-1 justify-end">
+                                <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
                                     <Button
                                         size="sm"
                                         variant="ghost"
@@ -361,7 +321,7 @@ export function FeedbackList() {
                         </div>
                         <div className="text-gray-500 font-medium">Nog geen feedback gevonden</div>
                         <p className="text-sm text-gray-400 max-w-xs">
-                            Heb je een suggestie, bug of opmerking? Laat het ons weten.
+                            Heb je een suggestie, probleem of opmerking? Laat het ons weten.
                         </p>
                         <Button
                             onClick={() => setIsFeedbackOpen(true)}
@@ -425,6 +385,15 @@ export function FeedbackList() {
                     if (!open) setEditingFeedback(null);
                 }}
                 feedbackItem={editingFeedback}
+            />
+            <ConfirmationModal
+                open={deleteModalOpen}
+                onOpenChange={setDeleteModalOpen}
+                onConfirm={confirmDelete}
+                title="Feedback verwijderen"
+                description="Weet je zeker dat je deze feedback wilt verwijderen? Dit kan niet ongedaan gemaakt worden."
+                confirmText="Verwijderen"
+                variant="destructive"
             />
         </Card>
     );

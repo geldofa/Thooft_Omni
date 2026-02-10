@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Calculator, Plus, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
 import { PageHeader } from './PageHeader';
 import { formatNumber } from '../utils/formatNumber';
@@ -45,6 +46,21 @@ export function ParameterManagement() {
     const [formulaName, setFormulaName] = useState('');
     const [currentFormula, setCurrentFormula] = useState('');
     const [targetColumn, setTargetColumn] = useState<'maxGross' | 'green' | 'red' | 'delta_number' | 'delta_percentage' | undefined>(undefined);
+
+    const [confirmationOpen, setConfirmationOpen] = useState(false);
+    const [confirmationConfig, setConfirmationConfig] = useState<{
+        title: string;
+        description: string;
+        confirmText: string;
+        variant: 'default' | 'destructive';
+        onConfirm: () => Promise<void> | void;
+    }>({
+        title: '',
+        description: '',
+        confirmText: 'Bevestigen',
+        variant: 'default',
+        onConfirm: () => { }
+    });
 
     const activePresses = useMemo(() => presses.filter(p => !p.archived).map(p => p.name), [presses]);
 
@@ -266,17 +282,24 @@ export function ParameterManagement() {
         }
     };
 
-    const handleDeleteFormula = async (id: string) => {
-        if (window.confirm("Weet je zeker dat je deze formule wilt verwijderen?")) {
-            try {
-                await pb.collection('calculated_fields').delete(id);
-                toast.success("Formule verwijderd");
-                fetchCalculatedFields();
-            } catch (error) {
-                console.error("Error deleting formula:", error);
-                toast.error("Fout bij verwijderen formule");
+    const handleDeleteFormula = (id: string) => {
+        setConfirmationConfig({
+            title: 'Formule verwijderen',
+            description: "Weet je zeker dat je deze formule wilt verwijderen?",
+            confirmText: 'Verwijderen',
+            variant: 'destructive',
+            onConfirm: async () => {
+                try {
+                    await pb.collection('calculated_fields').delete(id);
+                    toast.success("Formule verwijderd");
+                    fetchCalculatedFields();
+                } catch (error) {
+                    console.error("Error deleting formula:", error);
+                    toast.error("Fout bij verwijderen formule");
+                }
             }
-        }
+        });
+        setConfirmationOpen(true);
     };
 
     const addTokenToFormula = (token: string) => {
@@ -544,6 +567,16 @@ export function ParameterManagement() {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+                <ConfirmationModal
+                    open={confirmationOpen}
+                    onOpenChange={setConfirmationOpen}
+                    onConfirm={confirmationConfig.onConfirm}
+                    title={confirmationConfig.title}
+                    description={confirmationConfig.description}
+                    confirmText={confirmationConfig.confirmText}
+                    variant={confirmationConfig.variant}
+                />
             </div>
         </div>
     );

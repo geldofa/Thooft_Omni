@@ -800,7 +800,8 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 entity: 'MaintenanceTask',
                 entityId: 'multiple',
                 entityName: `Import from CSV`,
-                details: `${successCount} taken succesvol geïmporteerd`
+                details: `${successCount} taken succesvol geïmporteerd`,
+                newValue: `Aantal: ${successCount}`
             });
 
             toast.success(`${successCount} taken succesvol geïmporteerd`);

@@ -26,6 +26,7 @@ const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: 
 const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
 const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
 const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
+import { ForceRefreshDialog } from './components/ForceRefreshDialog';
 import { Home } from './components/Home';
 
 function MainApp() {
@@ -166,7 +167,9 @@ function MainApp() {
             ...(Array.isArray(record.assigned_operator) ? record.assigned_operator : (record.assigned_operator ? [record.assigned_operator] : [])).map(() => 'operator'),
             ...(Array.isArray(record.assigned_team) ? record.assigned_team : (record.assigned_team ? [record.assigned_team] : [])).map(() => 'ploeg')
           ],
+          opmerkingen: record.opmerkingen || '',
           comment: record.opmerkingen || '',
+          commentDate: record.commentDate ? new Date(record.commentDate) : null,
           sort_order: record.sort_order || 0,
           isExternal: record.is_external || false,
           tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : [])
@@ -301,7 +304,7 @@ function MainApp() {
     }
   };
 
-  const updateTask = async (task: MaintenanceTask, refresh: boolean = true) => {
+  const updateTask = async (task: MaintenanceTask, refresh: boolean = true, silent: boolean = false) => {
     try {
       const operatorIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [];
       const teamIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [];
@@ -330,7 +333,9 @@ function MainApp() {
         tags: task.tagIds || []
       });
       if (refresh) fetchData();
-      toast.success('Taak succesvol bijgewerkt');
+      if (!silent) {
+        toast.success('Taak succesvol bijgewerkt');
+      }
     } catch (e: any) {
       console.error("Update task failed:", e);
       if (e.response) console.error("Response data:", e.response);
@@ -499,18 +504,44 @@ function MainApp() {
 
   // --- Handlers ---
 
+  const formatDateForLog = (date: Date | null | undefined): string => {
+    if (!date) return '-';
+    try {
+      return new Date(date).toLocaleDateString('nl-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return '-'; }
+  };
+
+  const formatIntervalForLog = (interval: number | undefined, unit: string | undefined): string => {
+    if (!interval) return '-';
+    const unitMap: Record<string, string> = { days: 'dagen', weeks: 'weken', months: 'maanden', years: 'jaar' };
+    return `${interval} ${unitMap[unit || 'days'] || unit || 'dagen'}`;
+  };
+
   const handleAddTask = (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
     const newTask = { ...task, created: new Date().toISOString(), updated: new Date().toISOString() };
     addTask(newTask);
     setIsAddDialogOpen(false);
+
+    const subtaskInfo = task.subtasks && task.subtasks.length > 0
+      ? ` (${task.subtasks.length} subtaken)`
+      : task.subtaskName ? ` → ${task.subtaskName}` : '';
+
     addActivityLog({
       user: user?.name || user?.username || 'Onbekend',
       action: 'Created',
       entity: 'Task',
       entityId: 'new',
-      entityName: task.task,
-      details: `Nieuwe taak aangemaakt in ${task.category}`,
-      press: task.press
+      entityName: `${task.category} | ${task.task}`,
+      details: `Nieuwe taak aangemaakt in ${task.category}${subtaskInfo}`,
+      press: task.press,
+      newValue: [
+        `Taak: ${task.task}${task.subtaskName ? ` → ${task.subtaskName}` : ''}`,
+        `Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`,
+        `Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`,
+        `Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`,
+        task.assignedTo ? `Toegewezen aan: ${task.assignedTo}` : null,
+        task.opmerkingen ? `Opmerkingen: ${task.opmerkingen}` : null
+      ].filter(Boolean).join('|||')
     });
   };
 
@@ -519,22 +550,89 @@ function MainApp() {
     await updateTask(task);
     setEditingTask(null);
 
-    // Activity Log logic for updates
     if (oldTask) {
-      const changes: string[] = [];
-      if (oldTask.lastMaintenance?.getTime() !== task.lastMaintenance?.getTime()) changes.push('last maintenance date');
-      if (oldTask.assignedTo !== task.assignedTo) changes.push('assigned operator');
-      if (oldTask.opmerkingen !== task.opmerkingen) changes.push('opmerkingen');
+      // Build detailed change entries
+      const changeParts: { field: string; oldVal: string; newVal: string }[] = [];
 
-      if (changes.length > 0) {
+      // Task name
+      if (oldTask.task !== task.task) {
+        changeParts.push({ field: 'Taak', oldVal: oldTask.task || '-', newVal: task.task || '-' });
+      }
+      // Subtask name
+      if (oldTask.subtaskName !== task.subtaskName) {
+        changeParts.push({ field: 'Subtaak', oldVal: oldTask.subtaskName || '-', newVal: task.subtaskName || '-' });
+      }
+      // Category
+      if (oldTask.category !== task.category) {
+        changeParts.push({ field: 'Categorie', oldVal: oldTask.category || '-', newVal: task.category || '-' });
+      }
+      // Last maintenance date
+      if (oldTask.lastMaintenance?.getTime() !== task.lastMaintenance?.getTime()) {
+        changeParts.push({
+          field: 'Laatste onderhoud',
+          oldVal: formatDateForLog(oldTask.lastMaintenance),
+          newVal: formatDateForLog(task.lastMaintenance)
+        });
+      }
+      // Next maintenance date
+      if (oldTask.nextMaintenance?.getTime() !== task.nextMaintenance?.getTime()) {
+        changeParts.push({
+          field: 'Volgend onderhoud',
+          oldVal: formatDateForLog(oldTask.nextMaintenance),
+          newVal: formatDateForLog(task.nextMaintenance)
+        });
+      }
+      // Interval
+      if (oldTask.maintenanceInterval !== task.maintenanceInterval || oldTask.maintenanceIntervalUnit !== task.maintenanceIntervalUnit) {
+        changeParts.push({
+          field: 'Interval',
+          oldVal: formatIntervalForLog(oldTask.maintenanceInterval, oldTask.maintenanceIntervalUnit),
+          newVal: formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)
+        });
+      }
+      // Assigned to
+      if (oldTask.assignedTo !== task.assignedTo) {
+        changeParts.push({
+          field: 'Toegewezen aan',
+          oldVal: oldTask.assignedTo || '-',
+          newVal: task.assignedTo || '-'
+        });
+      }
+      // Opmerkingen
+      if ((oldTask.opmerkingen || oldTask.comment || '') !== (task.opmerkingen || task.comment || '')) {
+        const oldComment = oldTask.opmerkingen || oldTask.comment || '-';
+        const newComment = task.opmerkingen || task.comment || '-';
+        changeParts.push({
+          field: 'Opmerkingen',
+          oldVal: oldComment,
+          newVal: newComment
+        });
+      }
+      // External
+      if (oldTask.isExternal !== task.isExternal) {
+        changeParts.push({ field: 'Extern', oldVal: oldTask.isExternal ? 'Ja' : 'Nee', newVal: task.isExternal ? 'Ja' : 'Nee' });
+      }
+
+      if (changeParts.length > 0) {
+        // Combine all changes into a single, structured log entry
+        const changeSummary = changeParts.map(c => `${c.field}: ${c.oldVal} → ${c.newVal}`).join(', ');
+
+        const details = changeSummary;
+
+        // Use a special separator ||| for structured parsing in the ActivityLog detail view
+        const oldValues = changeParts.map(c => `${c.field}: ${c.oldVal}`).join('|||');
+        const newValues = changeParts.map(c => `${c.field}: ${c.newVal}`).join('|||');
+
         addActivityLog({
           user: user?.name || user?.username || 'Onbekend',
           action: 'Updated',
           entity: 'Task',
           entityId: task.id,
-          entityName: task.task,
-          details: `Heeft ${changes.join(', ')} bijgewerkt`,
-          press: task.press
+          entityName: `${task.category} | ${task.task}${task.subtaskName && task.subtaskName !== task.task ? ` → ${task.subtaskName}` : ''}`,
+          details: details,
+          press: task.press,
+          oldValue: oldValues,
+          newValue: newValues
         });
       }
     }
@@ -549,9 +647,17 @@ function MainApp() {
         action: 'Deleted',
         entity: 'Task',
         entityId: id,
-        entityName: task.task,
-        details: 'Taak verwijderd',
-        press: task.press
+        entityName: `${task.category || 'onbekend'} | ${task.task}${task.subtaskName && task.subtaskName !== task.task ? ` → ${task.subtaskName}` : ''}`,
+        details: `Taak verwijderd uit ${task.category || 'onbekende categorie'}`,
+        press: task.press,
+        oldValue: [
+          `Taak: ${task.task}${task.subtaskName ? ` → ${task.subtaskName}` : ''}`,
+          `Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`,
+          `Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`,
+          `Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`,
+          task.assignedTo ? `Toegewezen aan: ${task.assignedTo}` : null,
+          task.opmerkingen ? `Opmerkingen: ${task.opmerkingen}` : null
+        ].filter(Boolean).join('|||')
       });
     }
   };
@@ -559,7 +665,7 @@ function MainApp() {
   const handleUpdateGroup = async (tasks: MaintenanceTask[]) => {
     try {
       for (const task of tasks) {
-        if (task.id) await updateTask(task, false); // Update without immediate refresh
+        if (task.id) await updateTask(task, false, true); // Update without immediate refresh AND silent
         else {
           const { id, created, updated, ...rest } = task;
           await addTask(rest);
@@ -580,6 +686,7 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       <Toaster position="top-right" />
+      <ForceRefreshDialog />
       <ScrollToTop />
 
 

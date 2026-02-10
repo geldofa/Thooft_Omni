@@ -12,13 +12,12 @@ import { TooltipProvider } from './ui/tooltip';
 import { Input } from './ui/input';
 import { PageHeader } from './PageHeader';
 import { Settings, Upload, Wrench, Database } from 'lucide-react';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 
 export function Toolbox({ onNavigateHome }: { onNavigateHome?: () => void }) {
     return (
         <TooltipProvider>
             <div className="p-2 w-full mx-auto">
-
-
                 <ToolboxContent onNavigateHome={onNavigateHome} />
             </div>
         </TooltipProvider>
@@ -26,7 +25,7 @@ export function Toolbox({ onNavigateHome }: { onNavigateHome?: () => void }) {
 }
 
 function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
-    const { tasks, updateTask, fetchTasks, testingMode, setTestingMode, listBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, uploadBackup, getBackupSettings, updateBackupSettings, cloudSyncStatus, refreshCloudSyncStatus, configureCloudSync, verifyCloudBackups, isSuperuser, authenticateSuperuser } = useAuth();
+    const { tasks, updateTask, fetchTasks, testingMode, setTestingMode, listBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, uploadBackup, getBackupSettings, updateBackupSettings, cloudSyncStatus, refreshCloudSyncStatus, configureCloudSync, verifyCloudBackups, isSuperuser, authenticateSuperuser, triggerGlobalRefresh } = useAuth() as any;
     const [isRecalculating, setIsRecalculating] = useState(false);
     const [backups, setBackups] = useState<BackupInfo[]>([]);
     const [isLoadingBackups, setIsLoadingBackups] = useState(false);
@@ -43,6 +42,20 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
     const [isLoadingCloudSync, setIsLoadingCloudSync] = useState(false);
     const [isLinkingCloud, setIsLinkingCloud] = useState(false);
     const [cloudConfigType, setCloudConfigType] = useState<'gdrive' | 'onedrive' | 'local'>('local');
+    const [confirmationOpen, setConfirmationOpen] = useState(false);
+    const [confirmationConfig, setConfirmationConfig] = useState<{
+        title: string;
+        description: React.ReactNode;
+        confirmText: string;
+        variant: 'default' | 'destructive';
+        onConfirm: () => Promise<void> | void;
+    }>({
+        title: '',
+        description: '',
+        confirmText: 'Bevestigen',
+        variant: 'default',
+        onConfirm: () => { }
+    });
 
     const [cloudClientId, setCloudClientId] = useState('');
     const [cloudClientSecret, setCloudClientSecret] = useState('');
@@ -90,11 +103,11 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         setIsLoadingBackups(true);
         try {
             const list = await listBackups();
-            setBackups(list.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()));
+            setBackups(list.sort((a: any, b: any) => new Date(b.modified).getTime() - new Date(a.modified).getTime()));
 
             // Trigger verification if cloud sync is configured
             if (cloudSyncStatus?.configured) {
-                verifyBackups(list.map(b => b.key));
+                verifyBackups(list.map((b: any) => b.key));
             }
         } catch (e) {
             console.error('Failed to load backups:', e);
@@ -244,31 +257,57 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         }
     };
 
-    const handleDeleteBackup = async (key: string) => {
-        if (!confirm(`Weet u zeker dat u backup "${key}" wilt verwijderen?`)) return;
-        const success = await deleteBackup(key);
-        if (success) {
-            await loadBackups();
-        }
+    const handleDeleteBackup = (key: string) => {
+        setConfirmationConfig({
+            title: 'Backup verwijderen',
+            description: `Weet u zeker dat u backup "${key}" wilt verwijderen?`,
+            confirmText: 'Verwijderen',
+            variant: 'destructive',
+            onConfirm: async () => {
+                const success = await deleteBackup(key);
+                if (success) {
+                    await loadBackups();
+                }
+            }
+        });
+        setConfirmationOpen(true);
     };
 
-    const handleRestoreBackup = async (key: string) => {
-        if (!confirm(`WAARSCHUWING: Weet u absoluut zeker dat u de database wilt herstellen van backup "${key}"? \n\nALLE HUIDIGE DATA WORDT OVERSCHREVEN EN DE SERVER START OPNIEUW OP.`)) {
-            return;
-        }
-
-        if (!confirm(`DIT IS DE LAATSTE WAARSCHUWING: Bevestig herstel naar "${key}".`)) {
-            return;
-        }
-
-        setIsRestoring(true);
-        try {
-            await restoreBackup(key);
-            // The AuthContext.restoreBackup handles the reload
-        } catch (e) {
-            console.error('Restore failed:', e);
-            setIsRestoring(false);
-        }
+    const handleRestoreBackup = (key: string) => {
+        setConfirmationConfig({
+            title: 'Database Herstellen',
+            description: (
+                <div className="space-y-2">
+                    <p>WAARSCHUWING: Weet u absoluut zeker dat u de database wilt herstellen van backup "{key}"?</p>
+                    <p className="font-bold text-red-600">ALLE HUIDIGE DATA WORDT OVERSCHREVEN EN DE SERVER START OPNIEUW OP.</p>
+                </div>
+            ),
+            confirmText: 'Volgende',
+            variant: 'destructive',
+            onConfirm: () => {
+                // Short delay to allow modal to close before reopening
+                setTimeout(() => {
+                    setConfirmationConfig({
+                        title: 'DEFINITIEVE BEVESTIGING',
+                        description: `DIT IS DE LAATSTE WAARSCHUWING: Bevestig herstel naar "${key}".`,
+                        confirmText: 'Herstellen',
+                        variant: 'destructive',
+                        onConfirm: async () => {
+                            setIsRestoring(true);
+                            try {
+                                await restoreBackup(key);
+                                // The AuthContext.restoreBackup handles the reload
+                            } catch (e) {
+                                console.error('Restore failed:', e);
+                                setIsRestoring(false);
+                            }
+                        }
+                    });
+                    setConfirmationOpen(true);
+                }, 150);
+            }
+        });
+        setConfirmationOpen(true);
     };
 
     const handleUploadBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,72 +360,80 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         }
     };
 
-    const handleRecalculateDates = async () => {
-        if (!confirm('Dit zal alle geplande datums herberekenen op basis van de laatste onderhoudsdatum. Dit corrigeert foutieve "Vandaag" datums door de import. Weet u het zeker?')) return;
+    const handleRecalculateDates = () => {
+        setConfirmationConfig({
+            title: 'Datums Herberekenen',
+            description: 'Dit zal alle geplande datums herberekenen op basis van de laatste onderhoudsdatum. Dit corrigeert foutieve "Vandaag" datums door de import. Weet u het zeker?',
+            confirmText: 'Herberekenen',
+            variant: 'default',
+            onConfirm: async () => {
 
-        setIsRecalculating(true);
-        let count = 0;
-        try {
-            const updates: Promise<void>[] = [];
+                setIsRecalculating(true);
+                let count = 0;
+                try {
+                    const updates: Promise<void>[] = [];
 
-            for (const group of tasks) {
-                for (const sub of group.subtasks) {
-                    if (sub.lastMaintenance && sub.maintenanceInterval) {
-                        const last = new Date(sub.lastMaintenance);
-                        const unit = (sub.maintenanceIntervalUnit || '').toLowerCase();
-                        const interval = sub.maintenanceInterval;
+                    for (const group of tasks) {
+                        for (const sub of group.subtasks) {
+                            if (sub.lastMaintenance && sub.maintenanceInterval) {
+                                const last = new Date(sub.lastMaintenance);
+                                const unit = (sub.maintenanceIntervalUnit || '').toLowerCase();
+                                const interval = sub.maintenanceInterval;
 
-                        const expected = new Date(last);
-                        if (unit.includes('maand') || unit.includes('month') || unit === 'months') {
-                            expected.setMonth(expected.getMonth() + interval);
-                        } else if (unit.includes('jaar') || unit.includes('year') || unit === 'years') {
-                            expected.setFullYear(expected.getFullYear() + interval);
-                        } else if (unit.includes('week') || unit.includes('weeks')) {
-                            expected.setDate(expected.getDate() + (interval * 7));
-                        } else {
-                            expected.setDate(expected.getDate() + interval);
-                        }
+                                const expected = new Date(last);
+                                if (unit.includes('maand') || unit.includes('month') || unit === 'months') {
+                                    expected.setMonth(expected.getMonth() + interval);
+                                } else if (unit.includes('jaar') || unit.includes('year') || unit === 'years') {
+                                    expected.setFullYear(expected.getFullYear() + interval);
+                                } else if (unit.includes('week') || unit.includes('weeks')) {
+                                    expected.setDate(expected.getDate() + (interval * 7));
+                                } else {
+                                    expected.setDate(expected.getDate() + interval);
+                                }
 
-                        // Check diff
-                        const current = sub.nextMaintenance ? new Date(sub.nextMaintenance) : new Date();
-                        const diff = Math.abs(current.getTime() - expected.getTime());
+                                // Check diff
+                                const current = sub.nextMaintenance ? new Date(sub.nextMaintenance) : new Date();
+                                const diff = Math.abs(current.getTime() - expected.getTime());
 
-                        if (diff > 86400000) { // > 1 day difference
-                            const taskToUpdate: MaintenanceTask = {
-                                ...sub,
-                                task: group.taskName,
-                                taskSubtext: group.taskSubtext,
-                                subtaskName: sub.subtaskName,
-                                subtaskSubtext: sub.subtext,
-                                category: group.category,
-                                categoryId: group.categoryId,
-                                press: group.press,
-                                pressId: group.pressId,
-                                nextMaintenance: expected,
-                                updated: new Date().toISOString()
-                            } as any;
+                                if (diff > 86400000) { // > 1 day difference
+                                    const taskToUpdate: MaintenanceTask = {
+                                        ...sub,
+                                        task: group.taskName,
+                                        taskSubtext: group.taskSubtext,
+                                        subtaskName: sub.subtaskName,
+                                        subtaskSubtext: sub.subtext,
+                                        category: group.category,
+                                        categoryId: group.categoryId,
+                                        press: group.press,
+                                        pressId: group.pressId,
+                                        nextMaintenance: expected,
+                                        updated: new Date().toISOString()
+                                    } as any;
 
-                            updates.push(updateTask(taskToUpdate, false));
-                            count++;
+                                    updates.push(updateTask(taskToUpdate, false, true));
+                                    count++;
+                                }
+                            }
                         }
                     }
+
+                    if (updates.length > 0) {
+                        await Promise.all(updates);
+                        await fetchTasks();
+                        toast.success(`${count} datums succesvol hersteld.`);
+                    } else {
+                        toast.info('Geen datums hoeven te worden aangepast.');
+                    }
+
+                } catch (e: any) {
+                    console.error(e);
+                    toast.error(`Fout bij herstel: ${e.message}`);
+                } finally {
+                    setIsRecalculating(false);
                 }
             }
-
-            if (updates.length > 0) {
-                await Promise.all(updates);
-                await fetchTasks();
-                toast.success(`${count} datums succesvol hersteld.`);
-            } else {
-                toast.info('Geen datums hoeven te worden aangepast.');
-            }
-
-        } catch (e: any) {
-            console.error(e);
-            toast.error(`Fout bij herstel: ${e.message}`);
-        } finally {
-            setIsRecalculating(false);
-        }
+        });
+        setConfirmationOpen(true);
     };
 
     const headerConfig: Record<string, { title: string; description: string; icon: any }> = {
@@ -439,7 +486,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                 Beheer globale applicatie instellingen voor ontwikkeling en testen.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-blue-100 shadow-sm">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-gray-900">Snelle Login Knoppen</h3>
@@ -451,6 +498,36 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                     checked={testingMode}
                                     onCheckedChange={setTestingMode}
                                 />
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-orange-100 shadow-sm">
+                                <div className="space-y-1">
+                                    <h3 className="font-bold text-gray-900">Globale Pagina Refresh</h3>
+                                    <p className="text-sm text-gray-600">
+                                        Forceer alle verbonden gebruikers om hun browser te verversen. Gebruik dit na grote updates.
+                                    </p>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="border-orange-200 text-orange-700 hover:bg-orange-50"
+                                    onClick={() => {
+                                        setConfirmationConfig({
+                                            title: 'Globale Refresh Forceren',
+                                            description: 'Weet u zeker dat u alle actieve gebruikers wilt dwingen om hun pagina te verversen? Niet-opgeslagen werk kan verloren gaan.',
+                                            confirmText: 'Ja, forceer refresh',
+                                            variant: 'destructive',
+                                            onConfirm: async () => {
+                                                const success = await triggerGlobalRefresh();
+                                                if (success) {
+                                                    toast.success("Refresh-signaal verzonden naar alle clients.");
+                                                }
+                                            }
+                                        });
+                                        setConfirmationOpen(true);
+                                    }}
+                                >
+                                    Forceer Refresh
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>
@@ -700,7 +777,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                                             </div>
                                                         ) : (
                                                             <div className="p-3 bg-gray-50 rounded border border-gray-100 flex justify-center">
-                                                                <Button size="sm" variant="outline" onClick={() => { configureCloudSync('local', {}).then(s => s && toast.success("Lokale opslag OK!")); }} className="h-7 text-[10px] bg-white">
+                                                                <Button size="sm" variant="outline" onClick={() => { configureCloudSync('local', {}).then((s: any) => s && toast.success("Lokale opslag OK!")); }} className="h-7 text-[10px] bg-white">
                                                                     Test Lokale Opslag
                                                                 </Button>
                                                             </div>
@@ -968,6 +1045,16 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                     )}
                 </TabsContent>
             </Tabs>
+
+            <ConfirmationModal
+                open={confirmationOpen}
+                onOpenChange={setConfirmationOpen}
+                onConfirm={confirmationConfig.onConfirm}
+                title={confirmationConfig.title}
+                description={confirmationConfig.description as string}
+                confirmText={confirmationConfig.confirmText}
+                variant={confirmationConfig.variant}
+            />
         </div >
     );
 }
