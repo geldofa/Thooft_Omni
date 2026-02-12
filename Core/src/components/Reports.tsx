@@ -5,8 +5,9 @@ import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
 import { formatNumber } from '../utils/formatNumber';
-import { Printer, FileText } from 'lucide-react';
+import { Printer, FileText, Settings } from 'lucide-react';
 import { PageHeader } from './PageHeader';
+import { MaintenanceReportManager } from './MaintenanceReportManager';
 
 interface ReportsProps {
   tasks?: MaintenanceTask[]; // Optional for backward compatibility during transition
@@ -220,9 +221,31 @@ export function Reports({ tasks: initialTasks, presses: initialPresses }: Report
     return groups;
   };
 
+  // ... existing code ...
   const handlePrint = () => {
     window.print();
   };
+
+  const [view, setView] = useState<'reports' | 'config'>('reports'); // [NEW] View state
+
+  // [NEW] If in config view, render manager
+  if (view === 'config') {
+    return (
+      <div className="w-full mx-auto space-y-4">
+        <Button
+          variant="ghost"
+          onClick={() => setView('reports')}
+          className="mb-2 pl-0 hover:bg-transparent hover:text-blue-600"
+        >
+          ← Terug naar overzicht
+        </Button>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          {/* Dynamic Import to avoid circular dependencies if any, though likely fine as static */}
+          <MaintenanceReportManager tasks={initialTasks} />
+        </div>
+      </div>
+    );
+  }
 
   const activePresses = presses.filter(p => p.active && !p.archived);
   const pressesToShow = selectedPress === 'all'
@@ -310,10 +333,16 @@ export function Reports({ tasks: initialTasks, presses: initialPresses }: Report
           description="Overzicht van de onderhoudsstatus"
           icon={FileText}
           actions={
-            <Button onClick={handlePrint} className="gap-2 shadow-sm">
-              <Printer className="w-4 h-4" />
-              Printen
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setView('config')} className="gap-2">
+                <Settings className="w-4 h-4" />
+                Beheer
+              </Button>
+              <Button onClick={handlePrint} className="gap-2 shadow-sm">
+                <Printer className="w-4 h-4" />
+                Printen
+              </Button>
+            </div>
           }
           className="mb-1"
         />
@@ -383,6 +412,7 @@ export function Reports({ tasks: initialTasks, presses: initialPresses }: Report
             }
           }
         `}</style>
+// ... rest of file
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
           {/* PRINTABLE REPORT TITLE BLOCK */}

@@ -4,7 +4,6 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
@@ -32,3 +31,6 @@ types.d.ts
 # Environment variables
 .env
 stack.env
+
+# Docker
+docker-compose.override.yml

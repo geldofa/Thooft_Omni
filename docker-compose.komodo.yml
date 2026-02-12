@@ -1,6 +1,9 @@
+# Komodo Satellite Stack for Omni.Thooft
+# This file is optimized for deployment via Komodo Core to a Satellite.
+# Persistence is handled via named volumes for easier orchestration.
+
 services:
   app:
-    build: ./Core
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "8080:80"
@@ -11,13 +14,16 @@ services:
       - db
     restart: unless-stopped
     container_name: thooft_omni
+    labels:
+      - "komodo.stack.name=omni-thooft"
+      - "komodo.managed=true"
 
   db:
     image: alpine:latest
     ports:
       - "8090:8090"
     volumes:
-      - ./pb_data:/pb/pb_data
+      - pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations:ro
       - ./pb_hooks:/pb/pb_hooks:ro
     environment:
@@ -39,15 +45,21 @@ services:
         chmod -R 755 /pb/pb_data &&
         /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations --hooksDir=/pb/pb_hooks
       '
+    labels:
+      - "komodo.stack.name=omni-thooft"
 
   rclone:
     image: rclone/rclone:latest
     container_name: thooft_rclone
     volumes:
-      - ./pb_data/rclone:/config/rclone
-      - ./pb_data/backups:/backups
-    # Run rclone as a daemon with Remote Control enabled.
-    # The "cloud" remote will be configured via the app UI.
-    # Sync is triggered via the RC API (no need for serve s3).
+      - pb_data_rclone:/config/rclone
+      - pb_data_backups:/backups
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
+    labels:
+      - "komodo.stack.name=omni-thooft"
+
+volumes:
+  pb_data:
+  pb_data_rclone:
+  pb_data_backups:

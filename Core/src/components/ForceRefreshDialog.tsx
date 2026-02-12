@@ -10,17 +10,23 @@ export function ForceRefreshDialog() {
     const [lastTrigger, setLastTrigger] = useState<string | null>(null);
 
     useEffect(() => {
+        console.log("[ForceRefresh] Checking trigger:", refreshTriggeredAt, "Last:", lastTrigger);
         // Only show if the trigger is NEW since the session started
         // and if it's not the same trigger we already reacted to
         if (refreshTriggeredAt && refreshTriggeredAt !== lastTrigger) {
             const triggerTime = new Date(refreshTriggeredAt).getTime();
             const sessionStartTime = performance.timing.navigationStart;
 
+            console.log("[ForceRefresh] Trigger time:", triggerTime, "Session start:", sessionStartTime, "Diff:", triggerTime - sessionStartTime);
+
             // Only show if trigger happened AFTER the page was loaded
             // We give it a small buffer of 5 seconds
             if (triggerTime > (sessionStartTime + 5000)) {
+                console.log("[ForceRefresh] Trigger accepted - showing dialog");
                 setOpen(true);
                 setLastTrigger(refreshTriggeredAt);
+            } else {
+                console.log("[ForceRefresh] Trigger ignored - too old");
             }
         }
     }, [refreshTriggeredAt, lastTrigger]);
@@ -31,7 +37,7 @@ export function ForceRefreshDialog() {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="sm:max-w-[425px] border-orange-200" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+            <DialogContent className="w-[50vw] max-w-[50vw] border-orange-200" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
                 <DialogHeader>
                     <div className="mx-auto w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mb-4">
                         <AlertTriangle className="w-6 h-6 text-orange-600" />

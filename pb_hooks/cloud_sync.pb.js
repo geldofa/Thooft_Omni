@@ -1,8 +1,8 @@
 
 // Integrated Cloud Sync Tool Hooks for PocketBase v0.23.12
-// V32 - FRONTEND-ORIGIN AWARE (STABLE)
+// V33 - 1-CLICK GDRIVE (SERVER-SIDE CREDENTIALS)
 
-console.log(">>> [cloud_sync.pb.js] V32 Initialization...");
+console.log(">>> [cloud_sync.pb.js] V33 Initialization...");
 
 routerAdd("GET", "/api/cloud-sync/status", (c) => {
     try {
@@ -74,7 +74,7 @@ routerAdd("GET", "/api/cloud-sync/status", (c) => {
 });
 
 routerAdd("GET", "/api/cloud-sync/auth/gdrive", (c) => {
-    console.log(">>> [AU] GDrive Triggered (V32)");
+    console.log(">>> [AU] GDrive Triggered (V33)");
     try {
         let isS = false;
         const info = c.requestInfo();
@@ -100,8 +100,15 @@ routerAdd("GET", "/api/cloud-sync/auth/gdrive", (c) => {
 
         if (!isS) return c.json(403, { message: "Forbidden" });
 
-        const cid = info.query["client_id"];
-        const secret = info.query["client_secret"];
+        // Read credentials from environment variables (server-side, 1-click flow)
+        const cid = $os.getenv("GDRIVE_CLIENT_ID");
+        const secret = $os.getenv("GDRIVE_CLIENT_SECRET");
+
+        if (!cid || !secret) {
+            console.log(">>> [AU] GDRIVE_CLIENT_ID or GDRIVE_CLIENT_SECRET env var not set!");
+            return c.json(500, { message: "Google Drive is niet geconfigureerd op de server. Stel GDRIVE_CLIENT_ID en GDRIVE_CLIENT_SECRET in." });
+        }
+
         const app_origin = info.query["app_origin"];
 
         let host = "localhost:8080";
@@ -117,7 +124,7 @@ routerAdd("GET", "/api/cloud-sync/auth/gdrive", (c) => {
 
         const rUriCommon = (c.request.tls || (info.headers && info.headers["x-forwarded-proto"] === "https") ? "https" : "http") + "://" + (c.request.host || "localhost:8090") + "/api/cloud-sync/callback";
 
-        const state = encodeURIComponent(JSON.stringify({ provider: "gdrive", client_id: cid, client_secret: secret, host: host, scheme: scheme }));
+        const state = encodeURIComponent(JSON.stringify({ provider: "gdrive", host: host, scheme: scheme }));
         const url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=" + cid + "&redirect_uri=" + rUriCommon + "&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent&state=" + state;
 
         console.log(">>> [AU] Redirecting to Google. App Target: " + scheme + "://" + host);
@@ -126,7 +133,7 @@ routerAdd("GET", "/api/cloud-sync/auth/gdrive", (c) => {
 });
 
 routerAdd("GET", "/api/cloud-sync/auth/onedrive", (c) => {
-    console.log(">>> [AU] OneDrive Triggered (V32)");
+    console.log(">>> [AU] OneDrive Triggered (V33)");
     try {
         let isS = false;
         const info = c.requestInfo();
@@ -178,14 +185,22 @@ routerAdd("GET", "/api/cloud-sync/auth/onedrive", (c) => {
 });
 
 routerAdd("GET", "/api/cloud-sync/callback", (c) => {
-    console.log(">>> [CB] Callback Received (V32)");
+    console.log(">>> [CB] Callback Received (V33)");
     try {
         const info = c.requestInfo();
         const stateData = JSON.parse(decodeURIComponent(info.query["state"]));
         const host = stateData.host;
 
+        // Resolve credentials: prefer env vars for gdrive (V33 1-click flow), fallback to state for backward compat / onedrive
+        let cbClientId = stateData.client_id || "";
+        let cbClientSecret = stateData.client_secret || "";
+        if (stateData.provider === "gdrive") {
+            cbClientId = $os.getenv("GDRIVE_CLIENT_ID") || cbClientId;
+            cbClientSecret = $os.getenv("GDRIVE_CLIENT_SECRET") || cbClientSecret;
+        }
+
         console.log(">>> [CB] Exchanging code for " + stateData.provider + " token...");
-        const body = "code=" + info.query["code"] + "&client_id=" + stateData.client_id + "&client_secret=" + stateData.client_secret + "&redirect_uri=" + stateData.scheme + "://" + (c.request.host || "localhost:8090") + "/api/cloud-sync/callback&grant_type=authorization_code";
+        const body = "code=" + info.query["code"] + "&client_id=" + cbClientId + "&client_secret=" + cbClientSecret + "&redirect_uri=" + stateData.scheme + "://" + (c.request.host || "localhost:8090") + "/api/cloud-sync/callback&grant_type=authorization_code";
 
         const response = $http.send({
             url: stateData.provider === "gdrive" ? "https://oauth2.googleapis.com/token" : "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -208,14 +223,15 @@ routerAdd("GET", "/api/cloud-sync/callback", (c) => {
 
         let conf = "";
         if (stateData.provider === "gdrive") {
-            conf = "[cloud]\ntype = drive\nscope = drive.file\nclient_id = " + stateData.client_id + "\nclient_secret = " + stateData.client_secret + "\ntoken = " + rTk + "\n";
+            conf = "[cloud]\ntype = drive\nscope = drive.file\nclient_id = " + cbClientId + "\nclient_secret = " + cbClientSecret + "\ntoken = " + rTk + "\n";
         } else {
-            conf = "[cloud]\ntype = onedrive\nclient_id = " + stateData.client_id + "\nclient_secret = " + stateData.client_secret + "\ntoken = " + rTk + "\ndrive_type = personal\n";
+            conf = "[cloud]\ntype = onedrive\nclient_id = " + cbClientId + "\nclient_secret = " + cbClientSecret + "\ntoken = " + rTk + "\ndrive_type = personal\n";
         }
 
         $os.writeFile("/pb/pb_data/rclone/rclone.conf", conf);
         console.log(">>> [CB] Config saved. Redirecting to app: " + stateData.scheme + "://" + host);
-        return c.redirect(302, stateData.scheme + "://" + host + "/toolbox?tab=backup&sync=success");
+        // Use Capitalized Toolbox to match React Router paths if case sensitive
+        return c.redirect(302, stateData.scheme + "://" + host + "/Toolbox/Backup?sync=success");
     } catch (e) {
         console.log(">>> [CB] Callback error: " + e);
         return c.json(500, { message: e.toString() });
@@ -481,6 +497,58 @@ routerAdd("POST", "/api/config-backup/restore", (c) => {
         } catch (e) {
             console.log(">>> [ConfigBackup] Restore failed: " + e);
             return c.json(200, { message: "No config backup found", skipped: true });
+        }
+    } catch (err) { return c.json(500, { message: err.toString() }); }
+});
+
+routerAdd("POST", "/api/cloud-sync/test-connection", (c) => {
+    try {
+        let isS = false;
+        try {
+            if (typeof c.hasSuperuserAuth === 'function' && c.hasSuperuserAuth()) isS = true;
+            if (!isS && c.auth) {
+                if (c.auth.collection().name === "_superusers") isS = true;
+                if (c.auth.collection().name === "users" && (c.auth.get("role") === "admin" || c.auth.get("role") === "Admin")) isS = true;
+            }
+            if (!isS) {
+                const token = c.requestInfo().query["token"];
+                if (token) {
+                    const pb = (typeof $app !== 'undefined' ? $app : app);
+                    const rec = pb.findAuthRecordByToken(token, "auth");
+                    if (rec) {
+                        const colName = rec.collection().name;
+                        if (colName === "_superusers" || colName === "admins" ||
+                            (colName === "users" && (rec.get("role") === "admin" || rec.get("role") === "Admin"))) {
+                            isS = true;
+                        }
+                    }
+                }
+            }
+        } catch (e) { }
+        if (!isS) return c.json(403, { message: "Forbidden" });
+
+        // Perform a synchronous list operation to test connectivity
+        try {
+            const res = $http.send({
+                url: "http://rclone:5572/operations/list",
+                method: "POST",
+                body: JSON.stringify({
+                    fs: "cloud:backups",
+                    remote: "",
+                    opt: { max_depth: 1 }
+                }),
+                headers: { "Content-Type": "application/json" },
+                timeout: 10 // Short timeout for test
+            });
+
+            if (res.statusCode >= 400) {
+                console.log(">>> [TestConn] Rclone error: " + res.statusCode + " " + JSON.stringify(res.json));
+                return c.json(res.statusCode, { message: "Connection failed", details: res.json });
+            }
+
+            return c.json(200, { message: "Connection OK", details: res.json });
+        } catch (e) {
+            return c.json(500, { message: "Test failed: " + e.toString() });
         }
     } catch (err) { return c.json(500, { message: err.toString() }); }
 });

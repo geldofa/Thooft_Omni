@@ -25,7 +25,7 @@ export function Toolbox({ onNavigateHome }: { onNavigateHome?: () => void }) {
 }
 
 function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
-    const { tasks, updateTask, fetchTasks, testingMode, setTestingMode, listBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, uploadBackup, getBackupSettings, updateBackupSettings, cloudSyncStatus, refreshCloudSyncStatus, configureCloudSync, verifyCloudBackups, isSuperuser, authenticateSuperuser, triggerGlobalRefresh } = useAuth() as any;
+    const { tasks, updateTask, fetchTasks, testingMode, setTestingMode, listBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, uploadBackup, getBackupSettings, updateBackupSettings, cloudSyncStatus, refreshCloudSyncStatus, verifyCloudBackups, isSuperuser, authenticateSuperuser, triggerGlobalRefresh } = useAuth() as any;
     const [isRecalculating, setIsRecalculating] = useState(false);
     const [backups, setBackups] = useState<BackupInfo[]>([]);
     const [isLoadingBackups, setIsLoadingBackups] = useState(false);
@@ -41,7 +41,8 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [isLoadingCloudSync, setIsLoadingCloudSync] = useState(false);
     const [isLinkingCloud, setIsLinkingCloud] = useState(false);
-    const [cloudConfigType, setCloudConfigType] = useState<'gdrive' | 'onedrive' | 'local'>('local');
+    const [isRelinking, setIsRelinking] = useState(false);
+    const [isConfigExpanded, setIsConfigExpanded] = useState(false);
     const [confirmationOpen, setConfirmationOpen] = useState(false);
     const [confirmationConfig, setConfirmationConfig] = useState<{
         title: string;
@@ -57,12 +58,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         onConfirm: () => { }
     });
 
-    const [cloudClientId, setCloudClientId] = useState('');
-    const [cloudClientSecret, setCloudClientSecret] = useState('');
-    const [isConfigExpanded, setIsConfigExpanded] = useState(() => {
-        if (typeof sessionStorage !== 'undefined') return sessionStorage.getItem('toolbox_configExpanded') === 'true';
-        return false;
-    });
+
 
     const [tasksStep, setTasksStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [drukwerkenStep, setDrukwerkenStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
@@ -92,9 +88,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
         navigate(`/Toolbox/${urlSegment}`);
     };
 
-    useEffect(() => {
-        if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('toolbox_configExpanded', String(isConfigExpanded));
-    }, [isConfigExpanded]);
+
     const [verificationMap, setVerificationMap] = useState<Record<string, boolean>>({});
     const [isVerifying, setIsVerifying] = useState(false);
 
@@ -184,15 +178,10 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
 
 
     const handleAuthorizeCloudSync = async () => {
-        if (!cloudClientId || !cloudClientSecret) {
-            toast.error("Oeps! Client ID en Secret zijn verplicht voor OAuth.");
-            return;
-        }
-
         setIsLinkingCloud(true);
-        // Construct the URL to our backend auth endpoint
-        const baseUrl = window.location.origin.replace('8080', '8090'); // Usually DB is on 8090
-        const authUrl = `${baseUrl}/api/cloud-sync/auth/${cloudConfigType}?client_id=${encodeURIComponent(cloudClientId)}&client_secret=${encodeURIComponent(cloudClientSecret)}&token=${encodeURIComponent(pb.authStore.token)}&app_origin=${encodeURIComponent(window.location.origin)}`;
+        // Construct the URL to our backend auth endpoint — credentials are now server-side
+        const baseUrl = window.location.origin.replace('8080', '8090');
+        const authUrl = `${baseUrl}/api/cloud-sync/auth/gdrive?token=${encodeURIComponent(pb.authStore.token)}&app_origin=${encodeURIComponent(window.location.origin)}`;
 
         // Redirect the whole page to the auth flow
         window.location.href = authUrl;
@@ -696,28 +685,48 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                 {isConfigExpanded && (
                                     <CardContent className="p-0 border-t border-blue-100 overflow-x-auto">
                                         <div className="min-w-[900px] grid grid-cols-3 divide-x divide-gray-100">
-                                            <div className="p-6">
+                                            <div className="p-6 border-b border-gray-100">
                                                 <div className="flex items-center justify-between mb-4">
                                                     <h4 className="text-xs font-bold text-gray-900 uppercase">Cloud Verbinding</h4>
-                                                    {cloudSyncStatus?.configured && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={async () => {
-                                                                const toastId = toast.loading("Synchronisatie gestart...");
-                                                                try {
-                                                                    await fetch(pb.baseUrl + '/api/cloud-sync/sync-now?token=' + encodeURIComponent(pb.authStore.token), { method: 'POST' });
-                                                                    toast.dismiss(toastId);
-                                                                    toast.success("Synchronisatie voltooid!");
-                                                                } catch (e) {
-                                                                    toast.dismiss(toastId);
-                                                                    toast.error("Synchronisatie mislukt");
-                                                                }
-                                                            }}
-                                                            className="h-6 text-[10px] px-2"
-                                                        >
-                                                            Synchroniseer Nu
-                                                        </Button>
+                                                    {cloudSyncStatus?.configured && !isRelinking && (
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={async () => {
+                                                                    const toastId = toast.loading("Verbinding testen...");
+                                                                    try {
+                                                                        // Use the new synchronous test endpoint
+                                                                        const res = await fetch(pb.baseUrl + '/api/cloud-sync/test-connection?token=' + encodeURIComponent(pb.authStore.token), { method: 'POST' });
+                                                                        const data = await res.json();
+
+                                                                        if (res.ok) {
+                                                                            toast.dismiss(toastId);
+                                                                            toast.success("Verbinding is actief!");
+                                                                        } else {
+                                                                            console.error("Test failed:", data);
+                                                                            // Extract meaningful error from rclone if possible
+                                                                            const details = (data.details && data.details.error) ? data.details.error : (data.message || "Onbekende fout");
+                                                                            throw new Error(details);
+                                                                        }
+                                                                    } catch (e: any) {
+                                                                        toast.dismiss(toastId);
+                                                                        toast.error(`Verbindingsfout: ${e.message}`);
+                                                                    }
+                                                                }}
+                                                                className="h-6 text-[10px] px-2"
+                                                            >
+                                                                Test Verbinding
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => setIsRelinking(true)}
+                                                                className="h-6 text-[10px] px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                                            >
+                                                                Opnieuw Koppelen
+                                                            </Button>
+                                                        </div>
                                                     )}
                                                 </div>
                                                 {isLoadingCloudSync ? (
@@ -725,7 +734,7 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                                         <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mb-2"></div>
                                                         <span className="text-xs">Status controleren...</span>
                                                     </div>
-                                                ) : cloudSyncStatus?.configured ? (
+                                                ) : (cloudSyncStatus?.configured && !isRelinking) ? (
                                                     <div className="p-4 bg-green-50 rounded-lg border border-green-100 text-center space-y-3">
                                                         <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
                                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
@@ -737,51 +746,29 @@ function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void }) {
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-4">
-                                                        <div className="grid grid-cols-3 gap-2">
-                                                            <button onClick={() => setCloudConfigType('gdrive')} className={`flex flex-col items-center p-2 rounded-lg border transition-all ${cloudConfigType === 'gdrive' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
-                                                                <svg className="w-5 h-5 mb-1" viewBox="0 0 24 24" fill="none"><path d="M11.99 2.019L8.71 7.711H15.29L11.99 2.019Z" fill="#0066DA" /><path d="M15.29 7.711L8.71 7.711L5.42 13.411H18.57L15.29 7.711Z" fill="#00AC47" /><path d="M18.57 13.411H5.42L2.14 19.111H15.29L18.57 13.411Z" fill="#FFC107" /><path d="M11.99 2.019L8.71 7.711L11.99 13.411L15.29 7.711L11.99 2.019Z" fill="#0083ED" /></svg>
-                                                                <span className="text-[9px] font-bold">Google</span>
-                                                            </button>
-                                                            <button onClick={() => setCloudConfigType('onedrive')} className={`flex flex-col items-center p-2 rounded-lg border transition-all ${cloudConfigType === 'onedrive' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
-                                                                <svg className="w-5 h-5 mb-1 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M11.006 18c-3.111 0-5.632-2.522-5.632-5.633 0-2.31 1.436-4.305 3.479-5.158A4.957 4.957 0 0113.824 4c2.585 0 4.717 1.956 4.981 4.479C20.686 8.784 22 10.413 22 12.35 22 14.366 20.366 16 18.35 16h-7.344zm7.344-1.5c1.187 0 2.15-.963 2.15-2.15s-.963-2.15-2.15-2.15c-.246 0-.48.044-.698.125l-.837.31-.19-.873c-.237-1.083-1.196-1.875-2.302-1.875-.246 0-.484.04-.707.114l-.873.287-.318-.865A3.486 3.486 0 0010.155 7.5c-1.579 0-2.81 1.056-3.141 2.5l-.234 1.026-1.012-.275A3.13 3.13 0 005.022 10.5c0 1.73 1.403 3.132 3.132 3.132h10.196v1.368z" /></svg>
-                                                                <span className="text-[9px] font-bold">OneDrive</span>
-                                                            </button>
-                                                            <button onClick={() => setCloudConfigType('local')} className={`flex flex-col items-center p-2 rounded-lg border transition-all ${cloudConfigType === 'local' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
-                                                                <svg className="w-5 h-5 mb-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                                                                <span className="text-[9px] font-bold">Lokaal</span>
-                                                            </button>
-                                                        </div>
-
-                                                        {cloudConfigType !== 'local' ? (
-                                                            <div className="space-y-3 bg-gray-50 p-3 rounded border border-gray-100">
-                                                                <div className="flex gap-2">
-                                                                    <button onClick={() => window.open(cloudConfigType === 'gdrive' ? 'https://console.cloud.google.com/projectcreate?name=Omni-Backups' : 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade', '_blank')} className="flex-1 text-left p-2 rounded bg-white border border-gray-200 hover:border-blue-400 text-[10px] font-medium text-gray-600">
-                                                                        1. Maak Project
-                                                                    </button>
-                                                                    {cloudConfigType === 'gdrive' && (
-                                                                        <button onClick={() => window.open('https://console.developers.google.com/apis/api/drive.googleapis.com/overview', '_blank')} className="flex-1 text-left p-2 rounded bg-white border border-gray-200 hover:border-blue-400 text-[10px] font-medium text-gray-600">
-                                                                            1a. Activeer API
-                                                                        </button>
-                                                                    )}
-                                                                    <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin.replace('8080', '8090')}/api/cloud-sync/callback`); toast.success("URI Gekopieerd!"); }} className="flex-1 text-left p-2 rounded bg-white border border-gray-200 hover:border-blue-400 text-[10px] font-medium text-gray-600">
-                                                                        2. Kopieer URI
-                                                                    </button>
-                                                                </div>
-                                                                <div className="space-y-2">
-                                                                    <Input value={cloudClientId} onChange={(e) => setCloudClientId(e.target.value)} placeholder="Client ID" className="h-7 text-[10px] bg-white" />
-                                                                    <Input type="password" value={cloudClientSecret} onChange={(e) => setCloudClientSecret(e.target.value)} placeholder="Client Secret" className="h-7 text-[10px] bg-white" />
-                                                                    <Button onClick={handleAuthorizeCloudSync} disabled={!cloudClientId || !cloudClientSecret || isLinkingCloud} size="sm" className="w-full h-7 text-[10px] bg-blue-600 hover:bg-blue-700">
-                                                                        {isLinkingCloud ? 'Verbinden...' : '3. Verbind Nu'}
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="p-3 bg-gray-50 rounded border border-gray-100 flex justify-center">
-                                                                <Button size="sm" variant="outline" onClick={() => { configureCloudSync('local', {}).then((s: any) => s && toast.success("Lokale opslag OK!")); }} className="h-7 text-[10px] bg-white">
-                                                                    Test Lokale Opslag
-                                                                </Button>
+                                                        {isRelinking && (
+                                                            <div className="flex justify-between items-center mb-2">
+                                                                <span className="text-[10px] font-bold text-gray-500 uppercase">Opnieuw verbinden</span>
+                                                                <button onClick={() => setIsRelinking(false)} className="text-[10px] text-gray-400 hover:text-gray-600">Annuleren</button>
                                                             </div>
                                                         )}
+                                                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 text-center space-y-3">
+                                                            <div className="w-10 h-10 bg-white border border-gray-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M11.99 2.019L8.71 7.711H15.29L11.99 2.019Z" fill="#0066DA" /><path d="M15.29 7.711L8.71 7.711L5.42 13.411H18.57L15.29 7.711Z" fill="#00AC47" /><path d="M18.57 13.411H5.42L2.14 19.111H15.29L18.57 13.411Z" fill="#FFC107" /><path d="M11.99 2.019L8.71 7.711L11.99 13.411L15.29 7.711L11.99 2.019Z" fill="#0083ED" /></svg>
+                                                            </div>
+                                                            <div>
+                                                                <h5 className="text-sm font-bold text-gray-900">Google Drive</h5>
+                                                                <p className="text-[10px] text-gray-500 mt-1">Koppel uw Google Drive voor automatische cloud backups.</p>
+                                                            </div>
+                                                            <Button
+                                                                onClick={handleAuthorizeCloudSync}
+                                                                disabled={isLinkingCloud}
+                                                                size="sm"
+                                                                className="w-full h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                                                            >
+                                                                {isLinkingCloud ? 'Verbinden...' : 'Verbind met Google Drive'}
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

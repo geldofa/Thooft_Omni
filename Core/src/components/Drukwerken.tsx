@@ -796,12 +796,15 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([]);
 
     useEffect(() => {
+        let isSubscribed = false;
         const subscribeParameters = async () => {
+            if (!user) return;
             try {
                 await pb.collection('press_parameters').subscribe('*', () => {
                     console.log("[Drukwerken] Parameters updated via realtime");
                     fetchParameters();
                 });
+                isSubscribed = true;
             } catch (err) {
                 console.error("Subscription to press_parameters failed:", err);
             }
@@ -810,9 +813,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         subscribeParameters();
 
         return () => {
-            pb.collection('press_parameters').unsubscribe('*').catch(() => { });
+            if (isSubscribed) {
+                pb.collection('press_parameters').unsubscribe('*').catch(() => { });
+            }
         };
-    }, [fetchParameters]);
+    }, [fetchParameters, user?.id]);
 
     // Subscribe to Cache Service
     useEffect(() => {

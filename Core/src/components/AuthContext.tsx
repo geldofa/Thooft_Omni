@@ -358,8 +358,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const mapDbRoleToUi = (dbRole: string): UserRole => {
-    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press' };
-    return roleMap[dbRole] || 'press';
+    const lowerRole = dbRole.toLowerCase();
+    if (lowerRole === 'admin') return 'admin';
+    if (lowerRole === 'meestergast') return 'meestergast';
+    if (lowerRole === 'operator' || lowerRole === 'press') return 'press';
+    return 'press'; // Default fallback
   };
 
   const mapUiRoleToDb = (uiRole: UserRole): string => {
@@ -515,6 +518,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         await pb.collection('app_settings').create({ key: 'force_refresh_trigger', value: now });
       }
+      console.log("[Auth] Global refresh triggered by user.");
       return true;
     } catch (e) {
       console.error("Failed to trigger global refresh:", e);
@@ -1155,7 +1159,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Realtime subscription for system settings (specifically for forced refresh)
+    let isSubscribed = false;
+
     const subscribe = async () => {
+      if (!user) return;
       try {
         await pb.collection('app_settings').subscribe('*', (e) => {
           if (e.action === 'update' || e.action === 'create') {
@@ -1165,10 +1172,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setSystemSettings(prev => ({ ...prev, [key]: value }));
 
             if (key === 'force_refresh_trigger') {
+              console.log("[Auth] Received force_refresh_trigger update:", value);
               setRefreshTriggeredAt(value);
             }
           }
         });
+        isSubscribed = true;
       } catch (err) {
         console.error("AuthContext app_settings subscription failed:", err);
       }
@@ -1176,9 +1185,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     subscribe();
     return () => {
-      pb.collection('app_settings').unsubscribe('*').catch(() => { });
+      if (isSubscribed) {
+        pb.collection('app_settings').unsubscribe('*').catch((e) => {
+          console.warn("[Auth] Unsubscribe from app_settings failed (expected if connection stale):", e);
+        });
+      }
     };
-  }, []);
+  }, [user?.id]);
 
   return (
     <AuthContext.Provider value={{

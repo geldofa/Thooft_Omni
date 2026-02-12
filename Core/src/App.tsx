@@ -4,6 +4,7 @@ import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Categor
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
+import { ForceRefreshDialog } from './components/ForceRefreshDialog';
 import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Button } from './components/ui/button';
@@ -25,7 +26,6 @@ const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: 
 const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
 const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
 const RoadmapV2 = lazy(() => import('./components/RoadmapV2').then(m => ({ default: m.RoadmapV2 })));
-import { ForceRefreshDialog } from './components/ForceRefreshDialog';
 import { Home } from './components/Home';
 
 function MainApp() {
@@ -929,6 +929,7 @@ function MainApp() {
               onUpdateGroup={handleUpdateGroup}
               activePress={selectedPress}
             />
+            <ForceRefreshDialog />
           </main>
         </>
       )}
