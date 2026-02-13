@@ -1,69 +1,9 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate((app) => {
+  // Note: System collections (_mfas, _otps, _externalAuths, _authOrigins, _superusers)
+  // are auto-created by PocketBase on first boot. Do NOT include them here.
   const collections = [
-    {
-      "id": "pbc_2279338944",
-      "name": "_mfas",
-      "type": "base",
-      "system": true,
-      "fields": [
-        { "id": "text3208210256", "name": "id", "type": "text", "system": true, "primaryKey": true, "autogeneratePattern": "[a-z0-9]{15}" },
-        { "name": "collectionRef", "type": "text", "required": true, "system": true },
-        { "name": "recordRef", "type": "text", "required": true, "system": true },
-        { "name": "method", "type": "text", "required": true, "system": true }
-      ]
-    },
-    {
-      "id": "pbc_1638494021",
-      "name": "_otps",
-      "type": "base",
-      "system": true,
-      "fields": [
-        { "id": "text3208210256", "name": "id", "type": "text", "system": true, "primaryKey": true, "autogeneratePattern": "[a-z0-9]{15}" },
-        { "name": "collectionRef", "type": "text", "required": true, "system": true },
-        { "name": "recordRef", "type": "text", "required": true, "system": true },
-        { "name": "password", "type": "password", "required": true, "system": true },
-        { "name": "sentTo", "type": "text", "system": true }
-      ]
-    },
-    {
-      "id": "pbc_2281828961",
-      "name": "_externalAuths",
-      "type": "base",
-      "system": true,
-      "fields": [
-        { "id": "text3208210256", "name": "id", "type": "text", "system": true, "primaryKey": true, "autogeneratePattern": "[a-z0-9]{15}" },
-        { "name": "collectionRef", "type": "text", "required": true, "system": true },
-        { "name": "recordRef", "type": "text", "required": true, "system": true },
-        { "name": "provider", "type": "text", "required": true, "system": true },
-        { "name": "providerId", "type": "text", "required": true, "system": true }
-      ]
-    },
-    {
-      "id": "pbc_4275539003",
-      "name": "_authOrigins",
-      "type": "base",
-      "system": true,
-      "fields": [
-        { "id": "text3208210256", "name": "id", "type": "text", "system": true, "primaryKey": true, "autogeneratePattern": "[a-z0-9]{15}" },
-        { "name": "collectionRef", "type": "text", "required": true, "system": true },
-        { "name": "recordRef", "type": "text", "required": true, "system": true },
-        { "name": "fingerprint", "type": "text", "required": true, "system": true }
-      ]
-    },
-    {
-      "id": "pbc_3142635823",
-      "name": "_superusers",
-      "type": "auth",
-      "system": true,
-      "fields": [
-        { "id": "text3208210256", "name": "id", "type": "text", "system": true, "primaryKey": true, "autogeneratePattern": "[a-z0-9]{15}" },
-        { "name": "email", "type": "email", "required": true, "system": true },
-        { "name": "emailVisibility", "type": "bool", "system": true },
-        { "name": "verified", "type": "bool", "system": true }
-      ]
-    },
     {
       "id": "users000000000001",
       "name": "users",
@@ -322,7 +262,7 @@ migrate((app) => {
     }
   ];
 
-  app.importCollections(collections, true);
+  app.importCollections(collections, false);
 
   // Seeding default data
   const seed = (colName, filter, data) => {
