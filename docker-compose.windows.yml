@@ -43,7 +43,8 @@ services:
         apk add --no-cache curl unzip ca-certificates &&
         curl -L https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_amd64.zip -o /tmp/pb.zip &&
         unzip -o /tmp/pb.zip -d /pb/ &&
-        /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" &&
+        /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" --dir=/pb/pb_data &&
+        /pb/pocketbase migrate up --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations &&
         chown -R root:root /pb/pb_data &&
         chmod -R 755 /pb/pb_data &&
         /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations --hooksDir=/pb/pb_hooks
