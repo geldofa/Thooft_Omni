@@ -4,6 +4,10 @@ services:
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "8080:80"
+    networks:
+      default:
+        aliases:
+          - OMNItest
     environment:
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}

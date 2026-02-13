@@ -1,5 +1,4 @@
-# Komodo Satellite Stack for Omni.Thooft
-# This file is optimized for deployment via Komodo Core to a Satellite.
+# Docker Compose Stack for Omni.Thooft
 # Persistence is handled via named volumes for easier orchestration.
 
 services:
@@ -7,6 +6,11 @@ services:
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "80:80"
+    networks:
+      default:
+        aliases:
+          - OMNI
+          - OMNI.local
     environment:
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -14,9 +18,6 @@ services:
       - db
     restart: unless-stopped
     container_name: thooft_omni
-    labels:
-      - "komodo.stack.name=omni-thooft"
-      - "komodo.managed=true"
 
   db:
     image: alpine:latest
@@ -45,8 +46,6 @@ services:
         chmod -R 755 /pb/pb_data &&
         /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations --hooksDir=/pb/pb_hooks
       '
-    labels:
-      - "komodo.stack.name=omni-thooft"
 
   rclone:
     image: rclone/rclone:latest
@@ -56,8 +55,6 @@ services:
       - pb_data_backups:/backups
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
-    labels:
-      - "komodo.stack.name=omni-thooft"
 
 volumes:
   pb_data:

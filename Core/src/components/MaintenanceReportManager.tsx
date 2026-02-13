@@ -352,7 +352,7 @@ function ReportItem({ report, presses, tasks, isExpanded, onToggle, onSave, onCa
                     outputName = format(baseDate, "yyyy_'W'ww");
                 } else if (period === 'month') {
                     periodLabel = format(baseDate, 'yyyy | MMMM', { locale: nl });
-                    outputName = format(baseDate, "yyyy_'M'MM");
+                    outputName = format(baseDate, "yyyy_MM");
                 } else if (period === 'year') {
                     periodLabel = format(baseDate, 'yyyy', { locale: nl });
                     outputName = `Rapportage ${format(baseDate, 'yyyy')}`;
