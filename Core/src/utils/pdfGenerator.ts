@@ -10,12 +10,14 @@ interface ReportOptions {
     selectedPresses: Press[];
     tasks: MaintenanceTask[];
     reportId?: string; // Optional: linkage to configuration
+    fileName?: string; // Optional: custom filename
 }
 
 export const generateMaintenanceReport = async ({
     period,
     tasks,
-    reportId
+    reportId,
+    fileName
 }: ReportOptions): Promise<any> => {
     // 1. Initialize Document
     const doc = new jsPDF();
@@ -123,10 +125,14 @@ export const generateMaintenanceReport = async ({
 
     // 6. Generate Blob and Upload
     const pdfBlob = doc.output('blob');
-    const fileName = `report_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+
+    let finalFileName = fileName || `report_${format(new Date(), 'yyyyMMdd_HHmm')}`;
+    if (!finalFileName.toLowerCase().endsWith('.pdf')) {
+        finalFileName += '.pdf';
+    }
 
     const formData = new FormData();
-    formData.append('file', pdfBlob, fileName);
+    formData.append('file', pdfBlob, finalFileName);
     formData.append('generated_at', new Date().toISOString());
 
     if (reportId) {

@@ -337,23 +337,40 @@ function ReportItem({ report, presses, tasks, isExpanded, onToggle, onSave, onCa
             const selectedPressObjects = presses.filter(p => selectedPressIds.includes(p.id));
 
             let periodLabel: string = period;
+            let outputName: string = '';
+
             if (!isRolling) {
                 const y = baseDate.getFullYear();
                 if (period === 'day') {
                     periodLabel = format(baseDate, 'dd-MM-yyyy', { locale: nl });
+                    outputName = format(baseDate, 'yyyy_MM_dd');
                 } else if (period === 'week') {
                     const w = format(baseDate, 'ww');
                     const startStr = format(startDate, 'dd/MM');
                     const endStr = format(endDate, 'dd/MM');
                     periodLabel = `${y} | W${w} | ${startStr} - ${endStr}`;
+                    outputName = format(baseDate, "yyyy_'W'ww");
                 } else if (period === 'month') {
                     periodLabel = format(baseDate, 'yyyy | MMMM', { locale: nl });
+                    outputName = format(baseDate, "yyyy_'M'MM");
                 } else if (period === 'year') {
                     periodLabel = format(baseDate, 'yyyy', { locale: nl });
+                    outputName = `Rapportage ${format(baseDate, 'yyyy')}`;
                 }
             } else {
                 const map: Record<string, string> = { 'day': 'Laatste 24u', 'week': 'Laatste 7 dagen', 'month': 'Laatste 30 dagen', 'year': 'Laatste jaar' };
                 periodLabel = map[period] || period;
+                // For rolling, we can use a similar format but maybe with 'Rolling' prefix or just follow the same date format
+                if (period === 'day') outputName = `Rolling_Dag_${format(baseDate, 'yyyy_MM_dd')}`;
+                else if (period === 'week') outputName = `Rolling_Week_${format(baseDate, 'yyyy_MM_dd')}`;
+                else if (period === 'month') outputName = `Rolling_Maand_${format(baseDate, 'yyyy_MM_dd')}`;
+                else if (period === 'year') outputName = `Rolling_Jaar_${format(baseDate, 'yyyy_MM_dd')}`;
+            }
+
+            // Append press names if less than all (selectedPressIds.length > 0)
+            if (selectedPressIds.length > 0) {
+                const pressSuffix = selectedPressObjects.map(p => p.name).join('_');
+                outputName += `_${pressSuffix}`;
             }
 
             const fileRecord = await generateMaintenanceReport({
@@ -361,7 +378,8 @@ function ReportItem({ report, presses, tasks, isExpanded, onToggle, onSave, onCa
                 tasks: filteredTasks,
                 reportId: report?.id || undefined,
                 reportName: name,
-                selectedPresses: selectedPressObjects
+                selectedPresses: selectedPressObjects,
+                fileName: outputName
             });
 
             if (fileRecord) {
