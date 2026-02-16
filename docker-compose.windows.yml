@@ -2,9 +2,9 @@ version: '3.8'
 
 # Windows Docker Stack for Omni.Thooft
 # To use this stack:
-# 1. Create a folder: Documents/Docker/omni/
+# 1. Create a folder: Documents/Docker/
 # 2. You can set the environment variable OMNI_DOCS_PATH to your Documents folder path.
-#    Example: $env:OMNI_DOCS_PATH = "C:\Users\YourName\Documents\Docker\omni"
+#    Example: $env:OMNI_DOCS_PATH = "C:\Users\YourName\Documents\Docker"
 # 3. Use 'stack.env' for credentials.
 
 services:
@@ -26,9 +26,9 @@ services:
       - "8090:8090"
     volumes:
       # Map persistent data to the Windows Documents folder
-      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker/omni}/pb_data:/pb/pb_data
-      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker/omni}/pb_migrations:/pb/pb_migrations:ro
-      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker/omni}/pb_hooks:/pb/pb_hooks:ro
+      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker}/pb_data:/pb/pb_data
+      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker}/pb_migrations:/pb/pb_migrations:ro
+      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker}/pb_hooks:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -54,7 +54,7 @@ services:
     image: rclone/rclone:latest
     container_name: thooft_rclone
     volumes:
-      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker/omni}/pb_data/rclone:/config/rclone
-      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker/omni}/pb_data/backups:/backups
+      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker}/pb_data/rclone:/config/rclone
+      - ${OMNI_DOCS_PATH:-C:/Users/%USERNAME%/Documents/Docker}/pb_data/backups:/backups
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
