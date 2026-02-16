@@ -26,9 +26,9 @@ services:
       - "8090:8090"
     volumes:
       # Map persistent data to the Windows Documents folder
-      - ${OMNI_DOCS_PATH:-C:/Users/${USERNAME}/Documents/Docker}/pb_data:/pb/pb_data
-      - ${OMNI_DOCS_PATH:-C:/Users/${USERNAME}/Documents/Docker}/pb_migrations:/pb/pb_migrations:ro
-      - ${OMNI_DOCS_PATH:-C:/Users/${USERNAME}/Documents/Docker}/pb_hooks:/pb/pb_hooks:ro
+      - /Documents/Docker}/pb_data:/pb/pb_data
+      - /Documents/Docker}/pb_migrations:/pb/pb_migrations:ro
+      - /Documents/Docker}/pb_hooks:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -54,7 +54,7 @@ services:
     image: rclone/rclone:latest
     container_name: thooft_rclone
     volumes:
-      - ${OMNI_DOCS_PATH:-C:/Users/${USERNAME}/Documents/Docker}/pb_data/rclone:/config/rclone
-      - ${OMNI_DOCS_PATH:-C:/Users/${USERNAME}/Documents/Docker}/pb_data/backups:/backups
+      - /Documents/Docker}/pb_data/rclone:/config/rclone
+      - /Documents/Docker}/pb_data/backups:/backups
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
