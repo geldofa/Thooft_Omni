@@ -1,31 +1,32 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate((app) => {
-  console.log("🚀 Starting robust migration 1739459000_fresh_init.js");
+  console.log("🚀 Starting robust migration 1739459000_fresh_init.js (PocketBase 0.23+)");
 
   // ==============================================================================
-  // 1. HELPER: FIELD FACTORY
+  // 1. HELPER: FIELD BUILDER (for PocketBase 0.23+)
   // ==============================================================================
-  function createField(def) {
-    // Common mappings
-    const opts = Object.assign({}, def);
-    delete opts.type; // Constructor doesn't want 'type' property usually, but we'll see. 
-    // Safest is to clean up, but PB JSVM is permissive.
+  function buildSchemaField(def) {
+    const field = {
+      id: "", // PocketBase auto-generates
+      name: def.name,
+      type: def.type,
+      required: def.required || false,
+      presentable: def.presentable || false,
+      options: {}
+    };
 
-    switch (def.type) {
-      case "text": return new TextField(opts);
-      case "number": return new NumberField(opts);
-      case "bool": return new BoolField(opts);
-      case "email": return new EmailField(opts);
-      case "url": return new UrlField(opts);
-      case "editor": return new EditorField(opts);
-      case "date": return new DateField(opts);
-      case "select": return new SelectField(opts);
-      case "json": return new JsonField(opts);
-      case "file": return new FileField(opts);
-      case "relation": return new RelationField(opts);
-      default: throw new Error("Unknown field type: " + def.type);
-    }
+    // Add type-specific options
+    if (def.min !== undefined) field.options.min = def.min;
+    if (def.max !== undefined) field.options.max = def.max;
+    if (def.maxSelect !== undefined) field.options.maxSelect = def.maxSelect;
+    if (def.collectionId !== undefined) field.options.collectionId = def.collectionId;
+    if (def.values !== undefined) field.options.values = def.values;
+    if (def.mimeTypes !== undefined) field.options.mimeTypes = def.mimeTypes;
+    if (def.maxSize !== undefined) field.options.maxSize = def.maxSize;
+    if (def.cascadeDelete !== undefined) field.options.cascadeDelete = def.cascadeDelete;
+
+    return field;
   }
 
   // ==============================================================================
@@ -35,12 +36,12 @@ migrate((app) => {
   let users;
   try {
     users = app.findCollectionByNameOrId("users");
-    // Detach 'pers' relation if it exists, so we can safely delete 'persen' collection later
-    // without violating foreign key constraints (if any strict checks exist)
-    const existingPers = users.fields.getByName("pers");
-    if (existingPers) {
+    // Remove 'pers' relation if it exists to avoid circular dependency issues
+    const existingSchema = users.schema || [];
+    const filteredSchema = existingSchema.filter(f => f.name !== "pers");
+    if (filteredSchema.length !== existingSchema.length) {
       console.log("   - Removing existing 'pers' relation from users to allow rebuild");
-      users.fields.removeByName("pers");
+      users.schema = filteredSchema;
       app.save(users);
     }
   } catch (e) {
@@ -72,9 +73,6 @@ migrate((app) => {
   // ==============================================================================
   // 4. DEFINE ALL COLLECTIONS
   // ==============================================================================
-  // We define them here. Order matters for creation!
-  // Topological sort: persen -> tags -> ... -> drukwerken, etc.
-
   const definitions = [
     {
       name: "persen", id: "persen000000001", type: "base",
@@ -86,7 +84,11 @@ migrate((app) => {
     },
     {
       name: "tags", id: "tags00000000001", type: "base",
-      listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''", createRule: "@request.auth.id != ''", updateRule: "@request.auth.id != ''", deleteRule: "@request.auth.id != ''",
+      listRule: "@request.auth.id != ''",
+      viewRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "text", name: "naam", required: true, presentable: true },
         { type: "text", name: "kleur" },
@@ -151,7 +153,9 @@ migrate((app) => {
       name: "drukwerken", id: "drukw0000000001", type: "base",
       listRule: '@request.auth.id != "" && (@request.auth.role = "Admin" || @request.auth.role = "Meestergast" || (@request.auth.role = "Operator" && pers = @request.auth.pers))',
       viewRule: '@request.auth.id != "" && (@request.auth.role = "Admin" || @request.auth.role = "Meestergast" || (@request.auth.role = "Operator" && pers = @request.auth.pers))',
-      createRule: "@request.auth.id != ''", updateRule: "@request.auth.id != ''", deleteRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "number", name: "order_nummer", required: true },
         { type: "text", name: "klant_order_beschrijving" },
@@ -178,21 +182,32 @@ migrate((app) => {
     },
     {
       name: "feedback", id: "pbc_2456230977", type: "base",
-      listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''", createRule: "@request.auth.id != ''", updateRule: "@request.auth.role = 'Admin'", deleteRule: "@request.auth.role = 'Admin'",
+      listRule: "@request.auth.id != ''",
+      viewRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.role = 'Admin'",
+      deleteRule: "@request.auth.role = 'Admin'",
       fields: [
-        { type: "text", name: "type" }, { type: "text", name: "message" },
-        { type: "text", name: "user" }, { type: "text", name: "status" },
-        { type: "json", name: "context" }, { type: "text", name: "admin_comment" },
+        { type: "text", name: "type" },
+        { type: "text", name: "message" },
+        { type: "text", name: "user" },
+        { type: "text", name: "status" },
+        { type: "json", name: "context" },
+        { type: "text", name: "admin_comment" },
         { type: "bool", name: "archived" }
       ]
     },
     {
       name: "activity_logs", id: "pbc_444539071", type: "base",
       fields: [
-        { type: "text", name: "user" }, { type: "text", name: "action" },
-        { type: "text", name: "entity" }, { type: "text", name: "details" },
-        { type: "text", name: "entityId" }, { type: "text", name: "entityName" },
-        { type: "text", name: "press" }, { type: "text", name: "oldValue" },
+        { type: "text", name: "user" },
+        { type: "text", name: "action" },
+        { type: "text", name: "entity" },
+        { type: "text", name: "details" },
+        { type: "text", name: "entityId" },
+        { type: "text", name: "entityName" },
+        { type: "text", name: "press" },
+        { type: "text", name: "oldValue" },
         { type: "text", name: "newValue" }
       ]
     },
@@ -200,15 +215,20 @@ migrate((app) => {
       name: "press_parameters", id: "pressparam00001", type: "base",
       fields: [
         { type: "relation", name: "press", collectionId: "persen000000001", maxSelect: 1 },
-        { type: "text", name: "marge" }, { type: "number", name: "opstart" },
-        { type: "number", name: "k_4_4" }, { type: "number", name: "k_4_0" },
-        { type: "number", name: "k_1_0" }, { type: "number", name: "k_1_1" },
+        { type: "text", name: "marge" },
+        { type: "number", name: "opstart" },
+        { type: "number", name: "k_4_4" },
+        { type: "number", name: "k_4_0" },
+        { type: "number", name: "k_1_0" },
+        { type: "number", name: "k_1_1" },
         { type: "number", name: "k_4_1" }
       ]
     },
     {
       name: "app_settings", id: "app_settings001", type: "base",
-      createRule: "@request.auth.id != ''", updateRule: "@request.auth.id != ''", deleteRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       indexes: ["CREATE UNIQUE INDEX `idx_app_settings_key` ON `app_settings` (`key`)"],
       fields: [
         { type: "text", name: "key", required: true },
@@ -225,7 +245,11 @@ migrate((app) => {
     },
     {
       name: "maintenance_reports", id: "pbc_maintenance_reports", type: "base",
-      listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''", createRule: "@request.auth.id != ''", updateRule: "@request.auth.id != ''", deleteRule: "@request.auth.id != ''",
+      listRule: "@request.auth.id != ''",
+      viewRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "text", name: "name", required: true, presentable: true },
         { type: "relation", name: "press_ids", collectionId: "persen000000001" },
@@ -246,7 +270,11 @@ migrate((app) => {
     },
     {
       name: "report_files", id: "pbc_report_files", type: "base",
-      listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''", createRule: "@request.auth.id != ''", updateRule: "@request.auth.id != ''", deleteRule: "@request.auth.id != ''",
+      listRule: "@request.auth.id != ''",
+      viewRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "file", name: "file", required: true, maxSelect: 1, maxSize: 5242880, mimeTypes: ["application/pdf"] },
         { type: "relation", name: "maintenance_report", collectionId: "pbc_maintenance_reports", maxSelect: 1, cascadeDelete: true },
@@ -265,15 +293,20 @@ migrate((app) => {
         id: def.id,
         name: def.name,
         type: def.type,
-        listRule: def.listRule,
-        viewRule: def.viewRule,
-        createRule: def.createRule,
-        updateRule: def.updateRule,
-        deleteRule: def.deleteRule,
-        indexes: def.indexes
+        listRule: def.listRule || null,
+        viewRule: def.viewRule || null,
+        createRule: def.createRule || null,
+        updateRule: def.updateRule || null,
+        deleteRule: def.deleteRule || null,
       });
 
-      def.fields.forEach(fDef => col.fields.add(createField(fDef)));
+      // Build schema array from field definitions
+      col.schema = def.fields.map(f => buildSchemaField(f));
+
+      // Add indexes if specified
+      if (def.indexes) {
+        col.indexes = def.indexes;
+      }
 
       app.save(col);
       console.log(`   ✅ Created ${def.name}`);
@@ -299,15 +332,24 @@ migrate((app) => {
     { type: "text", name: "operator_id" }
   ];
 
+  // Get existing schema or initialize
+  const existingSchema = users.schema || [];
+  const existingFieldNames = existingSchema.map(f => f.name);
+
+  // Add new fields
   userFields.forEach(def => {
-    const existing = users.fields.getByName(def.name);
-    if (!existing) {
+    if (!existingFieldNames.includes(def.name)) {
       console.log(`   + Adding field: ${def.name}`);
-      users.fields.add(createField(def));
+      existingSchema.push(buildSchemaField(def));
     }
   });
 
+  users.schema = existingSchema;
+
   // Set auth rules for users
+  users.listRule = null;
+  users.viewRule = null;
+  users.createRule = null;
   users.updateRule = "@request.auth.id != ''";
   users.deleteRule = "@request.auth.id != ''";
 
@@ -367,5 +409,6 @@ migrate((app) => {
   console.log("🏁 Migration 1739459000_fresh_init.js DONE.");
 
 }, (app) => {
+  // Rollback function (optional)
   return null;
 });
