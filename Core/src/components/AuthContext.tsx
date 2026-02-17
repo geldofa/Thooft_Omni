@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import PocketBase from 'pocketbase';
 import { toast } from 'sonner';
-import { APP_URL } from '../config';
+import { APP_URL, APP_VERSION } from '../config';
 
 // Initialize PocketBase Client
 const PB_URL = APP_URL || import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
@@ -290,6 +290,10 @@ interface AuthContextType {
   refreshTriggeredAt: string | null;
   triggerGlobalRefresh: () => Promise<boolean>;
   isLoading: boolean;
+  updateAvailable: boolean;
+  latestVersion: string | null;
+  checkForUpdates: () => Promise<void>;
+  performUpdate: () => Promise<{ success: boolean; message: string; output?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -310,6 +314,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [refreshTriggeredAt, setRefreshTriggeredAt] = useState<string | null>(null);
   const [presses, setPresses] = useState<Press[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
 
   const setOnboardingDismissed = (val: boolean) => {
@@ -633,6 +639,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   }, [user, fetchUserAccounts, fetchPermissions, fetchActivityLogs, fetchPresses]);
+
+  // --- Update Functions ---
+  const checkForUpdates = useCallback(async () => {
+    // Only check if user is admin/superuser? Or allow check but restrict apply.
+    // The requirement says "admin only ... warning".
+    // We'll let the context store the state, and UI decides to show it.
+    try {
+      const response = await fetch(`${pb.baseUrl}/api/custom/update/check`);
+      if (response.ok) {
+        const data = await response.json();
+        // Compare versions.
+        // data.latestVersion comes from GitHub tag (e.g. "v1.4.0")
+        // APP_VERSION comes from config (e.g. "v 1.3.2")
+        // We need a robust comparison.
+        const remote = data.latestVersion.toLowerCase().replace(/v\s*/, '');
+        const local = APP_VERSION.toLowerCase().replace(/v\s*/, '');
+
+        if (remote !== local) {
+          // Simple string inequality isn't enough (1.10 < 1.9), but good enough for now/tags
+          // Better to just check inequality or simple semantic versioning if possible
+          // For safety, we just check inequality for "Update Available"
+          setUpdateAvailable(true);
+          setLatestVersion(data.latestVersion);
+        } else {
+          setUpdateAvailable(false);
+          setLatestVersion(null);
+        }
+      }
+    } catch (e) {
+      console.warn("Update check failed:", e);
+    }
+  }, []);
+
+  const performUpdate = async () => {
+    try {
+      // Use PB client to handle auth headers automatically
+      // But PB JS SDK doesn't have a generic "send" for custom endpoints easily accessible via collection methods
+      // We can use fetch with pb.authStore.token
+
+      const response = await fetch(`${pb.baseUrl}/api/custom/update/apply`, {
+        method: 'POST',
+        headers: {
+          'Authorization': pb.authStore.token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        return { success: true, message: data.message, output: data.output };
+      } else {
+        return { success: false, message: data.message || "Update failed" };
+      }
+    } catch (e: any) {
+      return { success: false, message: e.message || "Network error during update" };
+    }
+  };
+
+  useEffect(() => {
+    if (user && (user.role === 'admin' || isSuperuser)) {
+      checkForUpdates();
+    }
+  }, [user, isSuperuser, checkForUpdates]);
+
 
   // --- Backup Functions ---
   const listBackups = async (): Promise<BackupInfo[]> => {
@@ -1239,7 +1309,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateSystemSetting,
       refreshTriggeredAt,
       triggerGlobalRefresh,
-      isLoading
+      isLoading,
+      updateAvailable,
+      latestVersion,
+      checkForUpdates,
+      performUpdate
     }}>
       {children}
     </AuthContext.Provider>

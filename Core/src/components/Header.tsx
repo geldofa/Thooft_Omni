@@ -1,4 +1,5 @@
 import { useAuth } from './AuthContext';
+import { toast } from 'sonner';
 import { APP_VERSION, APP_NAME } from '../config';
 import {
   MoveRight,
@@ -9,7 +10,8 @@ import {
   FileText,
   Wrench,
   FileBarChart,
-  Rocket
+  Rocket,
+  Download
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { startTransition } from 'react';
@@ -20,7 +22,7 @@ interface HeaderProps {
 }
 
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, updateAvailable, latestVersion, performUpdate } = useAuth();
 
   if (!user) return null;
 
@@ -142,6 +144,29 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
           {/* --- RIGHT: USER & LOGOUT --- */}
           <div className="flex-shrink-0 flex items-center gap-6 ml-4">
+
+            {/* Update Indicator */}
+            {updateAvailable && (
+              <button
+                onClick={async () => {
+                  if (confirm(`Er is een nieuwe update beschikbaar (${latestVersion}). Wil je nu updaten?\n\nDe server zal proberen de broncode bij te werken en te herstarten. Dit kan enkele minuten duren.`)) {
+                    const toastId = toast.loading("Update wordt uitgevoerd...");
+                    const result = await performUpdate();
+                    if (result.success) {
+                      toast.success(result.message, { id: toastId });
+                      setTimeout(() => window.location.reload(), 3000);
+                    } else {
+                      toast.error(`Update mislukt: ${result.message}`, { id: toastId });
+                    }
+                  }
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors animate-pulse cursor-pointer border border-amber-200"
+                title={`Update beschikbaar: ${latestVersion}`}
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-xs font-bold hidden xl:inline">Update Beschikbaar</span>
+              </button>
+            )}
             <div className="text-right sm:block">
               <div className="text-sm font-bold text-blue-600 leading-tight">
                 {user.name || 'Beheerder'}
