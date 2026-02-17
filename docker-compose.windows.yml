@@ -1,54 +1,22 @@
 version: '3.8'
 
 # Windows Docker Stack for Omni.Thooft
-# Just deploy with: docker compose -f docker-compose.windows.yml up -d
-# No setup required - everything is handled automatically!
-# Data is stored in Docker volumes (view with: docker volume ls)
+# To use this stack:
+# 1. Create a folder: Documents/Docker/
+# 2. You can set the environment variable OMNI_DOCS_PATH to your Documents folder path.
+#    Example: $env:OMNI_DOCS_PATH = "C:\Users\YourName\Documents\Docker"
+# 3. Use 'stack.env' for credentials.
 
 services:
-  # Init service to prepare directories and copy files
-  init:
-    image: busybox:latest
-    container_name: thooft_init
-    volumes:
-      - pb_data:/pb/pb_data
-      - ./pb_migrations:/source/pb_migrations:ro
-      - ./pb_hooks:/source/pb_hooks:ro
-      - pb_migrations:/pb/pb_migrations
-      - pb_hooks:/pb/pb_hooks
-    command: >
-      sh -c '
-        echo "Initializing directories..." &&
-        mkdir -p /pb/pb_data /pb/pb_migrations /pb/pb_hooks &&
-        echo "Copying migration files..." &&
-        if [ -d /source/pb_migrations ] && [ "$$(ls -A /source/pb_migrations 2>/dev/null)" ]; then
-          cp -r /source/pb_migrations/* /pb/pb_migrations/ &&
-          echo "Migrations copied successfully";
-        else
-          echo "No migrations to copy";
-        fi &&
-        echo "Copying hook files..." &&
-        if [ -d /source/pb_hooks ] && [ "$$(ls -A /source/pb_hooks 2>/dev/null)" ]; then
-          cp -r /source/pb_hooks/* /pb/pb_hooks/ &&
-          echo "Hooks copied successfully";
-        else
-          echo "No hooks to copy";
-        fi &&
-        echo "Initialization complete"
-      '
-    restart: "no"
   app:
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "80:80"
     environment:
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
-      init:
-        condition: service_completed_successfully
-      db:
-        condition: service_started
+      - db
     restart: unless-stopped
     container_name: thooft_omni
 
@@ -57,21 +25,19 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - pb_data:/pb/pb_data
-      - pb_migrations:/pb/pb_migrations:ro
-      - pb_hooks:/pb/pb_hooks:ro
+      # Map persistent data to the Windows Documents folder
+      - "${OMNI_DOCS_PATH:-C:\\Users\\${USERNAME}\\Documents\\Docker}\\pb_data:/pb/pb_data"
+      - "${OMNI_DOCS_PATH:-C:\\Users\\${USERNAME}\\Documents\\Docker}\\pb_migrations:/pb/pb_migrations:ro"
+      - "${OMNI_DOCS_PATH:-C:\\Users\\${USERNAME}\\Documents\\Docker}\\pb_hooks:/pb/pb_hooks:ro"
     environment:
-      - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
-      - GDRIVE_CLIENT_ID=${GDRIVE_CLIENT_ID:-}
-      - GDRIVE_CLIENT_SECRET=${GDRIVE_CLIENT_SECRET:-}
+      - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
+      - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - GDRIVE_CLIENT_ID=${GDRIVE_CLIENT_ID}
+      - GDRIVE_CLIENT_SECRET=${GDRIVE_CLIENT_SECRET}
     restart: unless-stopped
     container_name: thooft_db
     depends_on:
-      init:
-        condition: service_completed_successfully
-      rclone:
-        condition: service_started
+      - rclone
     command: >
       sh -c '
         apk add --no-cache curl unzip ca-certificates &&
@@ -88,22 +54,7 @@ services:
     image: rclone/rclone:latest
     container_name: thooft_rclone
     volumes:
-      - rclone_config:/config/rclone
-      - backups:/backups
+      - "${OMNI_DOCS_PATH:-C:\\Users\\${USERNAME}\\Documents\\Docker}\\pb_data\\rclone:/config/rclone"
+      - "${OMNI_DOCS_PATH:-C:\\Users\\${USERNAME}\\Documents\\Docker}\\pb_data\\backups:/backups"
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
-    depends_on:
-      init:
-        condition: service_completed_successfully
-
-volumes:
-  pb_data:
-    name: omni_thooft_pb_data
-  pb_migrations:
-    name: omni_thooft_pb_migrations
-  pb_hooks:
-    name: omni_thooft_pb_hooks
-  rclone_config:
-    name: omni_thooft_rclone_config
-  backups:
-    name: omni_thooft_backups
