@@ -1,32 +1,41 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate((app) => {
-  console.log("🚀 Starting robust migration 1739459000_fresh_init.js (PocketBase 0.23+)");
+  console.log("🚀 Starting robust migration 1739459009_fresh_init.js (PocketBase 0.23+)");
 
   // ==============================================================================
   // 1. HELPER: FIELD BUILDER (for PocketBase 0.23+)
   // ==============================================================================
   function buildSchemaField(def) {
-    const field = {
-      id: "", // PocketBase auto-generates
+    const config = {
       name: def.name,
-      type: def.type,
       required: def.required || false,
       presentable: def.presentable || false,
-      options: {}
     };
 
-    // Add type-specific options
-    if (def.min !== undefined) field.options.min = def.min;
-    if (def.max !== undefined) field.options.max = def.max;
-    if (def.maxSelect !== undefined) field.options.maxSelect = def.maxSelect;
-    if (def.collectionId !== undefined) field.options.collectionId = def.collectionId;
-    if (def.values !== undefined) field.options.values = def.values;
-    if (def.mimeTypes !== undefined) field.options.mimeTypes = def.mimeTypes;
-    if (def.maxSize !== undefined) field.options.maxSize = def.maxSize;
-    if (def.cascadeDelete !== undefined) field.options.cascadeDelete = def.cascadeDelete;
+    // Add type-specific properties (FLAT in 0.23)
+    if (def.min !== undefined) config.min = def.min;
+    if (def.max !== undefined) config.max = def.max;
+    if (def.maxSelect !== undefined) config.maxSelect = def.maxSelect;
+    if (def.collectionId !== undefined) config.collectionId = def.collectionId;
+    if (def.values !== undefined) config.values = def.values;
+    if (def.mimeTypes !== undefined) config.mimeTypes = def.mimeTypes;
+    if (def.maxSize !== undefined) config.maxSize = def.maxSize;
+    if (def.cascadeDelete !== undefined) config.cascadeDelete = def.cascadeDelete;
 
-    return field;
+    switch (def.type) {
+      case "text": return new TextField(config);
+      case "number": return new NumberField(config);
+      case "bool": return new BoolField(config);
+      case "email": return new EmailField(config);
+      case "url": return new URLField(config);
+      case "date": return new DateField(config);
+      case "select": return new SelectField(config);
+      case "json": return new JSONField(config);
+      case "file": return new FileField(config);
+      case "relation": return new RelationField(config);
+      default: return new TextField(config);
+    }
   }
 
   // ==============================================================================
@@ -36,39 +45,24 @@ migrate((app) => {
   let users;
   try {
     users = app.findCollectionByNameOrId("users");
-    // Remove 'pers' relation if it exists to avoid circular dependency issues
-    const existingSchema = users.schema || [];
-    const filteredSchema = existingSchema.filter(f => f.name !== "pers");
-    if (filteredSchema.length !== existingSchema.length) {
-      console.log("   - Removing existing 'pers' relation from users to allow rebuild");
-      users.schema = filteredSchema;
-      app.save(users);
-    }
+    // Check for 'pers' field safely later
+    let fields = users.fields || [];
+    // Skip filtering 'pers' to avoid data loss during backup restores
   } catch (e) {
     console.log("   - 'users' collection not found (will create)");
     users = new Collection({ name: "users", type: "auth" });
     app.save(users);
   }
+  // Ensure we have a fresh reference after possible save
+  users = app.findCollectionByNameOrId("users");
   const USERS_ID = users.id;
   console.log(`   - Target Users ID: ${USERS_ID}`);
 
   // ==============================================================================
-  // 3. DELETE EXISTING APPLICATION COLLECTIONS
+  // 3. DELETE EXISTING APPLICATION COLLECTIONS (REMOVED FOR SAFETY)
   // ==============================================================================
-  const deleteList = [
-    "report_files", "maintenance_reports", "calculated_fields", "app_settings",
-    "press_parameters", "activity_logs", "feedback", "drukwerken", "onderhoud",
-    "categorieen", "ploegen", "operatoren", "tags", "persen"
-  ];
-
-  console.log("🗑️  Cleaning up old collections...");
-  deleteList.forEach(name => {
-    try {
-      const col = app.findCollectionByNameOrId(name);
-      app.delete(col);
-      console.log(`   - Deleted ${name}`);
-    } catch (_) { /* ignore */ }
-  });
+  // Collections are no longer deleted to prevent data loss during backup restores.
+  // The migration will now update existing structures instead of recreating them.
 
   // ==============================================================================
   // 4. DEFINE ALL COLLECTIONS
@@ -84,11 +78,6 @@ migrate((app) => {
     },
     {
       name: "tags", id: "tags00000000001", type: "base",
-      listRule: "@request.auth.id != ''",
-      viewRule: "@request.auth.id != ''",
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.id != ''",
-      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "text", name: "naam", required: true, presentable: true },
         { type: "text", name: "kleur" },
@@ -151,11 +140,6 @@ migrate((app) => {
     },
     {
       name: "drukwerken", id: "drukw0000000001", type: "base",
-      listRule: '@request.auth.id != "" && (@request.auth.role = "Admin" || @request.auth.role = "Meestergast" || (@request.auth.role = "Operator" && pers = @request.auth.pers))',
-      viewRule: '@request.auth.id != "" && (@request.auth.role = "Admin" || @request.auth.role = "Meestergast" || (@request.auth.role = "Operator" && pers = @request.auth.pers))',
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.id != ''",
-      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "number", name: "order_nummer", required: true },
         { type: "text", name: "klant_order_beschrijving" },
@@ -182,11 +166,6 @@ migrate((app) => {
     },
     {
       name: "feedback", id: "pbc_2456230977", type: "base",
-      listRule: "@request.auth.id != ''",
-      viewRule: "@request.auth.id != ''",
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.role = 'Admin'",
-      deleteRule: "@request.auth.role = 'Admin'",
       fields: [
         { type: "text", name: "type" },
         { type: "text", name: "message" },
@@ -226,10 +205,6 @@ migrate((app) => {
     },
     {
       name: "app_settings", id: "app_settings001", type: "base",
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.id != ''",
-      deleteRule: "@request.auth.id != ''",
-      indexes: ["CREATE UNIQUE INDEX `idx_app_settings_key` ON `app_settings` (`key`)"],
       fields: [
         { type: "text", name: "key", required: true },
         { type: "json", name: "value" }
@@ -245,11 +220,6 @@ migrate((app) => {
     },
     {
       name: "maintenance_reports", id: "pbc_maintenance_reports", type: "base",
-      listRule: "@request.auth.id != ''",
-      viewRule: "@request.auth.id != ''",
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.id != ''",
-      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "text", name: "name", required: true, presentable: true },
         { type: "relation", name: "press_ids", collectionId: "persen000000001" },
@@ -270,11 +240,6 @@ migrate((app) => {
     },
     {
       name: "report_files", id: "pbc_report_files", type: "base",
-      listRule: "@request.auth.id != ''",
-      viewRule: "@request.auth.id != ''",
-      createRule: "@request.auth.id != ''",
-      updateRule: "@request.auth.id != ''",
-      deleteRule: "@request.auth.id != ''",
       fields: [
         { type: "file", name: "file", required: true, maxSelect: 1, maxSize: 5242880, mimeTypes: ["application/pdf"] },
         { type: "relation", name: "maintenance_report", collectionId: "pbc_maintenance_reports", maxSelect: 1, cascadeDelete: true },
@@ -283,43 +248,42 @@ migrate((app) => {
     }
   ];
 
+
+
   // ==============================================================================
-  // 5. CREATE COLLECTIONS
+  // 6. CREATE COLLECTIONS
   // ==============================================================================
-  console.log("🔨 Creating application collections...");
   definitions.forEach(def => {
     try {
+      // Check if collection already exists
+      try {
+        const existing = app.findCollectionByNameOrId(def.name);
+        console.log(`   - Collection '${def.name}' already exists. Skipping creation.`);
+        return;
+      } catch (_) { /* Not found, proceed to create */ }
+
       const col = new Collection({
         id: def.id,
         name: def.name,
         type: def.type,
-        listRule: def.listRule || null,
-        viewRule: def.viewRule || null,
-        createRule: def.createRule || null,
-        updateRule: def.updateRule || null,
-        deleteRule: def.deleteRule || null,
       });
 
-      // Build schema array from field definitions
-      col.schema = def.fields.map(f => buildSchemaField(f));
-
-      // Add indexes if specified
-      if (def.indexes) {
-        col.indexes = def.indexes;
-      }
+      def.fields.forEach(f => {
+        col.fields.add(buildSchemaField(f));
+      });
 
       app.save(col);
       console.log(`   ✅ Created ${def.name}`);
     } catch (e) {
-      console.error(`   ❌ Failed to create ${def.name}: ${e}`);
+      console.error(`   ❌ Failed to handle ${def.name}: ${e}`);
       throw e;
     }
   });
 
   // ==============================================================================
-  // 6. UPDATE USERS WITH CUSTOM FIELDS (Post-creation of relations)
+  // 6.5 UPDATE USERS WITH CUSTOM FIELDS (Post-creation of relations)
   // ==============================================================================
-  console.log("🔄 Adding custom fields to 'users'...");
+  console.log("🔄 Adding custom fields to 'users' collection...");
   users = app.findCollectionByNameOrId(USERS_ID);
 
   const userFields = [
@@ -332,19 +296,19 @@ migrate((app) => {
     { type: "text", name: "operator_id" }
   ];
 
-  // Get existing schema or initialize
-  const existingSchema = users.schema || [];
-  const existingFieldNames = existingSchema.map(f => f.name);
+  // Get existing fields or initialize
+  let fields = users.fields || [];
+  let existingFieldNames = fields.map(f => f.name);
 
   // Add new fields
   userFields.forEach(def => {
-    if (!existingFieldNames.includes(def.name)) {
+    try {
+      users.fields.getByName(def.name);
+    } catch (_) {
       console.log(`   + Adding field: ${def.name}`);
-      existingSchema.push(buildSchemaField(def));
+      users.fields.add(buildSchemaField(def));
     }
   });
-
-  users.schema = existingSchema;
 
   // Set auth rules for users
   users.listRule = null;
@@ -354,7 +318,9 @@ migrate((app) => {
   users.deleteRule = "@request.auth.id != ''";
 
   app.save(users);
-  console.log("   ✅ Users updated successfully.");
+  console.log("   ✅ Users updated successfully (with 'pers' and 'role' for rules).");
+
+
 
   // ==============================================================================
   // 7. SEED DATA
@@ -406,7 +372,54 @@ migrate((app) => {
     console.error("   ❌ Service account sync error:", e);
   }
 
-  console.log("🏁 Migration 1739459000_fresh_init.js DONE.");
+  // ==============================================================================
+  // 8. APPLY RULES (Final pass, all fields and collections exist)
+  // ==============================================================================
+  console.log("🔒 Applying collection rules...");
+  const ruleSets = [
+    { name: "tags", id: "tags00000000001", list: "@request.auth.id != ''", view: "@request.auth.id != ''", create: "@request.auth.id != ''", update: "@request.auth.id != ''", delete: "@request.auth.id != ''" },
+    { name: "drukwerken", id: "drukw0000000001", list: "@request.auth.id != '' && (@request.auth.role = 'Admin' || @request.auth.role = 'Meestergast' || (@request.auth.role = 'Operator' && pers = @request.auth.pers))", view: "@request.auth.id != '' && (@request.auth.role = 'Admin' || @request.auth.role = 'Meestergast' || (@request.auth.role = 'Operator' && pers = @request.auth.pers))", create: "@request.auth.id != ''", update: "@request.auth.id != ''", delete: "@request.auth.id != ''" },
+    { name: "feedback", id: "pbc_2456230977", list: "@request.auth.id != ''", view: "@request.auth.id != ''", create: "@request.auth.id != ''", update: "@request.auth.role = 'Admin'", delete: "@request.auth.role = 'Admin'" },
+    { name: "app_settings", id: "app_settings001", create: "@request.auth.id != ''", update: "@request.auth.id != ''", delete: "@request.auth.id != ''" },
+    { name: "maintenance_reports", id: "pbc_maintenance_reports", list: "@request.auth.id != ''", view: "@request.auth.id != ''", create: "@request.auth.id != ''", update: "@request.auth.id != ''", delete: "@request.auth.id != ''" },
+    { name: "report_files", id: "pbc_report_files", list: "@request.auth.id != ''", view: "@request.auth.id != ''", create: "@request.auth.id != ''", update: "@request.auth.id != ''", delete: "@request.auth.id != ''" }
+  ];
+
+  ruleSets.forEach(rs => {
+    try {
+      const col = app.findCollectionByNameOrId(rs.name || rs.id);
+      if (rs.list !== undefined) col.listRule = rs.list;
+      if (rs.view !== undefined) col.viewRule = rs.view;
+      if (rs.create !== undefined) col.createRule = rs.create;
+      if (rs.update !== undefined) col.updateRule = rs.update;
+      if (rs.delete !== undefined) col.deleteRule = rs.delete;
+      app.save(col);
+      console.log(`   ✅ Rules applied to ${col.name}`);
+    } catch (e) {
+      console.error(`   ❌ Failed to apply rules to ${rs.name || rs.id}: ${e}`);
+    }
+  });
+
+  // ==============================================================================
+  // 9. APPLY INDEXES (Final pass, all fields exist)
+  // ==============================================================================
+  console.log("⚡ Applying collection indexes...");
+  const indexSets = [
+    { name: "app_settings", id: "app_settings001", indexes: ["CREATE UNIQUE INDEX `idx_app_settings_key` ON `app_settings` (`key`)"] }
+  ];
+
+  indexSets.forEach(is => {
+    try {
+      const col = app.findCollectionByNameOrId(is.name || is.id);
+      col.indexes = is.indexes;
+      app.save(col);
+      console.log(`   ✅ Indexes applied to ${col.name}`);
+    } catch (e) {
+      console.error(`   ❌ Failed to apply indexes to ${is.name || is.id}: ${e}`);
+    }
+  });
+
+  console.log("🏁 Migration 1739459009_fresh_init.js DONE.");
 
 }, (app) => {
   // Rollback function (optional)
