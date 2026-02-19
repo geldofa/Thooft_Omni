@@ -91,32 +91,46 @@ const FormulaResultWithTooltip = ({
     result: propResult,
     variant = 'default',
     outputConversions = {},
-    pressMap = {}
+    pressMap = {},
+    suffix = ''
 }: {
     formula: string;
     job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern;
     decimals?: number;
     parameters: Record<string, Record<string, any>>;
     activePresses: string[];
-    result?: number;
+    result?: number | string;
     variant?: 'maxGross' | 'delta' | 'default';
     outputConversions?: Record<string, Record<string, number>>;
     pressMap?: Record<string, string>;
+    suffix?: string;
 }) => {
     const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
     const pressId = pressMap[pressName] || '';
     const divider = outputConversions[pressId]?.[(job as any).exOmw] || 1;
 
-    // Re-evaluate or use passed result (which we now assume is UNDIVIDED Actual Units)
+    // VIZ STANDARD: DB stores cycles, but formulas expect units.
+    // Scale the job fields to Total Units for consistent evaluation.
+    const scaledJob = {
+        ...job,
+        green: (Number((job as any).green) || 0) * divider,
+        red: (Number((job as any).red) || 0) * divider
+    };
+
+    // Re-evaluate or use passed result (which we now assume is Total Units)
     const rawResult = propResult !== undefined
         ? propResult
-        : evaluateFormula(formula, job as any, parameters, activePresses);
+        : evaluateFormula(formula, scaledJob as any, parameters, activePresses);
 
     const numericRawResult = Number(rawResult) || 0;
-    // Delta should NOT be divided. Everything else (maxGross, green, red) should show machine cycles as main.
-    const dividedResult = variant === 'delta' ? numericRawResult : (numericRawResult / divider);
 
-    const formattedResult = formatNumber(dividedResult, decimals);
+    // VIZ STANDARD: Bold = Total Units (Absolute), Small = Cycles (Result / Divider)
+    // Both maxGross and delta are already stored/calculated as Total Units.
+    const totalUnits = numericRawResult;
+    const machineCycles = numericRawResult / divider;
+
+    const formattedTotal = `${formatNumber(totalUnits, decimals)}${suffix}`;
+    const formattedCycles = formatNumber(machineCycles, decimals);
 
     // Final Tooltip Design: 1 Card per high-level Part (Netto, Marge, Opstart, Colors)
     const renderCalculationFlow = () => {
@@ -134,16 +148,15 @@ const FormulaResultWithTooltip = ({
         const parts: CalcPart[] = [];
 
         if (variant === 'delta') {
-            const green = Number((job as any).green || 0);
-            const red = Number((job as any).red || 0);
+            const greenCycles = Number((job as any).green || 0);
+            const redCycles = Number((job as any).red || 0);
             const maxGross = Number((job as any).maxGross || 0);
 
-            // We now assume job.green/red are ALWAYS stored as Total Units (absolute)
-            // matching maxGross and delta. No more heuristics needed.
-            const greenActual = green;
-            const redActual = red;
+            // Scale inputs to Total Units for the absolute Delta breakdown
+            const greenActual = greenCycles * divider;
+            const redActual = redCycles * divider;
 
-            if (green !== 0) {
+            if (greenCycles !== 0) {
                 parts.push({
                     label: "Groen",
                     formula: "Groen",
@@ -152,7 +165,7 @@ const FormulaResultWithTooltip = ({
                     operator: '+'
                 });
             }
-            if (red !== 0) {
+            if (redCycles !== 0) {
                 parts.push({
                     label: "Rood",
                     formula: "Rood",
@@ -231,7 +244,7 @@ const FormulaResultWithTooltip = ({
             });
         }
 
-        if (parts.length === 0) return <span>{formattedResult}</span>;
+        if (parts.length === 0) return <span>{formattedTotal}</span>;
 
         return (
             <div className="flex flex-col items-center gap-4 py-2">
@@ -282,38 +295,45 @@ const FormulaResultWithTooltip = ({
     };
 
     return (
-        <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-                <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
-                    {formatNumber(dividedResult, variant === 'maxGross' ? 0 : decimals)}
-                </span>
-            </TooltipTrigger>
-            <TooltipContent
-                side="top"
-                sideOffset={4}
-                avoidCollisions
-                style={{ backgroundColor: 'white', color: '#1f2937' }}
-                className="border border-gray-200 shadow-2xl max-w-[95vw] p-4 z-[100] rounded-2xl"
-            >
-                <div className="space-y-3">
-                    <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berekening</span>
-                        {divider > 1 && (
-                            <div className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
-                                Deler: {divider}
+        <div className="flex flex-col items-end">
+            {variant === 'maxGross' && divider > 1 && (
+                <div className="flex items-center mb-0.5">
+                    <span className="text-[9px] text-gray-400 leading-none">{formattedCycles} berekend</span>
+                </div>
+            )}
+            <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                    <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
+                        {formattedTotal}
+                    </span>
+                </TooltipTrigger>
+                <TooltipContent
+                    side="top"
+                    sideOffset={4}
+                    avoidCollisions
+                    style={{ backgroundColor: 'white', color: '#1f2937' }}
+                    className="border border-gray-200 shadow-2xl max-w-[95vw] p-4 z-[100] rounded-2xl"
+                >
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berekening</span>
+                            {divider > 1 && (
+                                <div className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
+                                    Deler: {divider}
+                                </div>
+                            )}
+                        </div>
+                        {renderCalculationFlow()}
+                        {variant === 'maxGross' && divider > 1 && (
+                            <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase">Totaal (Output)</span>
+                                <span className="text-sm font-black text-gray-900">{numericRawResult.toLocaleString('nl-BE')}{suffix}</span>
                             </div>
                         )}
                     </div>
-                    {renderCalculationFlow()}
-                    {variant === 'maxGross' && divider > 1 && (
-                        <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Totaal (Output)</span>
-                            <span className="text-sm font-black text-gray-900">{numericRawResult.toLocaleString('nl-BE')}</span>
-                        </div>
-                    )}
-                </div>
-            </TooltipContent>
-        </Tooltip>
+                </TooltipContent>
+            </Tooltip>
+        </div>
     );
 };
 
@@ -692,16 +712,16 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 return {
                     ...katern,
                     maxGross: Number(maxGrossVal),
-                    green: Number(greenActual),
-                    red: Number(redActual),
+                    green: Number(katern.green) || 0, // Store RAW Machine Cycles in DB
+                    red: Number(katern.red) || 0,     // Store RAW Machine Cycles in DB
                     delta: Number(deltaVal),
                     deltaPercentage: (() => {
                         const f = getFormulaForColumn('delta_percentage');
                         if (f) {
-                            const res = evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses);
+                            const res = evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: Number(deltaVal) || 0 }, parameters, activePresses);
                             return typeof res === 'number' ? res : Number(String(res).replace(/\./g, '').replace(',', '.'));
                         }
-                        if (maxGrossVal > 0) return (deltaVal as number) / maxGrossVal;
+                        if (maxGrossVal > 0) return (Number(deltaVal) || 0) / maxGrossVal;
                         return 0;
                     })(),
                     pressId,
@@ -1562,6 +1582,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         const jobWithCalculatedMaxGross = {
                                                             ...jobWithOrderInfo,
                                                             maxGross: maxGrossVal,
+                                                            green: Number(katern.green) || 0,
+                                                            red: Number(katern.red) || 0
+                                                        };
+                                                        const jobForEvaluation = {
+                                                            ...jobWithCalculatedMaxGross,
                                                             green: (Number(katern.green) || 0) * divider,
                                                             red: (Number(katern.red) || 0) * divider
                                                         };
@@ -1661,20 +1686,43 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                 <TableCell className="text-right font-medium">
                                                                     {(() => {
                                                                         const f = getFormulaForColumn('delta_number');
-                                                                        const result = f ? evaluateFormula(f.formula, jobWithCalculatedMaxGross, parameters, activePresses) : 0;
-                                                                        return formatNumber(result, 0);
+                                                                        const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
+                                                                        const res = Number(resRaw) || 0;
+                                                                        return (
+                                                                            <FormulaResultWithTooltip
+                                                                                formula={f?.formula || ''}
+                                                                                job={jobWithCalculatedMaxGross}
+                                                                                parameters={parameters}
+                                                                                activePresses={activePresses}
+                                                                                variant="delta"
+                                                                                result={res}
+                                                                                outputConversions={outputConversions}
+                                                                                pressMap={pressMap}
+                                                                            />
+                                                                        );
                                                                     })()}
                                                                 </TableCell>
                                                                 <TableCell className="text-right font-medium border-r border-black">
                                                                     {(() => {
                                                                         const f = getFormulaForColumn('delta_percentage');
                                                                         if (f) {
-                                                                            const result = evaluateFormula(f.formula, jobWithCalculatedMaxGross, parameters, activePresses);
+                                                                            const result = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
                                                                             const numericValue = typeof result === 'number'
                                                                                 ? result
                                                                                 : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-                                                                            return `${formatNumber(numericValue * 100, 2)
-                                                                                }% `;
+                                                                            return (
+                                                                                <FormulaResultWithTooltip
+                                                                                    formula={f.formula}
+                                                                                    job={jobWithCalculatedMaxGross}
+                                                                                    parameters={parameters}
+                                                                                    activePresses={activePresses}
+                                                                                    decimals={2}
+                                                                                    result={numericValue}
+                                                                                    outputConversions={outputConversions}
+                                                                                    pressMap={pressMap}
+                                                                                    suffix="%"
+                                                                                />
+                                                                            );
                                                                         }
                                                                         return `${formatNumber(katern.deltaPercentage * 100, 2)}% `;
                                                                     })()}
@@ -1895,50 +1943,47 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             </TableCell>
                                             <TableCell className="text-right py-1 px-1">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
-                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const formula = getFormulaForColumn('delta_number');
                                                     const delta = Number(job.delta_number) || 0;
-                                                    const cycles = delta / divider;
 
-                                                    return (
-                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
-                                                            {divider > 1 && (
-                                                                <div className="flex items-center mb-0.5">
-                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} berekend</span>
-                                                                </div>
-                                                            )}
-                                                            {formula
-                                                                ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} variant="delta" outputConversions={outputConversions} pressMap={pressMap} />
-                                                                : <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
-                                                            }
-                                                        </div>
-                                                    );
+                                                    return formula
+                                                        ? (
+                                                            <FormulaResultWithTooltip
+                                                                formula={formula.formula}
+                                                                job={job}
+                                                                parameters={parameters}
+                                                                activePresses={activePresses}
+                                                                variant="delta"
+                                                                result={delta}
+                                                                outputConversions={outputConversions}
+                                                                pressMap={pressMap}
+                                                            />
+                                                        ) : (
+                                                            <div className={`flex flex-col items-end min-h-[36px] justify-center`}>
+                                                                <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
+                                                            </div>
+                                                        );
                                                 })()}
                                             </TableCell>
                                             <TableCell className="text-right py-1 px-1 border-r border-black">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
-                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
-                                                    const formula = getFormulaForColumn('delta_percentage');
-
-                                                    const correctedJob = { ...job, exOmw: String(Number(job.exOmw || 1) / divider) };
-
-                                                    const result = formula
-                                                        ? evaluateFormula(formula.formula, correctedJob, parameters, activePresses)
-                                                        : job.delta_percentage;
-
-                                                    const percentageValue = typeof result === 'number'
-                                                        ? result
-                                                        : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-
-                                                    return (
-                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
-                                                            <span className="py-1">
-                                                                {percentageValue !== undefined ? `${formatNumber(percentageValue * 100, 2)}%` : '-'}
-                                                            </span>
-                                                        </div>
-                                                    );
+                                                    const f = getFormulaForColumn('delta_percentage');
+                                                    if (f) {
+                                                        return (
+                                                            <FormulaResultWithTooltip
+                                                                formula={f.formula}
+                                                                job={job}
+                                                                parameters={parameters}
+                                                                activePresses={activePresses}
+                                                                decimals={2}
+                                                                result={Number(job.delta_percentage)}
+                                                                outputConversions={outputConversions}
+                                                                pressMap={pressMap}
+                                                                suffix="%"
+                                                            />
+                                                        );
+                                                    }
+                                                    return `${formatNumber((Number(job.delta_percentage) || 0) * 100, 2)}%`;
                                                 })()}
                                             </TableCell>
                                             <TableCell className="py-1 px-1 border-r border-black">
