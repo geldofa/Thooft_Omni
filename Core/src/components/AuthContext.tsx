@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import PocketBase from 'pocketbase';
 import { toast } from 'sonner';
 import { APP_URL, APP_VERSION } from '../config';
+import { drukwerkenCache } from '../services/DrukwerkenCache';
 
 // Initialize PocketBase Client
 const PB_URL = APP_URL || import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
@@ -337,6 +338,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.warn("[Auth] Unsubscribe during logout failed:", e);
     }
+
+    // Purge Dexie IndexedDB cache
+    drukwerkenCache.purge().catch(e => console.warn("[Auth] Cache purge failed:", e));
+
+    // Clear session storage (filters, tab states, scroll positions)
+    try {
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn("[Auth] sessionStorage clear failed:", e);
+    }
+
+    // Clear user-specific localStorage items (keep onboarding_dismissed)
+    try {
+      localStorage.removeItem('thooft_werkorders');
+      localStorage.removeItem('superuser_credentials');
+    } catch (e) {
+      console.warn("[Auth] localStorage cleanup failed:", e);
+    }
+
     pb.authStore.clear();
     setUser(null);
     setIsSuperuser(false);

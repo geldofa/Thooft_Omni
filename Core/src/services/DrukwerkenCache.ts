@@ -288,6 +288,26 @@ class DrukwerkenCacheService {
             console.error("Error putting record in cache:", error);
         }
     }
+
+    async purge() {
+        try {
+            await db.jobs.clear();
+            await db.syncState.clear();
+            this.status = {
+                loading: true,
+                statusText: 'Initializing...',
+                totalDocs: 0,
+                cachedDocs: 0,
+                newUpdates: 0
+            };
+            this.currentUser = null;
+            this.currentHasPermission = null;
+            this.isSyncing = false;
+            console.log('[DrukwerkenCache] Cache purged');
+        } catch (error) {
+            console.error('Error purging cache:', error);
+        }
+    }
 }
 
 export const drukwerkenCache = new DrukwerkenCacheService();
