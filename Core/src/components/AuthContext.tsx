@@ -331,7 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('onboarding_dismissed', val ? 'true' : 'false');
   };
 
-  const logout = () => {
+  const logout = async () => {
     // Unsubscribe from all to prevent 403 mismatch errors during token clearing
     try {
       pb.realtime.unsubscribe();
@@ -339,8 +339,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] Unsubscribe during logout failed:", e);
     }
 
-    // Purge Dexie IndexedDB cache
-    drukwerkenCache.purge().catch(e => console.warn("[Auth] Cache purge failed:", e));
+    // Purge Dexie IndexedDB cache (await to ensure clean state for next session)
+    try {
+      await drukwerkenCache.purge();
+    } catch (e) {
+      console.warn("[Auth] Cache purge failed:", e);
+    }
 
     // Clear session storage (filters, tab states, scroll positions)
     try {
@@ -360,6 +364,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     pb.authStore.clear();
     setUser(null);
     setIsSuperuser(false);
+
+    // Final guaranteed fresh state: reload the page
+    window.location.reload();
   };
 
   const addActivityLog = async (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {

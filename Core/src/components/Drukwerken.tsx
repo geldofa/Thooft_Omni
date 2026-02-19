@@ -138,13 +138,10 @@ const FormulaResultWithTooltip = ({
             const red = Number((job as any).red || 0);
             const maxGross = Number((job as any).maxGross || 0);
 
-            // For Delta tooltip, we want to show the Actual Units
-            // But are the job.green/red machine cycles or units?
-            // In Gedrukt tab, they are units. In Nieuw tab, they are machine cycles.
-            // Let's check for scaling.
-            const dividerLoc = outputConversions[pressId]?.[(job as any).exOmw] || 1;
-            const greenActual = green > 10000 ? green : green * dividerLoc;
-            const redActual = red > 10000 ? red : red * dividerLoc;
+            // We now assume job.green/red are ALWAYS stored as Total Units (absolute)
+            // matching maxGross and delta. No more heuristics needed.
+            const greenActual = green;
+            const redActual = red;
 
             if (green !== 0) {
                 parts.push({
@@ -658,8 +655,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             const formattedDatum = format(today, 'dd-MM');
 
             const promises = werkorder.katernen.map(async (katern) => {
-                const pressId = user?.pressId || '';
-                const divider = outputConversions[pressId]?.[katern.exOmw] || 1;
+                const pressId = pressMap[effectivePress] || user?.pressId || '';
+                const divider = outputConversions[pressId]?.[String(katern.exOmw)] || 1;
                 // The formula evaluation expects raw exOmw, and returns undivided actual units.
                 // The green/red inputs are machine cycles, so they need to be scaled to actual units for delta calculation.
 
@@ -669,8 +666,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     orderName: werkorder.orderName,
                     date: formattedDate,
                     datum: formattedDatum,
-                    pressName: user?.press,
-                    pressId: user?.pressId
+                    pressName: effectivePress,
+                    pressId: pressId
                 };
 
                 const calculatedMaxGross = getFormulaForColumn('maxGross')
@@ -701,13 +698,15 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     deltaPercentage: (() => {
                         const f = getFormulaForColumn('delta_percentage');
                         if (f) {
-                            return typeof evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses) === 'number'
-                                ? evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses) as number
-                                : Number(String(evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses)).replace(/\./g, '').replace(',', '.'));
+                            const res = evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses);
+                            return typeof res === 'number' ? res : Number(String(res).replace(/\./g, '').replace(',', '.'));
                         }
-                        return Number(maxGrossVal) > 0 ? Number(deltaVal) / Number(maxGrossVal) : (0 as number);
-                    })() as number
-                };
+                        if (maxGrossVal > 0) return (deltaVal as number) / maxGrossVal;
+                        return 0;
+                    })(),
+                    pressId,
+                    pressName: effectivePress
+                } as any;
             });
 
             const processedKaternen = await Promise.all(promises);
@@ -734,7 +733,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     rood: (processedKatern.red as number) || 0, // This is now actual units
                     delta: Math.round(processedKatern.delta as number), // Round to 0 decimals
                     delta_percent: (processedKatern.deltaPercentage as number) || 0,
-                    pers: user?.pressId,
+                    pers: processedKatern.pressId || pressMap[effectivePress],
                     status: 'check',
                     opmerking: ''
                 };
@@ -1131,7 +1130,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     rood: processed.red,
                     delta: processed.delta_number || 0,
                     delta_percent: processed.delta_percentage || 0,
-                    pers: job.pressId || user?.pressId,
+                    pers: processed.pressId || job.pressId || user?.pressId,
                     // Assume opmerkingen handled if present
                     opmerking: job.opmerkingen
                 };
@@ -1219,12 +1218,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         return {
             ...job,
             maxGross: maxGrossVal,         // Actual Units (UNDIVIDED)
-            green: (Number(job.green) || 0), // Keep as machine input for UI
-            red: (Number(job.red) || 0),     // Keep as machine input for UI
+            green: (Number(job.green) || 0), // Store as Input Values (Machine Cycles) in DB
+            red: (Number(job.red) || 0),     // Store as Input Values (Machine Cycles) in DB
             delta: delta_numberVal,       // Actual Units (UNDIVIDED)
             delta_number: delta_numberVal,
             delta_percentage: delta_percentageVal,
-            performance: `${formatNumber(delta_percentageVal * 100, 2)}%`
+            performance: `${formatNumber(delta_percentageVal * 100, 2)}%`,
+            pressId: pressId,
+            pressName: pressName
         };
     };
 
@@ -1856,8 +1857,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 {(() => {
                                                     const pressId = pressMap[job.pressName || ''] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
-                                                    const units = Number(job.green) || 0;
-                                                    const cycles = units / divider;
+                                                    const cycles = Number(job.green) || 0;
+                                                    const units = cycles * divider;
                                                     return (
                                                         <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
                                                             {divider > 1 && (
@@ -1876,8 +1877,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 {(() => {
                                                     const pressId = pressMap[job.pressName || ''] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
-                                                    const units = Number(job.red) || 0;
-                                                    const cycles = units / divider;
+                                                    const cycles = Number(job.red) || 0;
+                                                    const units = cycles * divider;
                                                     return (
                                                         <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
                                                             {divider > 1 && (
@@ -1897,11 +1898,19 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     const pressId = pressMap[job.pressName || ''] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const formula = getFormulaForColumn('delta_number');
+                                                    const delta = Number(job.delta_number) || 0;
+                                                    const cycles = delta / divider;
+
                                                     return (
                                                         <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                            {divider > 1 && (
+                                                                <div className="flex items-center mb-0.5">
+                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} berekend</span>
+                                                                </div>
+                                                            )}
                                                             {formula
                                                                 ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} variant="delta" outputConversions={outputConversions} pressMap={pressMap} />
-                                                                : <span className="py-1">{formatNumber(job.delta_number, 0)}</span>
+                                                                : <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
                                                             }
                                                         </div>
                                                     );
@@ -2009,6 +2018,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     onCalculate={(job) => processJobFormulas(job) as FinishedPrintJob}
                     outputConversions={outputConversions}
                     pressMap={pressMap}
+                    currentPressName={effectivePress}
                 />
             )}
 

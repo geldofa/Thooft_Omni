@@ -28,6 +28,7 @@ interface AddFinishedJobDialogProps {
     onCalculate: (job: FinishedPrintJob) => FinishedPrintJob;
     outputConversions?: Record<string, Record<string, number>>;
     pressMap?: Record<string, string>;
+    currentPressName?: string;
 }
 
 export function AddFinishedJobDialog({
@@ -37,7 +38,8 @@ export function AddFinishedJobDialog({
     initialJobs,
     onCalculate,
     outputConversions = {},
-    pressMap = {}
+    pressMap = {},
+    currentPressName = ''
 }: AddFinishedJobDialogProps) {
 
     const [jobs, setJobs] = useState<FinishedPrintJob[]>([]);
@@ -285,18 +287,18 @@ export function AddFinishedJobDialog({
                                                     const pressId = pressMap[job.pressName || ''] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
 
-                                                    // State stores UNDIVIDED total unit. UI shows divided.
+                                                    // State stores MACHINE CYCLES. UI shows CYCLES. Subtext shows UNITS.
                                                     return (
                                                         <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
                                                             <FormattedNumberInput
-                                                                value={Math.round(job.maxGross / divider)}
-                                                                onChange={(val) => handleJobChange(job.id, 'maxGross', (Number(val) || 0) * divider)}
+                                                                value={Math.round(job.maxGross)}
+                                                                onChange={(val) => handleJobChange(job.id, 'maxGross', Number(val) || 0)}
                                                                 className="h-9 px-2 bg-white border-gray-200 text-right"
                                                             />
                                                             {divider > 1 && (
                                                                 <div className="min-h-[12px] mb-1 flex items-center pr-2">
                                                                     <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                        {job.maxGross.toLocaleString('nl-BE')}
+                                                                        {(job.maxGross * divider).toLocaleString('nl-BE')}
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -307,17 +309,22 @@ export function AddFinishedJobDialog({
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex flex-col items-end">
-                                                {/* Green/Red in dialog are Machine Cycles (consistent with handleJobChange and processJobFormulas returning them as-is) */}
+                                                {/* Green/Red in dialog: input is Machine Cycles, stored is Total Units */}
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const pressId = pressMap[job.pressName || currentPressName] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const localUnits = Number(job.green || 0); // This is Cycles
                                                     return (
                                                         <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
-                                                            <FormattedNumberInput value={job.green} onChange={(val) => handleJobChange(job.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            <FormattedNumberInput
+                                                                value={localUnits}
+                                                                onChange={(val) => handleJobChange(job.id, 'green', Number(val) || 0)}
+                                                                className="h-9 px-2 bg-white border-gray-200 text-right"
+                                                            />
                                                             {divider > 1 && (
                                                                 <div className="min-h-[12px] mb-1 flex items-center pr-2">
                                                                     <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                        {(Number(job.green || 0) * divider).toLocaleString('nl-BE')}
+                                                                        {(localUnits * divider).toLocaleString('nl-BE')}
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -329,15 +336,20 @@ export function AddFinishedJobDialog({
                                         <TableCell className="text-right">
                                             <div className="flex flex-col items-end">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const pressId = pressMap[job.pressName || currentPressName] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const localUnits = Number(job.red || 0); // This is Cycles
                                                     return (
                                                         <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
-                                                            <FormattedNumberInput value={job.red} onChange={(val) => handleJobChange(job.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            <FormattedNumberInput
+                                                                value={localUnits}
+                                                                onChange={(val) => handleJobChange(job.id, 'red', Number(val) || 0)}
+                                                                className="h-9 px-2 bg-white border-gray-200 text-right"
+                                                            />
                                                             {divider > 1 && (
                                                                 <div className="min-h-[12px] mb-1 flex items-center pr-2">
                                                                     <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                        {(Number(job.red || 0) * divider).toLocaleString('nl-BE')}
+                                                                        {(localUnits * divider).toLocaleString('nl-BE')}
                                                                     </span>
                                                                 </div>
                                                             )}
