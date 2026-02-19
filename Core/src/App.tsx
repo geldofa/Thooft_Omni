@@ -5,6 +5,7 @@ import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
 import { ForceRefreshDialog } from './components/ForceRefreshDialog';
+import { UpdateDialog } from './components/UpdateDialog';
 import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Button } from './components/ui/button';
@@ -253,8 +254,9 @@ function MainApp() {
     }
   }, [user, navigate]);
 
-  const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => {
+  const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>, refresh: boolean = true, silent: boolean = false) => {
     try {
+      console.log(`[AddTask] Adding task: ${task.subtaskName || task.task}`, task);
       const baseData = {
         task: task.task,
         task_subtext: task.taskSubtext,
@@ -295,11 +297,13 @@ function MainApp() {
           subtask_subtext: task.subtaskSubtext || task.taskSubtext,
         });
       }
-      fetchData();
-      toast.success('Taak succesvol toegevoegd');
+
+      if (refresh) await fetchData();
+      if (!silent) toast.success('Taak succesvol toegevoegd');
     } catch (e) {
       console.error("Add task failed:", e);
-      toast.error('Toevoegen mislukt');
+      if (!silent) toast.error('Toevoegen mislukt');
+      throw e; // Re-throw to allow handler to catch it
     }
   };
 
@@ -661,15 +665,47 @@ function MainApp() {
     }
   };
 
-  const handleUpdateGroup = async (tasks: MaintenanceTask[]) => {
+  const handleUpdateGroup = async (tasks: MaintenanceTask[], originalTasks?: MaintenanceTask[] | null) => {
+    console.log(`[HandleUpdateGroup] Received ${tasks.length} tasks from dialog:`, tasks);
+    console.log(`[HandleUpdateGroup] Original tasks from dialog:`, originalTasks);
+    console.log(`[HandleUpdateGroup] Processing ${tasks.length} tasks. Original tasks: ${originalTasks?.length || 0}`);
     try {
-      for (const task of tasks) {
-        if (task.id) await updateTask(task, false, true); // Update without immediate refresh AND silent
-        else {
-          const { id, created, updated, ...rest } = task;
-          await addTask(rest);
+      // Utility for throttling
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // 1. Handle Deletions: Find tasks in originalTasks that are NOT in the new tasks list
+      if (originalTasks && originalTasks.length > 0) {
+        const newTaskIds = new Set(tasks.map(t => t.id).filter(id => id && !id.startsWith('subtask-')));
+        const tasksToDelete = originalTasks.filter(ot => ot.id && !newTaskIds.has(ot.id));
+
+        if (tasksToDelete.length > 0) {
+          console.log(`[HandleUpdateGroup] Deleting ${tasksToDelete.length} removed subtasks:`, tasksToDelete.map(t => t.id));
+          for (const taskToDelete of tasksToDelete) {
+            await pb.collection('onderhoud').delete(taskToDelete.id);
+            await delay(100); // Throttle
+          }
         }
       }
+
+      // 2. Handle Adds and Updates
+      for (const task of tasks) {
+        // Correctly identify if it's an existing record or a new one
+        // New subtasks added in the UI have IDs like 'subtask-1678886400000'
+        const isNewSubtask = !task.id || (typeof task.id === 'string' && task.id.startsWith('subtask-'));
+
+        if (!isNewSubtask) {
+          console.log(`[HandleUpdateGroup] Updating existing: ${task.id}`);
+          await updateTask(task, false, true); // Update existing record
+        } else {
+          console.log(`[HandleUpdateGroup] Adding new subtask: ${task.subtaskName || task.task}`);
+          // It's a new subtask, remove fields that don't belong in the create call
+          const { id, created, updated, ...rest } = task;
+          await addTask(rest, false, true); // No refresh, silent
+        }
+        await delay(100); // Throttle
+      }
+
+      console.log(`[HandleUpdateGroup] Completed all updates, refreshing data...`);
       await fetchData(); // Final refresh after all updates
       setIsAddDialogOpen(false);
       setEditingTask(null);
@@ -686,6 +722,7 @@ function MainApp() {
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       <Toaster position="top-right" />
       <ForceRefreshDialog />
+      <UpdateDialog />
       <ScrollToTop />
 
 

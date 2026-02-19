@@ -57,7 +57,7 @@ const COL_WIDTHS = {
     orderNr: '45px',
     orderName: '250px',
     pages: '40px',
-    exOmw: '25px',
+    exOmw: '40px',
     netRun: '55px',
     startup: '30px',
     c4_4: '25px',
@@ -89,7 +89,9 @@ const FormulaResultWithTooltip = ({
     parameters,
     activePresses,
     result: propResult,
-    variant = 'default'
+    variant = 'default',
+    outputConversions = {},
+    pressMap = {}
 }: {
     formula: string;
     job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern;
@@ -98,15 +100,28 @@ const FormulaResultWithTooltip = ({
     activePresses: string[];
     result?: number;
     variant?: 'maxGross' | 'delta' | 'default';
+    outputConversions?: Record<string, Record<string, number>>;
+    pressMap?: Record<string, string>;
 }) => {
-    const result = propResult !== undefined ? propResult : evaluateFormula(formula, job, parameters, activePresses);
-    const formattedResult = typeof result === 'number' ? formatNumber(result, decimals) : String(result || '');
+    const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
+    const pressId = pressMap[pressName] || '';
+    const divider = outputConversions[pressId]?.[(job as any).exOmw] || 1;
+
+    // Re-evaluate or use passed result (which we now assume is UNDIVIDED Actual Units)
+    const rawResult = propResult !== undefined
+        ? propResult
+        : evaluateFormula(formula, job as any, parameters, activePresses);
+
+    const numericRawResult = Number(rawResult) || 0;
+    // Delta should NOT be divided. Everything else (maxGross, green, red) should show machine cycles as main.
+    const dividedResult = variant === 'delta' ? numericRawResult : (numericRawResult / divider);
+
+    const formattedResult = formatNumber(dividedResult, decimals);
 
     // Final Tooltip Design: 1 Card per high-level Part (Netto, Marge, Opstart, Colors)
     const renderCalculationFlow = () => {
-        const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
         const safeParams = parameters[pressName] || {};
-        const exOmw = Number((job as any).exOmw || 1);
+        const exOmw = Number((job as any).exOmw || 1); // Use RAW exOmw for undivided calc breakdown
 
         interface CalcPart {
             label: string;
@@ -123,12 +138,20 @@ const FormulaResultWithTooltip = ({
             const red = Number((job as any).red || 0);
             const maxGross = Number((job as any).maxGross || 0);
 
+            // For Delta tooltip, we want to show the Actual Units
+            // But are the job.green/red machine cycles or units?
+            // In Gedrukt tab, they are units. In Nieuw tab, they are machine cycles.
+            // Let's check for scaling.
+            const dividerLoc = outputConversions[pressId]?.[(job as any).exOmw] || 1;
+            const greenActual = green > 10000 ? green : green * dividerLoc;
+            const redActual = red > 10000 ? red : red * dividerLoc;
+
             if (green !== 0) {
                 parts.push({
                     label: "Groen",
                     formula: "Groen",
-                    breakdown: formatNumber(green),
-                    value: green,
+                    breakdown: formatNumber(greenActual),
+                    value: greenActual,
                     operator: '+'
                 });
             }
@@ -136,8 +159,8 @@ const FormulaResultWithTooltip = ({
                 parts.push({
                     label: "Rood",
                     formula: "Rood",
-                    breakdown: formatNumber(red),
-                    value: red,
+                    breakdown: formatNumber(redActual),
+                    value: redActual,
                     operator: '+'
                 });
             }
@@ -264,16 +287,34 @@ const FormulaResultWithTooltip = ({
     return (
         <Tooltip delayDuration={300}>
             <TooltipTrigger asChild>
-                <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap">{formattedResult}</span>
+                <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
+                    {formatNumber(dividedResult, variant === 'maxGross' ? 0 : decimals)}
+                </span>
             </TooltipTrigger>
             <TooltipContent
                 side="top"
                 sideOffset={4}
                 avoidCollisions
                 style={{ backgroundColor: 'white', color: '#1f2937' }}
-                className="border border-gray-100 shadow-2xl max-w-[95vw] p-3 z-[100] rounded-2xl"
+                className="border border-gray-200 shadow-2xl max-w-[95vw] p-4 z-[100] rounded-2xl"
             >
-                {renderCalculationFlow()}
+                <div className="space-y-3">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berekening</span>
+                        {divider > 1 && (
+                            <div className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
+                                Deler: {divider}
+                            </div>
+                        )}
+                    </div>
+                    {renderCalculationFlow()}
+                    {variant === 'maxGross' && divider > 1 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Totaal (Output)</span>
+                            <span className="text-sm font-black text-gray-900">{numericRawResult.toLocaleString('nl-BE')}</span>
+                        </div>
+                    )}
+                </div>
             </TooltipContent>
         </Tooltip>
     );
@@ -282,6 +323,7 @@ const FormulaResultWithTooltip = ({
 export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const [presses, setPresses] = useState<Press[]>(propsPresses || []);
     const [isLoadingPresses, setIsLoadingPresses] = useState(false);
+    const [outputConversions, setOutputConversions] = useState<Record<string, Record<string, number>>>({});
 
     // Cache status state
     const [cacheStatus, setCacheStatus] = useState<CacheStatus>({
@@ -314,6 +356,21 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             fetchPressesLocal();
         }
     }, [fetchPressesLocal, propsPresses]);
+
+    const fetchOutputConversions = useCallback(async () => {
+        try {
+            const settings = await pb.collection('app_settings').getFirstListItem('key="output_conversions"').catch(() => null);
+            if (settings) {
+                setOutputConversions(settings.value || {});
+            }
+        } catch (error) {
+            console.error("Error fetching output conversions:", error);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchOutputConversions();
+    }, [fetchOutputConversions]);
     const activePresses = useMemo(() => presses
         .filter(p => p.active && !p.archived)
         .map(p => p.name), [presses]);
@@ -335,10 +392,12 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
     const [showComparison, setShowComparison] = useState(false);
 
-    // Delete Confirmation State
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
     const [deleteMessage, setDeleteMessage] = useState({ title: '', description: '' });
+
+    // Validation State
+    const [validationErrors, setValidationErrors] = useState<Record<string, Record<string, boolean>>>({});
 
     // Parameters state - one set per press
     const [parameters, setParameters] = useState<Record<string, Record<string, any>>>(() => {
@@ -533,6 +592,22 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 return wo;
             })
         );
+
+        // Clear validation errors for this field
+        if (validationErrors[werkorderId]?.[field]) {
+            setValidationErrors(prev => {
+                const newErrors = { ...prev };
+                if (newErrors[werkorderId]) {
+                    const { [field]: _, ...rest } = newErrors[werkorderId];
+                    if (Object.keys(rest).length === 0) {
+                        delete newErrors[werkorderId];
+                    } else {
+                        newErrors[werkorderId] = rest;
+                    }
+                }
+                return newErrors;
+            });
+        }
     };
 
     const handleDeleteWerkorder = (werkorderId: string) => {
@@ -562,6 +637,17 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
 
     const handleSaveOrderToFinished = async (werkorder: Werkorder) => {
+        // Validation
+        const errors: Record<string, boolean> = {};
+        if (!werkorder.orderNr) errors.orderNr = true;
+        if (!werkorder.orderName) errors.orderName = true;
+
+        if (Object.keys(errors).length > 0) {
+            setValidationErrors(prev => ({ ...prev, [werkorder.id]: errors }));
+            toast.error("Niet alle verplichte velden zijn ingevuld (Ordernr en Naam).");
+            return;
+        }
+
         if (!hasPermission('drukwerken_view_all') && !user?.pressId) {
             toast.error("Kan niet opslaan: Persgegevens nog niet geladen. Probeer het over enkele seconden opnieuw.");
             return;
@@ -572,57 +658,55 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             const formattedDatum = format(today, 'dd-MM');
 
             const promises = werkorder.katernen.map(async (katern) => {
-                const jobWithKaternData = {
+                const pressId = user?.pressId || '';
+                const divider = outputConversions[pressId]?.[katern.exOmw] || 1;
+                // The formula evaluation expects raw exOmw, and returns undivided actual units.
+                // The green/red inputs are machine cycles, so they need to be scaled to actual units for delta calculation.
+
+                const jobForCalculations = {
                     ...katern,
                     orderNr: werkorder.orderNr,
                     orderName: werkorder.orderName,
                     date: formattedDate,
                     datum: formattedDatum,
-                    pressName: user?.press
+                    pressName: user?.press,
+                    pressId: user?.pressId
                 };
 
                 const calculatedMaxGross = getFormulaForColumn('maxGross')
-                    ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData, parameters, activePresses) === 'number'
-                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData, parameters, activePresses)
-                        : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithKaternData, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
+                    ? (typeof evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobForCalculations, parameters, activePresses) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobForCalculations, parameters, activePresses)
+                        : Number(String(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobForCalculations, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
                     : katern.maxGross;
                 const maxGrossVal = Number(calculatedMaxGross) || 0;
 
-                const jobWithMaxGross = { ...jobWithKaternData, maxGross: maxGrossVal };
+                // Scale inputs for Delta and saving (green/red are machine cycles from input, convert to actual units)
+                const greenActual = (Number(katern.green) || 0) * divider;
+                const redActual = (Number(katern.red) || 0) * divider;
 
-                const greenVal = getFormulaForColumn('green')
-                    ? (typeof evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross, parameters, activePresses) === 'number'
-                        ? evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross, parameters, activePresses)
-                        : Number(String(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
-                    : katern.green;
-
-                const redVal = getFormulaForColumn('red')
-                    ? (typeof evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross, parameters, activePresses) === 'number'
-                        ? evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross, parameters, activePresses)
-                        : Number(String(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
-                    : katern.red;
+                const jobWithMaxGrossAndScaledGreenRed = { ...jobForCalculations, maxGross: maxGrossVal, green: greenActual, red: redActual };
 
                 const deltaVal = getFormulaForColumn('delta_number')
-                    ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross, parameters, activePresses) === 'number'
-                        ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross, parameters, activePresses)
-                        : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
-                    : katern.delta;
+                    ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses) === 'number'
+                        ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses)
+                        : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
+                    : (Number(maxGrossVal) - (Number(greenActual) + Number(redActual)));
 
                 return {
                     ...katern,
-                    maxGross: maxGrossVal,
-                    green: greenVal,
-                    red: redVal,
-                    delta: deltaVal,
+                    maxGross: Number(maxGrossVal),
+                    green: Number(greenActual),
+                    red: Number(redActual),
+                    delta: Number(deltaVal),
                     deltaPercentage: (() => {
                         const f = getFormulaForColumn('delta_percentage');
                         if (f) {
-                            return typeof evaluateFormula(f.formula, jobWithMaxGross, parameters, activePresses) === 'number'
-                                ? evaluateFormula(f.formula, jobWithMaxGross, parameters, activePresses)
-                                : Number(String(evaluateFormula(f.formula, jobWithMaxGross, parameters, activePresses)).replace(/\./g, '').replace(',', '.'));
+                            return typeof evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses) === 'number'
+                                ? evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses) as number
+                                : Number(String(evaluateFormula(f.formula, { ...jobWithMaxGrossAndScaledGreenRed, delta_number: deltaVal }, parameters, activePresses)).replace(/\./g, '').replace(',', '.'));
                         }
-                        return katern.deltaPercentage;
-                    })()
+                        return Number(maxGrossVal) > 0 ? Number(deltaVal) / Number(maxGrossVal) : (0 as number);
+                    })() as number
                 };
             });
 
@@ -637,7 +721,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     klant_order_beschrijving: werkorder.orderName,
                     versie: processedKatern.version,
                     blz: processedKatern.pages,
-                    ex_omw: parseFloat(processedKatern.exOmw) || 0,
+                    ex_omw: parseFloat(processedKatern.exOmw) || 0, // Use the raw exOmw from katern
                     netto_oplage: processedKatern.netRun,
                     opstart: processedKatern.startup,
                     k_4_4: processedKatern.c4_4,
@@ -645,17 +729,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     k_1_0: processedKatern.c1_0,
                     k_1_1: processedKatern.c1_1,
                     k_4_1: processedKatern.c4_1,
-                    max_bruto: processedKatern.maxGross,
-                    groen: processedKatern.green || 0,
-                    rood: processedKatern.red || 0,
-                    delta: processedKatern.delta,
-                    delta_percent: processedKatern.deltaPercentage || 0,
+                    max_bruto: Math.round(processedKatern.maxGross as number), // Round to 0 decimals
+                    groen: (processedKatern.green as number) || 0, // This is now actual units
+                    rood: (processedKatern.red as number) || 0, // This is now actual units
+                    delta: Math.round(processedKatern.delta as number), // Round to 0 decimals
+                    delta_percent: (processedKatern.deltaPercentage as number) || 0,
                     pers: user?.pressId,
                     status: 'check',
                     opmerking: ''
                 };
 
-                await pb.collection('drukwerken').create(pbData);
+                const record = await pb.collection('drukwerken').create(pbData);
+                await drukwerkenCache.putRecord(record, user, hasPermission);
 
                 // Log creation
                 await addActivityLog({
@@ -676,6 +761,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             }
 
             fetchCalculatedFields();
+
+            // Trigger cache update immediately
+            if (user) {
+                drukwerkenCache.checkForUpdates(user, hasPermission);
+            }
+            // Notify other components/listeners
+            window.dispatchEvent(new CustomEvent('pb-drukwerken-changed'));
 
             // Clear the Werkorder form by resetting to a new blank state
             setWerkorders(prev => {
@@ -1094,46 +1186,45 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     };
 
     const processJobFormulas = (job: Omit<FinishedPrintJob, 'id'> | FinishedPrintJob) => {
-        const jobWithPress = {
-            ...job,
-            pressName: job.pressName || effectivePress,
-            pressId: job.pressId || (job.pressName ? pressMap[job.pressName] : pressMap[effectivePress])
-        };
+        const pressName = job.pressName || effectivePress;
+        const pressId = job.pressId || (job.pressName ? pressMap[job.pressName] : pressMap[effectivePress]);
+        const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
 
+        // Formula evaluation using raw exOmw (returns undivided Actual Units)
         const maxGrossVal = getFormulaForColumn('maxGross')
-            ? Number(evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithPress, parameters, activePresses))
-            : job.maxGross;
+            ? Number(evaluateFormula(getFormulaForColumn('maxGross')!.formula,
+                { ...job, pressName, pressId }, // Use original scaled exOmw for formula "like before"
+                parameters, activePresses))
+            : (Number(job.maxGross) || 0) * divider;
 
-        const jobWithMaxGross = { ...jobWithPress, maxGross: maxGrossVal };
+        // Scale inputs for Delta calculation
+        const greenActual = (Number(job.green) || 0) * divider;
+        const redActual = (Number(job.red) || 0) * divider;
 
-        const greenVal = getFormulaForColumn('green')
-            ? Number(evaluateFormula(getFormulaForColumn('green')!.formula, jobWithMaxGross, parameters, activePresses))
-            : job.green;
-
-        const redVal = getFormulaForColumn('red')
-            ? Number(evaluateFormula(getFormulaForColumn('red')!.formula, jobWithMaxGross, parameters, activePresses))
-            : job.red;
+        const jobForDelta = { ...job, pressName, pressId, maxGross: maxGrossVal, green: greenActual, red: redActual };
 
         const delta_numberVal = getFormulaForColumn('delta_number')
-            ? Number(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGross, parameters, activePresses))
-            : job.delta_number;
+            ? Number(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobForDelta, parameters, activePresses))
+            : (maxGrossVal - (greenActual + redActual));
 
         const delta_percentageVal = (() => {
             const f = getFormulaForColumn('delta_percentage');
             if (f) {
-                return Number(evaluateFormula(f.formula, jobWithMaxGross, parameters, activePresses));
+                return Number(evaluateFormula(f.formula, { ...jobForDelta, delta_number: delta_numberVal }, parameters, activePresses));
             }
-            return job.delta_percentage;
+            if (maxGrossVal > 0) return delta_numberVal / maxGrossVal;
+            return 0;
         })();
 
         return {
-            ...jobWithMaxGross,
-            green: greenVal,
-            red: redVal,
+            ...job,
+            maxGross: maxGrossVal,         // Actual Units (UNDIVIDED)
+            green: (Number(job.green) || 0), // Keep as machine input for UI
+            red: (Number(job.red) || 0),     // Keep as machine input for UI
+            delta: delta_numberVal,       // Actual Units (UNDIVIDED)
             delta_number: delta_numberVal,
             delta_percentage: delta_percentageVal,
-            delta: delta_numberVal,
-            performance: '100%'
+            performance: `${formatNumber(delta_percentageVal * 100, 2)}%`
         };
     };
 
@@ -1300,7 +1391,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                 </Tabs>
                             )}
 
-                            {user?.role?.toLowerCase() === 'admin' && (
+                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
                                 <div className="flex items-center space-x-2 bg-white px-3 h-9 rounded-md border text-xs shadow-sm">
                                     <Switch
                                         id="compare-mode"
@@ -1312,7 +1403,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                 </div>
                             )}
 
-                            {user?.role?.toLowerCase() === 'admin' && (
+                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
                                 <Select value={pressFilter} onValueChange={setPressFilter}>
                                     <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
                                         <SelectValue placeholder="Alle Persen" />
@@ -1377,7 +1468,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <div className="flex gap-4 w-full items-end">
                                                     <div className="flex flex-col items-center">
                                                         <Label>Order Nr</Label>
-                                                        <div className="flex items-center border border-gray-200 rounded-md px-2 bg-white h-9" style={{ width: '85px' }}>
+                                                        <div className={`flex items-center border rounded-md px-2 bg-white h-9 transition-all ${validationErrors[wo.id]?.orderNr ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`} style={{ width: '85px' }}>
                                                             <span className="text-sm font-medium text-muted-foreground mr-1">DT </span>
                                                             <Input
                                                                 value={wo.orderNr}
@@ -1389,7 +1480,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     <div className="flex-1">
                                                         <Label className="pl-3">Order</Label>
                                                         <div className="flex gap-2 items-center">
-                                                            <Input value={wo.orderName} onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)} className="w-full bg-white border-gray-200" />
+                                                            <Input
+                                                                value={wo.orderName}
+                                                                onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)}
+                                                                className={`w-full bg-white transition-all ${validationErrors[wo.id]?.orderName ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`}
+                                                            />
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"
@@ -1462,7 +1557,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                             ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo, parameters, activePresses) as number
                                                             : katern.maxGross;
 
-                                                        const jobWithCalculatedMaxGross = { ...jobWithOrderInfo, maxGross: maxGrossVal };
+                                                        const divider = outputConversions[pressMap[effectivePress]]?.[String(katern.exOmw)] || 1;
+                                                        const jobWithCalculatedMaxGross = {
+                                                            ...jobWithOrderInfo,
+                                                            maxGross: maxGrossVal,
+                                                            green: (Number(katern.green) || 0) * divider,
+                                                            red: (Number(katern.red) || 0) * divider
+                                                        };
                                                         return (
                                                             <TableRow key={katern.id} className="hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group">
                                                                 <TableCell>
@@ -1472,7 +1573,19 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                     <FormattedNumberInput value={katern.pages} onChange={(val) => handleKaternChange(wo.id, katern.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
                                                                 </TableCell>
                                                                 <TableCell>
-                                                                    <Input value={katern.exOmw} onChange={(e) => handleKaternChange(wo.id, katern.id, 'exOmw', e.target.value)} className="h-9 px-2 bg-white border-gray-200 text-center" />
+                                                                    <Select
+                                                                        value={String(katern.exOmw || '1')}
+                                                                        onValueChange={(val) => handleKaternChange(wo.id, katern.id, 'exOmw', val)}
+                                                                    >
+                                                                        <SelectTrigger className="h-9 px-2 bg-white border-gray-200 text-center">
+                                                                            <SelectValue placeholder="Deler" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="1">1</SelectItem>
+                                                                            <SelectItem value="2">2</SelectItem>
+                                                                            <SelectItem value="4">4</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
                                                                 </TableCell>
                                                                 <TableCell className="text-right border-r border-black">
                                                                     <FormattedNumberInput value={katern.netRun} onChange={(val) => handleKaternChange(wo.id, katern.id, 'netRun', val || 0)} className="h-9 px-2 bg-white border-gray-200 text-right" />
@@ -1500,9 +1613,12 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                         <FormulaResultWithTooltip
                                                                             formula={getFormulaForColumn('maxGross')?.formula || ''}
                                                                             job={jobWithOrderInfo}
+                                                                            variant="maxGross"
                                                                             parameters={parameters}
                                                                             activePresses={activePresses}
                                                                             result={maxGrossVal}
+                                                                            outputConversions={outputConversions}
+                                                                            pressMap={pressMap}
                                                                         />
                                                                         {showComparison && (
                                                                             <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
@@ -1512,10 +1628,28 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                     </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-right">
-                                                                    <FormattedNumberInput value={katern.green} onChange={(val) => handleKaternChange(wo.id, katern.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                    <div className="flex flex-col items-end">
+                                                                        <FormattedNumberInput value={katern.green} onChange={(val) => handleKaternChange(wo.id, katern.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                        {divider > 1 && (
+                                                                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                                <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                                    {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-right border-r border-black">
-                                                                    <FormattedNumberInput value={katern.red} onChange={(val) => handleKaternChange(wo.id, katern.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                    <div className="flex flex-col items-end">
+                                                                        <FormattedNumberInput value={katern.red} onChange={(val) => handleKaternChange(wo.id, katern.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                        {divider > 1 && (
+                                                                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                                <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                                    {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-right font-medium">
                                                                     {(() => {
@@ -1572,12 +1706,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         <Card>
                             <CardContent className="p-0">
                                 <TableVirtuoso
+                                    key={Object.keys(outputConversions).length > 0 ? 'loaded' : 'loading'}
                                     style={{ height: 'calc(100vh - 220px)', minWidth: '1600px' }}
                                     data={sortedJobs}
+                                    context={{ outputConversions, pressMap }}
                                     fixedHeaderContent={() => (
                                         <>
                                             <TableRow className="border-b-0 bg-white h-10">
-                                                {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
+                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
                                                 <TableHead colSpan={6} className="text-center bg-blue-100 border-r border-black">Data</TableHead>
                                                 <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black">Wissels</TableHead>
                                                 <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black">Berekening</TableHead>
@@ -1585,7 +1721,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black bg-white"></TableHead>
                                             </TableRow>
                                             <TableRow className="border-b border-black bg-white shadow-sm h-10">
-                                                {user?.role?.toLowerCase() === 'admin' && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r">Pers</TableHead>}
+                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r">Pers</TableHead>}
                                                 <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
@@ -1657,7 +1793,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     )}
                                     itemContent={(_index, job) => (
                                         <>
-                                            {user?.role?.toLowerCase() === 'admin' && (
+                                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
                                                 <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70" title={job.pressName}>
                                                     {job.pressName || '-'}
                                                 </TableCell>
@@ -1682,56 +1818,112 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
                                             <TableCell className="text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70">{formatNumber(job.c4_1)}</TableCell>
                                             <TableCell className="py-1 px-1 text-right">
-                                                <div className="flex flex-col items-center">
-                                                    {(() => {
-                                                        const formula = getFormulaForColumn('maxGross');
-                                                        return formula
-                                                            ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                            : formatNumber(job.maxGross, 0);
-                                                    })()}
-                                                    {showComparison && (
-                                                        <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
-                                                            Rec: {formatNumber(job.maxGross)}
+                                                {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const formula = getFormulaForColumn('maxGross');
+                                                    const showSub = divider > 1 && !!formula;
+                                                    return (
+                                                        <div className={`flex flex-col items-end min-h-[36px] ${showSub ? 'justify-end' : 'justify-center'}`}>
+                                                            {showSub && (() => {
+                                                                const raw = evaluateFormula(formula!.formula, job as any, parameters, activePresses);
+                                                                const cycles = (Number(raw) || 0) / divider;
+                                                                return (
+                                                                    <div className="flex items-center mb-0.5">
+                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles, 0)} berekend</span>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            <div className="flex items-center py-1">
+                                                                <span className="font-bold leading-none">{formatNumber(job.maxGross, 0)}</span>
+                                                            </div>
+                                                            {showComparison && (
+                                                                <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
+                                                                    Rec: {formatNumber(job.maxGross, 0)}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
+                                                    );
+                                                })()}
                                             </TableCell>
                                             <TableCell className="py-1 px-1 text-right">
                                                 {(() => {
-                                                    const formula = getFormulaForColumn('green');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.green);
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const units = Number(job.green) || 0;
+                                                    const cycles = units / divider;
+                                                    return (
+                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                            {divider > 1 && (
+                                                                <div className="flex items-center mb-0.5">
+                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex items-center py-1">
+                                                                <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
                                                 })()}
                                             </TableCell>
                                             <TableCell className="py-1 px-1 text-right border-r border-black">
                                                 {(() => {
-                                                    const formula = getFormulaForColumn('red');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} />
-                                                        : formatNumber(job.red);
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const units = Number(job.red) || 0;
+                                                    const cycles = units / divider;
+                                                    return (
+                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                            {divider > 1 && (
+                                                                <div className="flex items-center mb-0.5">
+                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex items-center py-1">
+                                                                <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
                                                 })()}
                                             </TableCell>
                                             <TableCell className="text-right py-1 px-1">
                                                 {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const formula = getFormulaForColumn('delta_number');
-                                                    return formula
-                                                        ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} variant="delta" />
-                                                        : formatNumber(job.delta_number, 0);
+                                                    return (
+                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                            {formula
+                                                                ? <FormulaResultWithTooltip formula={formula.formula} job={job} parameters={parameters} activePresses={activePresses} variant="delta" outputConversions={outputConversions} pressMap={pressMap} />
+                                                                : <span className="py-1">{formatNumber(job.delta_number, 0)}</span>
+                                                            }
+                                                        </div>
+                                                    );
                                                 })()}
                                             </TableCell>
                                             <TableCell className="text-right py-1 px-1 border-r border-black">
                                                 {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const formula = getFormulaForColumn('delta_percentage');
+
+                                                    const correctedJob = { ...job, exOmw: String(Number(job.exOmw || 1) / divider) };
+
                                                     const result = formula
-                                                        ? evaluateFormula(formula.formula, job, parameters, activePresses)
+                                                        ? evaluateFormula(formula.formula, correctedJob, parameters, activePresses)
                                                         : job.delta_percentage;
 
                                                     const percentageValue = typeof result === 'number'
                                                         ? result
                                                         : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
 
-                                                    return percentageValue !== undefined ? `${formatNumber(percentageValue * 100, 2)}% ` : '-';
+                                                    return (
+                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                            <span className="py-1">
+                                                                {percentageValue !== undefined ? `${formatNumber(percentageValue * 100, 2)}%` : '-'}
+                                                            </span>
+                                                        </div>
+                                                    );
                                                 })()}
                                             </TableCell>
                                             <TableCell className="py-1 px-1 border-r border-black">
@@ -1760,7 +1952,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </div>
                                             </TableCell>
                                         </>
-                                    )}
+                                    )
+                                    }
                                     components={{
                                         Table: ({ style, ...props }: any) => (
                                             <table
@@ -1769,7 +1962,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 className={`table-fixed w-full ${FONT_SIZES.body}`}
                                             >
                                                 <colgroup>
-                                                    {user?.role?.toLowerCase() === 'admin' && <col style={{ width: COL_WIDTHS.press }} />}
+                                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <col style={{ width: COL_WIDTHS.press }} />}
                                                     <col style={{ width: COL_WIDTHS.date }} />
                                                     <col style={{ width: COL_WIDTHS.orderNr }} />
                                                     <col style={{ width: COL_WIDTHS.orderName }} />
@@ -1808,6 +2001,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     onSubmit={handleBulkJobSubmit}
                     initialJobs={editingJobs}
                     onCalculate={(job) => processJobFormulas(job) as FinishedPrintJob}
+                    outputConversions={outputConversions}
+                    pressMap={pressMap}
                 />
             )}
 

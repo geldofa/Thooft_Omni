@@ -40,7 +40,7 @@ interface AddMaintenanceDialogProps {
   onSubmit: (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>) => void;
   editTask?: MaintenanceTask | null;
   initialGroup?: MaintenanceTask[] | null;
-  onUpdateGroup?: (tasks: MaintenanceTask[]) => void;
+  onUpdateGroup?: (tasks: MaintenanceTask[], originalTasks?: MaintenanceTask[] | null) => void;
   activePress?: string; // The currently active press tab (ID or name)
 }
 
@@ -192,7 +192,7 @@ export function AddMaintenanceDialog({
     tagIds: [] as string[]
   };
 
-  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean }[]>([]);
+  const [subtasks, setSubtasks] = useState<{ id: string; name: string; subtext: string; opmerkingen?: string; commentDate?: Date | null; sort_order: number; isExternal?: boolean; tagIds?: string[] }[]>([]);
 
   const [taskFormData, setTaskFormData] = useState(initialTaskData);
   const [initialValues, setInitialValues] = useState(initialTaskData);
@@ -228,6 +228,16 @@ export function AddMaintenanceDialog({
         setTaskFormData(data);
         setInitialValues(data);
         setPreviousComment(editTask.opmerkingen);
+        setSubtasks([{
+          id: editTask.id,
+          name: editTask.subtaskName || editTask.task,
+          subtext: editTask.subtaskSubtext || editTask.taskSubtext || '',
+          opmerkingen: editTask.opmerkingen,
+          commentDate: editTask.commentDate,
+          sort_order: editTask.sort_order || 0,
+          isExternal: editTask.isExternal || false,
+          tagIds: Array.isArray(editTask.tagIds) ? editTask.tagIds : []
+        }]);
       } else if (initialGroup && initialGroup.length > 0) {
         // When editing a group, use the first task's data
         const firstTask = initialGroup[0];
@@ -260,7 +270,8 @@ export function AddMaintenanceDialog({
           opmerkingen: t.opmerkingen,
           commentDate: t.commentDate,
           sort_order: t.sort_order || 0,
-          isExternal: t.isExternal || false
+          isExternal: t.isExternal || false,
+          tagIds: Array.isArray(t.tagIds) ? t.tagIds : []
         })));
       } else {
         // Reset for new task - use activePress if provided
@@ -360,12 +371,14 @@ export function AddMaintenanceDialog({
       tagIds: taskFormData.tagIds
     };
 
-    if (onUpdateGroup && initialGroup) {
+    if (onUpdateGroup && (initialGroup || (editTask && taskFormData.isGroupTask))) {
+      console.log(`[AddMaintenanceDialog] Submitting group update. isGroupTask: ${taskFormData.isGroupTask}, editTask: ${!!editTask}, initialGroup: ${initialGroup?.length || 0}`);
+
       // Handle group update - Propagate core fields from the form to all tasks in the group
       const groupCommentModified = taskFormData.opmerkingen !== previousComment;
 
       const updatedTasks = subtasks.map((st, index) => {
-        const initialTask = initialGroup.find(it => it.id === st.id);
+        const initialTask = initialGroup?.find(it => it.id === st.id) || (editTask?.id === st.id ? editTask : null);
 
         // Effective comment: use group-level if modified, else subtask's own
         const effectiveComment = groupCommentModified ? taskFormData.opmerkingen : (st.opmerkingen || taskFormData.opmerkingen);
@@ -375,9 +388,12 @@ export function AddMaintenanceDialog({
           ? new Date()
           : (initialTask?.commentDate || st.commentDate || null);
 
+        const isNewSubtask = !st.id || (typeof st.id === 'string' && st.id.startsWith('subtask-'));
+
         return {
           ...st,
           id: st.id,
+          tagIds: (st.tagIds && st.tagIds.length > 0) ? st.tagIds : (initialTask?.tagIds || taskFormData.tagIds),
           task: taskFormData.task,
           subtaskName: st.name,
           taskSubtext: taskFormData.taskSubtext,
@@ -391,19 +407,19 @@ export function AddMaintenanceDialog({
           maintenanceInterval: taskFormData.maintenanceInterval !== initialValues.maintenanceInterval ? taskFormData.maintenanceInterval : (initialTask?.maintenanceInterval || taskFormData.maintenanceInterval),
           maintenanceIntervalUnit: taskFormData.maintenanceIntervalUnit !== initialValues.maintenanceIntervalUnit ? taskFormData.maintenanceIntervalUnit : (initialTask?.maintenanceIntervalUnit || taskFormData.maintenanceIntervalUnit),
           assignedTo: (taskFormData.assignedTo !== initialValues.assignedTo && taskFormData.assignedTo !== '') ? taskFormData.assignedTo : (initialTask?.assignedTo || ''),
-          assignedToIds: initialTask?.assignedToIds || [],
-          assignedToTypes: initialTask?.assignedToTypes || [],
+          assignedToIds: initialTask?.assignedToIds || (isNewSubtask ? (initialGroup?.[0]?.assignedToIds || editTask?.assignedToIds || []) : []),
+          assignedToTypes: initialTask?.assignedToTypes || (isNewSubtask ? (initialGroup?.[0]?.assignedToTypes || editTask?.assignedToTypes || []) : []),
           opmerkingen: effectiveComment,
           comment: effectiveComment,
           commentDate,
           sort_order: index,
           isExternal: taskFormData.isExternal,
-          tagIds: taskFormData.tagIds,
           created: initialTask?.created || new Date().toISOString(),
           updated: new Date().toISOString()
         } as MaintenanceTask;
       });
-      onUpdateGroup(updatedTasks);
+      console.log(`[AddMaintenanceDialog] Calling onUpdateGroup with ${updatedTasks.length} tasks`);
+      onUpdateGroup(updatedTasks, initialGroup);
     } else {
       // Handle single task submission
       onSubmit(taskToSubmit);

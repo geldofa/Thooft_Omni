@@ -41,9 +41,14 @@ services:
       - rclone
     command: >
       sh -c '
-        apk add --no-cache curl unzip ca-certificates git &&
-        curl -L https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_amd64.zip -o /tmp/pb.zip &&
-        unzip -o /tmp/pb.zip -d /pb/ &&
+        [ ! -f /pb/.pb_ready ] && {
+          apk add --no-cache curl unzip ca-certificates git &&
+          ARCH=$$(uname -m) &&
+          if [ "$$ARCH" = "x86_64" ]; then PB_ARCH="amd64"; else PB_ARCH="arm64"; fi &&
+          curl -L "https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_$${PB_ARCH}.zip" -o /tmp/pb.zip &&
+          unzip -o /tmp/pb.zip -d /pb/ &&
+          touch /pb/.pb_ready
+        }
         /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" --dir=/pb/pb_data &&
         /pb/pocketbase migrate up --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations &&
         chown -R root:root /pb/pb_data &&

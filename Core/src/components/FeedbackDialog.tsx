@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -38,7 +38,11 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 // Editing mode
                 setType(feedbackItem.type);
                 setMessage(feedbackItem.message);
-                setSelectedOperator(feedbackItem.contact_operator || '');
+                // Find operator if possible, or use name direct if not in list
+                // For editing, we might only have the name. 
+                // We'll try to find an operator with that name.
+                const matchedOp = operators.find(o => o.name === feedbackItem.contact_operator);
+                setSelectedOperator(matchedOp?.id || feedbackItem.contact_operator || '');
                 // Map old status values to new simplified ones
                 const statusMap: Record<string, 'pending' | 'planned' | 'in_progress' | 'completed' | 'rejected'> = {
                     'pending': 'pending', 'planned': 'planned', 'in_progress': 'in_progress',
@@ -54,7 +58,17 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 // New feedback mode
                 setType('bug');
                 setMessage('');
-                setSelectedOperator('');
+
+                // Pre-set for meestergast (fallback to username if no operator_id linked)
+                if (user?.role === 'meestergast') {
+                    const initialId = user.operator_id || 'self';
+                    const initialName = user.name || user.username || '...';
+                    setSelectedOperator(initialId);
+                    setOperators([{ id: initialId, name: initialName }]);
+                } else {
+                    setSelectedOperator('');
+                }
+
                 setShowOnRoadmap(false);
                 setStatus('pending');
                 setRoadmapTitle('');
@@ -79,16 +93,23 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                         setOperators(records.map((r: any) => ({ id: r.id, name: r.naam || r.name })));
                     } else if (user?.role === 'meestergast') {
                         // Meestergast: only their linked operator
-                        const operatorId = (user as any).operator_id;
+                        const operatorId = user?.operator_id;
                         if (operatorId) {
-                            const record = await pb.collection('operatoren').getOne(operatorId);
-                            const operatorName = record.naam || record.name;
-                            setOperators([{ id: record.id, name: operatorName }]);
-                            setSelectedOperator(operatorName);
+                            try {
+                                const record = await pb.collection('operatoren').getOne(operatorId);
+                                const operatorName = record.naam || record.name;
+                                setOperators([{ id: record.id, name: operatorName }]);
+                                setSelectedOperator(record.id);
+                            } catch (err) {
+                                console.warn("Failed to fetch linked operator, falling back to user name", err);
+                                const userName = user?.name || user?.username || 'Unknown';
+                                setOperators([{ id: 'self', name: userName }]);
+                                setSelectedOperator('self');
+                            }
                         } else {
                             const userName = user?.name || user?.username || 'Unknown';
                             setOperators([{ id: 'self', name: userName }]);
-                            setSelectedOperator(userName);
+                            setSelectedOperator('self');
                         }
                     } else if (user?.role === 'press') {
                         // Press: active operators for that press (internal)
@@ -106,7 +127,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                         // Other roles: fallback to user identification
                         const userName = user?.name || user?.username || 'Unknown';
                         setOperators([{ id: 'self', name: userName }]);
-                        setSelectedOperator(userName);
+                        setSelectedOperator('self');
                     }
                 } catch (err) {
                     console.error("Failed to fetch operators for feedback", err);
@@ -127,11 +148,15 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
         setIsSubmitting(true);
         try {
             if (feedbackItem && isAdmin) {
+                // Find operator name for display/logging
+                const opName = selectedOperator === 'other' ? 'Other' :
+                    operators.find(o => o.id === selectedOperator)?.name || selectedOperator;
+
                 // Update existing feedback
                 const updates: any = {
                     type,
                     message,
-                    contact_operator: selectedOperator,
+                    contact_operator: opName,
                     status: status,
                     show_on_roadmap: showOnRoadmap,
                     roadmap_title: roadmapTitle || message,
@@ -142,6 +167,10 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 await pb.collection('feedback').update(feedbackItem.id, updates);
                 toast.success('Feedback bijgewerkt!');
             } else {
+                // Find operator name
+                const opName = selectedOperator === 'other' ? 'Other' :
+                    operators.find(o => o.id === selectedOperator)?.name || selectedOperator;
+
                 // Create new feedback
                 const context = {
                     url: window.location.href,
@@ -149,7 +178,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     timestamp: new Date().toISOString(),
                     userRole: user?.role,
                     ip: ip || 'Unknown',
-                    operator: selectedOperator
+                    operator: opName
                 };
 
                 const additionalData = isAdmin ? {
@@ -180,6 +209,9 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
             <DialogContent className="w-[80vw] min-w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{feedbackItem ? 'Feedback Bewerken' : 'Feedback Versturen'}</DialogTitle>
+                    <DialogDescription>
+                        {feedbackItem ? 'Pas de feedback gegevens aan.' : 'Gebruik dit formulier om een probleem te melden of een suggestie te doen.'}
+                    </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
@@ -198,17 +230,19 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     {/* Contact Person Selector */}
                     <div className="space-y-2">
                         <Label htmlFor="operator">Contactpersoon (Optioneel)</Label>
-                        <Select value={selectedOperator} onValueChange={setSelectedOperator} disabled={user?.role === 'meestergast' || (user?.role !== 'admin' && user?.role !== 'press')}>
+                        <Select value={selectedOperator} onValueChange={setSelectedOperator} disabled={user?.role !== 'admin' && (user?.role === 'meestergast' || !!selectedOperator)}>
                             <SelectTrigger id="operator">
                                 <SelectValue placeholder="Selecteer contactpersoon" />
                             </SelectTrigger>
                             <SelectContent>
                                 {(operators || []).filter(op => op.id && op.id.trim() !== '' && op.name && op.name.trim() !== '').map((op) => (
-                                    <SelectItem key={op.id} value={op.name}>
+                                    <SelectItem key={op.id} value={op.id}>
                                         {op.name}
                                     </SelectItem>
                                 ))}
-                                <SelectItem value="other">Andere / Niet in lijst</SelectItem>
+                                {user?.role === 'admin' && (
+                                    <SelectItem value="other">Andere / Niet in lijst</SelectItem>
+                                )}
                             </SelectContent>
                         </Select>
                     </div>

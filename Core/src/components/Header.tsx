@@ -1,5 +1,4 @@
 import { useAuth } from './AuthContext';
-import { toast } from 'sonner';
 import { APP_VERSION, APP_NAME } from '../config';
 import {
   MoveRight,
@@ -22,7 +21,7 @@ interface HeaderProps {
 }
 
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
-  const { user, logout, hasPermission, updateAvailable, latestVersion, performUpdate } = useAuth();
+  const { user, logout, hasPermission, updateAvailable, latestVersion, setShowUpdateDialog } = useAuth();
 
   if (!user) return null;
 
@@ -148,18 +147,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             {/* Update Indicator */}
             {updateAvailable && (
               <button
-                onClick={async () => {
-                  if (confirm(`Er is een nieuwe update beschikbaar (${latestVersion}). Wil je nu updaten?\n\nDe server zal proberen de broncode bij te werken en te herstarten. Dit kan enkele minuten duren.`)) {
-                    const toastId = toast.loading("Update wordt uitgevoerd...");
-                    const result = await performUpdate();
-                    if (result.success) {
-                      toast.success(result.message, { id: toastId });
-                      setTimeout(() => window.location.reload(), 3000);
-                    } else {
-                      toast.error(`Update mislukt: ${result.message}`, { id: toastId });
-                    }
-                  }
-                }}
+                onClick={() => setShowUpdateDialog(true)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors animate-pulse cursor-pointer border border-amber-200"
                 title={`Update beschikbaar: ${latestVersion}`}
               >

@@ -57,9 +57,9 @@ export function PasswordManagement() {
       ]);
 
       // Role-based operator fetching
-      let operatorFilter = 'intern = true';
+      let operatorFilter = 'dienstverband = "Intern"';
       if (user?.role === 'press' && user.press) {
-        operatorFilter = `intern = true && (presses ~ "${user.press}" || presses ~ "${user.pressId || ''}")`;
+        operatorFilter = `dienstverband = "Intern" && (presses ~ "${user.press}" || presses ~ "${user.pressId || ''}")`;
       }
 
       const operatorResult = await pb.collection('operatoren').getFullList({
@@ -119,7 +119,7 @@ export function PasswordManagement() {
         role: mapUiRoleToDb(account.role),
         press: account.press,
         pers: pressId,
-        operator_id: (account as any).operator_id || '',
+        operator_id: account.operator_id || '',
         plain_password: account.password
       });
       return true;
@@ -139,7 +139,7 @@ export function PasswordManagement() {
         role: mapUiRoleToDb(updates.role || usr.role),
         press: updates.press,
         pers: pressId,
-        operator_id: (updates as any).operator_id
+        operator_id: updates.operator_id
       });
       return true;
     } catch (e: any) {
@@ -212,7 +212,7 @@ export function PasswordManagement() {
         name: account.name || '',
         role: account.role,
         press: account.press || activePresses[0]?.name || 'Lithoman',
-        operator_id: (account as any).operator_id || '',
+        operator_id: account.operator_id || '',
       });
     } else {
       setFormData({

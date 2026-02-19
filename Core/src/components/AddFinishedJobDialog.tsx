@@ -8,6 +8,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from './ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -25,6 +26,8 @@ interface AddFinishedJobDialogProps {
     onSubmit: (jobs: FinishedPrintJob[], deletedIds: string[]) => void;
     initialJobs: FinishedPrintJob[];
     onCalculate: (job: FinishedPrintJob) => FinishedPrintJob;
+    outputConversions?: Record<string, Record<string, number>>;
+    pressMap?: Record<string, string>;
 }
 
 export function AddFinishedJobDialog({
@@ -32,7 +35,9 @@ export function AddFinishedJobDialog({
     onOpenChange,
     onSubmit,
     initialJobs,
-    onCalculate
+    onCalculate,
+    outputConversions = {},
+    pressMap = {}
 }: AddFinishedJobDialogProps) {
 
     const [jobs, setJobs] = useState<FinishedPrintJob[]>([]);
@@ -234,7 +239,19 @@ export function AddFinishedJobDialog({
                                             <FormattedNumberInput value={job.pages} onChange={(val) => handleJobChange(job.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200" />
                                         </TableCell>
                                         <TableCell>
-                                            <Input value={job.exOmw} onChange={(e) => handleJobChange(job.id, 'exOmw', e.target.value)} className="h-9 px-2 bg-white border-gray-200" />
+                                            <Select
+                                                value={String(job.exOmw || '1')}
+                                                onValueChange={(val) => handleJobChange(job.id, 'exOmw', val)}
+                                            >
+                                                <SelectTrigger className="h-9 px-2 bg-white border-gray-200 text-center">
+                                                    <SelectValue placeholder="1" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="1">1</SelectItem>
+                                                    <SelectItem value="2">2</SelectItem>
+                                                    <SelectItem value="4">4</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </TableCell>
                                         <TableCell>
                                             <FormattedNumberInput value={job.netRun} onChange={(val) => handleJobChange(job.id, 'netRun', val)} className="h-9 px-2 bg-white border-gray-200" />
@@ -257,20 +274,79 @@ export function AddFinishedJobDialog({
                                         <TableCell>
                                             <FormattedNumberInput value={job.c4_1} onChange={(val) => handleJobChange(job.id, 'c4_1', val)} className="h-9 px-2 bg-white border-gray-200" />
                                         </TableCell>
-                                        <TableCell>
-                                            <FormattedNumberInput value={job.maxGross} onChange={(val) => handleJobChange(job.id, 'maxGross', val)} className="h-9 px-2 bg-white border-gray-200" />
+                                        <TableCell className="text-right">
+                                            <div className="flex flex-col items-end">
+                                                {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+
+                                                    // State stores UNDIVIDED total unit. UI shows divided.
+                                                    return (
+                                                        <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
+                                                            <FormattedNumberInput
+                                                                value={Math.round(job.maxGross / divider)}
+                                                                onChange={(val) => handleJobChange(job.id, 'maxGross', (Number(val) || 0) * divider)}
+                                                                className="h-9 px-2 bg-white border-gray-200 text-right"
+                                                            />
+                                                            {divider > 1 && (
+                                                                <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                    <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                        {job.maxGross.toLocaleString('nl-BE')}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
                                         </TableCell>
-                                        <TableCell>
-                                            <FormattedNumberInput value={job.green} onChange={(val) => handleJobChange(job.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200" />
+                                        <TableCell className="text-right">
+                                            <div className="flex flex-col items-end">
+                                                {/* Green/Red in dialog are Machine Cycles (consistent with handleJobChange and processJobFormulas returning them as-is) */}
+                                                {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    return (
+                                                        <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
+                                                            <FormattedNumberInput value={job.green} onChange={(val) => handleJobChange(job.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            {divider > 1 && (
+                                                                <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                    <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                        {(Number(job.green || 0) * divider).toLocaleString('nl-BE')}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
                                         </TableCell>
-                                        <TableCell>
-                                            <FormattedNumberInput value={job.red} onChange={(val) => handleJobChange(job.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200" />
+                                        <TableCell className="text-right">
+                                            <div className="flex flex-col items-end">
+                                                {(() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    return (
+                                                        <div className={`flex flex-col items-end ${divider > 1 ? 'min-h-[48px] justify-end' : ''}`}>
+                                                            <FormattedNumberInput value={job.red} onChange={(val) => handleJobChange(job.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            {divider > 1 && (
+                                                                <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                    <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                        {(Number(job.red || 0) * divider).toLocaleString('nl-BE')}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-center font-medium">
+                                            {/* Delta is undivided Actual Units */}
                                             {job.delta_number?.toLocaleString('nl-BE') || '0'}
                                         </TableCell>
                                         <TableCell className="text-center font-medium">
-                                            {job.delta_percentage ? `${job.delta_percentage.toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : '0,00%'}
+                                            {job.delta_percentage ? `${(job.delta_percentage * 100).toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : '0,00%'}
                                         </TableCell>
                                         <TableCell>
                                             <Button

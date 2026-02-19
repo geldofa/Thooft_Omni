@@ -110,6 +110,14 @@ class DrukwerkenCacheService {
             jobs = jobs.filter(job => job.pressId === user.pressId);
         }
 
+        // Secondary sort by created
+        jobs.sort((a, b) => {
+            if (a.date !== b.date) return 0; // Already sorted by date
+            const timeA = a.created || '';
+            const timeB = b.created || '';
+            return timeB.localeCompare(timeA); // Newest first
+        });
+
         return jobs;
     }
 
@@ -227,6 +235,8 @@ class DrukwerkenCacheService {
                 expand: 'pers'
             });
 
+            console.log(`[DrukwerkenCache] checkForUpdates: found ${updates.length} updates since ${formattedDate}`);
+
             if (updates.length > 0) {
                 this.notifyStatus({ statusText: `Syncing ${updates.length} updates...` });
                 const jobs = updates.map(i => this.mapJob(i, user, hasPermission));
@@ -265,6 +275,17 @@ class DrukwerkenCacheService {
             console.error("Update check failed", e);
             // Don't set loading false if failed, let caller handle error or set generic error
             this.notifyStatus({ statusText: 'Update check failed' });
+        }
+    }
+
+    async putRecord(record: any, user: any, hasPermission: (perm: any) => boolean) {
+        try {
+            const job = this.mapJob(record, user, hasPermission);
+            await db.jobs.put(job);
+            await this.notifyJobs();
+            console.log(`[DrukwerkenCache] Manually added record to cache: ${job.orderNr}`);
+        } catch (error) {
+            console.error("Error putting record in cache:", error);
         }
     }
 }

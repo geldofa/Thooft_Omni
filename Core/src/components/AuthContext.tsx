@@ -110,6 +110,7 @@ export interface User {
   role: UserRole;
   press?: PressType;
   pressId?: string;
+  operator_id?: string;
 }
 
 export interface Operator {
@@ -240,7 +241,7 @@ export interface UserAccount {
   password?: string;
   role: UserRole;
   press?: PressType;
-  operatorId?: string;
+  operator_id?: string;
 }
 
 interface AuthContextType {
@@ -292,6 +293,10 @@ interface AuthContextType {
   isLoading: boolean;
   updateAvailable: boolean;
   latestVersion: string | null;
+  showUpdateDialog: boolean;
+  setShowUpdateDialog: (val: boolean) => void;
+  isUpdating: boolean;
+  setIsUpdating: (val: boolean) => void;
   checkForUpdates: () => Promise<void>;
   performUpdate: () => Promise<{ success: boolean; message: string; output?: string }>;
 }
@@ -314,8 +319,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [refreshTriggeredAt, setRefreshTriggeredAt] = useState<string | null>(null);
   const [presses, setPresses] = useState<Press[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
 
   const setOnboardingDismissed = (val: boolean) => {
@@ -391,7 +398,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchTestingMode = useCallback(async () => {
     try {
       const record = await pb.collection('app_settings').getFirstListItem('key="testing_mode"');
-      setTestingModeState(record.value === true);
+      // Handle both boolean and string "true"/"false" from JSON
+      const isEnabled = record.value === true || record.value === 'true';
+      console.log("[Auth] Fetched testing_mode:", isEnabled);
+      setTestingModeState(isEnabled);
     } catch (e) {
       setTestingModeState(false);
     }
@@ -443,8 +453,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await pb.collection('users').getList(1, 1);
       setIsFirstRun(result.totalItems === 0);
-    } catch (e) {
-      setIsFirstRun(true);
+    } catch (e: any) {
+      // If we get a 403 Forbidden, it means the collection exists but we're not authorized
+      // to list it (which is expected for a non-logged in user). This implies it's NOT a first run.
+      if (e.status === 403) {
+        setIsFirstRun(false);
+      } else {
+        // For other errors (like the collection not existing at all), we might consider it a first run
+        setIsFirstRun(true);
+      }
     }
   }, []);
 
@@ -467,7 +484,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const records = await pb.collection('users').getFullList();
       records.sort((a: any, b: any) => (a.username || '').localeCompare(b.username || ''));
       setUserAccounts(records.map((r: any) => ({
-        id: r.id, username: r.username, name: r.name, role: mapDbRoleToUi(r.role), press: r.press, operatorId: r.operatorId, password: r.plain_password
+        id: r.id, username: r.username, name: r.name, role: mapDbRoleToUi(r.role), press: r.press, operator_id: r.operator_id, password: r.plain_password
       })));
     } catch (e) {
       console.error("Fetch users failed", e);
@@ -649,17 +666,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`${pb.baseUrl}/api/custom/update/check`);
       if (response.ok) {
         const data = await response.json();
-        // Compare versions.
         // data.latestVersion comes from GitHub tag (e.g. "v1.4.0")
         // APP_VERSION comes from config (e.g. "v 1.3.2")
-        // We need a robust comparison.
-        const remote = data.latestVersion.toLowerCase().replace(/v\s*/, '');
-        const local = APP_VERSION.toLowerCase().replace(/v\s*/, '');
 
-        if (remote !== local) {
-          // Simple string inequality isn't enough (1.10 < 1.9), but good enough for now/tags
-          // Better to just check inequality or simple semantic versioning if possible
-          // For safety, we just check inequality for "Update Available"
+        if (!data.latestVersion || data.latestVersion === "v0.0.0") {
+          setUpdateAvailable(false);
+          setLatestVersion(null);
+          return;
+        }
+
+        const remote = data.latestVersion.toLowerCase().replace(/v\s*/, '').trim();
+        const local = APP_VERSION.toLowerCase().replace(/v\s*/, '').trim();
+
+        if (remote !== local && remote !== '0.0.0') {
           setUpdateAvailable(true);
           setLatestVersion(data.latestVersion);
         } else {
@@ -668,7 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (e) {
-      console.warn("Update check failed:", e);
+      console.warn("[Auth] Update check failed:", e);
     }
   }, []);
 
@@ -688,12 +707,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
       if (response.ok) {
-        return { success: true, message: data.message, output: data.output };
+        return { success: true, message: data.message || "Update voltooid" };
       } else {
-        return { success: false, message: data.message || "Update failed" };
+        return { success: false, message: data.message || "Update mislukt" };
       }
-    } catch (e: any) {
-      return { success: false, message: e.message || "Network error during update" };
+    } catch (e) {
+      return { success: false, message: e instanceof Error ? e.message : String(e) };
     }
   };
 
@@ -876,7 +895,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Actually PB backups are always "enabled" if cron is valid.
         // Let's assume we store the "enabled" state by whether cron is empty or not in standard PB, 
         // OR we just obey the `enabled` boolean from our UI state which might be stored in app_settings too?
-        // Let's store a separate `backup_config` in app_settings for enabled state if PB doesn't have it.
         // For now, let's map: 
         enabled: !!pbBackups.cron,
         cron: pbBackups.cron || '',
@@ -1046,9 +1064,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: model.id,
           username: model.username,
           name: model.name,
-          role: model.role ? mapDbRoleToUi(model.role) : 'admin',
+          role: model.role ? mapDbRoleToUi(model.role) : 'press',
           press: pressName,
-          pressId: pressId
+          pressId: pressId,
+          operator_id: model.operator_id
         });
         // Note: We do NOT set isLoading(false) here. 
         // We wait for loadData() to finish (triggered by setUser) to ensure permissions/presses are loaded.
@@ -1099,7 +1118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: authData.record.name,
             role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
             press: authData.record.press,
-            pressId: authData.record.pers
+            pressId: authData.record.pers,
+            operator_id: authData.record.operator_id
           });
           return true;
         }
@@ -1228,11 +1248,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
   useEffect(() => {
-    // Realtime subscription for system settings (specifically for forced refresh)
+    // Realtime subscription for system settings (specifically for forced refresh and testing mode)
     let isSubscribed = false;
 
     const subscribe = async () => {
-      if (!user) return;
+      // Remove restricted check - app_settings (specifically testing_mode) needs to be 
+      // observable even when not logged in for Quick Login to work.
       try {
         await pb.collection('app_settings').subscribe('*', (e) => {
           if (e.action === 'update' || e.action === 'create') {
@@ -1244,6 +1265,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (key === 'force_refresh_trigger') {
               console.log("[Auth] Received force_refresh_trigger update:", value);
               setRefreshTriggeredAt(value);
+            }
+
+            if (key === 'testing_mode') {
+              const isEnabled = value === true || value === 'true';
+              console.log("[Auth] Received testing_mode update:", isEnabled);
+              setTestingModeState(isEnabled);
             }
           }
         });
@@ -1261,7 +1288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
     };
-  }, [user?.id]);
+  }, []); // Remove user dependency to maintain subscription while logged out
 
   return (
     <AuthContext.Provider value={{
@@ -1313,7 +1340,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateAvailable,
       latestVersion,
       checkForUpdates,
-      performUpdate
+      performUpdate,
+      showUpdateDialog,
+      setShowUpdateDialog,
+      isUpdating,
+      setIsUpdating,
     }}>
       {children}
     </AuthContext.Provider>

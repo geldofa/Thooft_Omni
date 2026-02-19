@@ -1,4 +1,6 @@
 
+console.log(">>> [Update Manager] Initialization...");
+
 routerAdd("GET", "/api/custom/update/check", (c) => {
     try {
         const resp = c.response;
@@ -21,6 +23,10 @@ routerAdd("GET", "/api/custom/update/check", (c) => {
         });
 
         if (res.statusCode !== 200) {
+            // If GitHub returns 404, it likely means there are no releases yet.
+            if (res.statusCode === 404) {
+                return c.json(200, { latestVersion: "v0.0.0", message: "No releases found on GitHub" });
+            }
             return c.json(res.statusCode, { message: "Failed to fetch from GitHub", details: res.json });
         }
 

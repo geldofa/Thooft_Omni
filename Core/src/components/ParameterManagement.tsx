@@ -10,7 +10,7 @@ import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-import { Calculator, Plus, Edit, Trash2 } from 'lucide-react';
+import { Calculator, Plus, Edit, Trash2, Settings2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
@@ -39,6 +39,8 @@ export function ParameterManagement() {
     const [linkedParams, setLinkedParams] = useState<Record<string, boolean>>({});
     const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([]);
     const [finishedJobs, setFinishedJobs] = useState<FinishedPrintJob[]>([]);
+    const [outputConversions, setOutputConversions] = useState<Record<string, Record<string, number>>>({});
+    const [newExOmw, setNewExOmw] = useState<string>('');
 
     // Formula Dialog State
     const [isFormulaDialogOpen, setIsFormulaDialogOpen] = useState(false);
@@ -124,6 +126,12 @@ export function ParameterManagement() {
             const settings = await pb.collection('app_settings').getFirstListItem('key="linked_parameters"').catch(() => null);
             if (settings) {
                 setLinkedParams(settings.value || {});
+            }
+
+            // Fetch output conversions
+            const conversionSettings = await pb.collection('app_settings').getFirstListItem('key="output_conversions"').catch(() => null);
+            if (conversionSettings) {
+                setOutputConversions(conversionSettings.value || {});
             }
         } catch (error) {
             console.error("Error fetching parameters:", error);
@@ -238,6 +246,66 @@ export function ParameterManagement() {
         }
     };
 
+    const handleOutputConversionChange = async (exOmw: string, pressId: string, value: number) => {
+        const newConversions = {
+            ...outputConversions,
+            [pressId]: {
+                ...(outputConversions[pressId] || {}),
+                [exOmw]: value
+            }
+        };
+        setOutputConversions(newConversions);
+        saveOutputConversions(newConversions);
+    };
+
+    const addExOmwRow = () => {
+        if (!newExOmw) {
+            toast.error("Ongeldige waarde");
+            return;
+        }
+        // In this structure, we don't necessarily need to add a row to all presses immediately,
+        // but the UI needs to know which exOmw values to show.
+        // We can just set a default for the first press or just clear the input.
+        // For the UI to show it, at least one press must have it, or we track unique exOmw separately.
+        // Let's just set it to 0 for all active presses to ensure it shows up.
+        const newConversions = { ...outputConversions };
+        presses.filter(p => !p.archived).forEach(p => {
+            if (!newConversions[p.id]) newConversions[p.id] = {};
+            if (newConversions[p.id][newExOmw] === undefined) {
+                newConversions[p.id][newExOmw] = 1;
+            }
+        });
+
+        setOutputConversions(newConversions);
+        setNewExOmw('');
+        saveOutputConversions(newConversions);
+    };
+
+    const deleteExOmwRow = (exOmw: string) => {
+        const newConversions = { ...outputConversions };
+        Object.keys(newConversions).forEach(pressId => {
+            if (newConversions[pressId]) {
+                delete newConversions[pressId][exOmw];
+            }
+        });
+        setOutputConversions(newConversions);
+        saveOutputConversions(newConversions);
+    };
+
+    const saveOutputConversions = async (conversions: Record<string, Record<string, number>>) => {
+        try {
+            const settings = await pb.collection('app_settings').getFirstListItem('key="output_conversions"').catch(() => null);
+            if (settings) {
+                await pb.collection('app_settings').update(settings.id, { value: conversions });
+            } else {
+                await pb.collection('app_settings').create({ key: 'output_conversions', value: conversions });
+            }
+        } catch (error) {
+            console.error("Error saving output conversions:", error);
+            toast.error("Fout bij opslaan omrekeningen");
+        }
+    };
+
     const handleOpenFormulaDialog = (field?: CalculatedField) => {
         if (field) {
             setEditingFormula(field);
@@ -317,10 +385,10 @@ export function ParameterManagement() {
                 icon={Calculator}
                 className="mb-2"
             />
-            <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Pers Parameters</CardTitle>
+                        <CardTitle>Opstart parameters</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="overflow-x-auto">
@@ -404,6 +472,96 @@ export function ParameterManagement() {
                     </CardContent>
                 </Card>
 
+                <Card>
+                    <CardHeader className="flex flex-row items-center gap-2">
+                        <Settings2 className="w-5 h-5 text-blue-600" />
+                        <CardTitle>Output Omrekening</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-md flex items-start gap-3 text-sm text-blue-800">
+                                <Info className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                                <p>
+                                    Stel de <strong>deler</strong> in voor de teller. Bijv. voor <strong>Lithoman</strong> als 1 job 4 omwentelingen is, kies <strong>4</strong>. De output wordt dan berekend als <code>Ex/Omw ÷ Deler</code>.
+                                </p>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[100px]">Ex/Omw (Teller)</TableHead>
+                                            {presses.filter(p => !p.archived).map(press => (
+                                                <TableHead key={press.id} className="text-center min-w-[100px]">{press.name}</TableHead>
+                                            ))}
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {Array.from(new Set(
+                                            Object.values(outputConversions).flatMap(mappings => Object.keys(mappings))
+                                        )).sort((a, b) => Number(a) - Number(b)).map(exOmw => (
+                                            <TableRow key={exOmw}>
+                                                <TableCell className="font-bold underline text-blue-600">{exOmw}</TableCell>
+                                                {presses.filter(p => !p.archived).map(press => (
+                                                    <TableCell key={press.id}>
+                                                        <Select
+                                                            value={String(outputConversions[press.id]?.[exOmw] || 1)}
+                                                            onValueChange={(val) => handleOutputConversionChange(exOmw, press.id, Number(val))}
+                                                        >
+                                                            <SelectTrigger className="h-8 w-24 mx-auto text-center">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="1">1</SelectItem>
+                                                                <SelectItem value="2">2</SelectItem>
+                                                                <SelectItem value="4">4</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </TableCell>
+                                                ))}
+                                                <TableCell>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                        onClick={() => deleteExOmwRow(exOmw)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <div className="flex items-end gap-3 pt-4 border-t">
+                                <div className="space-y-1.5 flex-1 max-w-[150px]">
+                                    <Label className="text-xs font-bold uppercase text-slate-500">Nieuw Ex/Omw</Label>
+                                    <Input
+                                        placeholder="Bijv. 2"
+                                        value={newExOmw}
+                                        onChange={(e) => setNewExOmw(e.target.value)}
+                                        className="h-8"
+                                    />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 gap-2"
+                                    onClick={addExOmwRow}
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Rij Toevoegen
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="mt-6 space-y-6">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>Berekende Velden</CardTitle>
