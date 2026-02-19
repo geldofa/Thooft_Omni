@@ -98,3 +98,22 @@ routerAdd("POST", "/api/custom/update/apply", (c) => {
         return c.json(500, { message: e.toString() });
     }
 });
+
+routerAdd("GET", "/api/custom/git/recent-commits", (c) => {
+    try {
+        const resp = c.response;
+        const h = (typeof resp.header === 'function' ? resp.header() : resp.header);
+        if (h) {
+            h.set("Access-Control-Allow-Origin", "*");
+            h.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+        }
+
+        const result = $os.cmd("git", "log", "-n", "5", "--oneline");
+        const output = result.toString().trim();
+        const commits = output ? output.split('\n') : [];
+
+        return c.json(200, commits);
+    } catch (e) {
+        return c.json(500, { message: "Failed to fetch git history", details: e.toString() });
+    }
+});

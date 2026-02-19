@@ -300,6 +300,8 @@ interface AuthContextType {
   setIsUpdating: (val: boolean) => void;
   checkForUpdates: () => Promise<void>;
   performUpdate: () => Promise<{ success: boolean; message: string; output?: string }>;
+  recentCommits: string[];
+  fetchRecentCommits: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -324,6 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [recentCommits, setRecentCommits] = useState<string[]>([]);
 
 
   const setOnboardingDismissed = (val: boolean) => {
@@ -1317,6 +1320,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []); // Remove user dependency to maintain subscription while logged out
 
+  const fetchRecentCommits = useCallback(async () => {
+    try {
+      const response = await fetch(`${pb.baseUrl}/api/custom/git/recent-commits`, {
+        method: 'GET',
+        headers: {
+          'Authorization': pb.authStore.token
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRecentCommits(data);
+      }
+    } catch (e) {
+      console.warn("[Auth] Failed to fetch recent commits:", e);
+    }
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -1372,6 +1392,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setShowUpdateDialog,
       isUpdating,
       setIsUpdating,
+      recentCommits,
+      fetchRecentCommits,
     }}>
       {children}
     </AuthContext.Provider>

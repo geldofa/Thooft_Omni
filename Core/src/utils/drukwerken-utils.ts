@@ -1,6 +1,7 @@
 
 export interface Katern {
     id: string;
+    originalId?: string; // PocketBase ID for resumed jobs
     version: string;
     pages: number | null;
     exOmw: string;
@@ -212,6 +213,10 @@ export const evaluateFormula = (
 
         const safeParams = pressParams || {};
 
+        if (Object.keys(safeParams).length === 0) {
+            console.warn(`[evaluateFormula] No parameters found for press: ${jobPressName || 'default'}. activePresses: ${activePresses.join(', ')}`);
+        }
+
         finishedFields.forEach(field => {
             const regex = new RegExp('\\b' + escapeRegex(field.key) + '\\b', 'g');
             let value: any = (job as any)[field.key];
@@ -223,7 +228,7 @@ export const evaluateFormula = (
                 value = (job as any).delta_number || (job as any).delta || 0;
             }
 
-            const sValue = String(value).trim();
+            const sValue = String(value ?? '0').trim();
             let sanitizedValue = sValue;
 
             if (!sValue || sValue === 'null' || sValue === 'undefined') {
@@ -265,7 +270,7 @@ export const evaluateFormula = (
                 value = (parseFloat(cleanMarge) || 0) / 100;
             }
 
-            const sValue = String(value).trim();
+            const sValue = String(value ?? '0').trim();
             let sanitizedValue = sValue;
 
             if (!sValue || sValue === 'null' || sValue === 'undefined') {
@@ -296,12 +301,15 @@ export const evaluateFormula = (
         const result = Function('IF', '"use strict"; return (' + evalFormula + ')')(IF);
 
         if (typeof result === 'number') {
+            if (isNaN(result) || !isFinite(result)) {
+                console.error(`[evaluateFormula] Invalid result (NaN/Infinity): ${result} from formula: ${evalFormula}`);
+                return 0;
+            }
             return result;
         }
-
-        return result;
-    } catch (error) {
-        console.error('Formula evaluation error:', error);
-        return '';
+        return String(result);
+    } catch (e) {
+        console.error(`[evaluateFormula] Error evaluating "${formula}" (Processed: "${evalFormula}"):`, e);
+        return 0;
     }
 };

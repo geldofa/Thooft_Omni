@@ -675,7 +675,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             const formattedDatum = format(today, 'dd-MM');
 
             const promises = werkorder.katernen.map(async (katern) => {
-                const pressId = pressMap[effectivePress] || user?.pressId || '';
+                const pressId = effectivePressId;
                 const divider = outputConversions[pressId]?.[String(katern.exOmw)] || 1;
                 // The formula evaluation expects raw exOmw, and returns undivided actual units.
                 // The green/red inputs are machine cycles, so they need to be scaled to actual units for delta calculation.
@@ -740,7 +740,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     klant_order_beschrijving: werkorder.orderName,
                     versie: processedKatern.version,
                     blz: processedKatern.pages,
-                    ex_omw: parseFloat(processedKatern.exOmw) || 0, // Use the raw exOmw from katern
+                    ex_omw: parseFloat(processedKatern.exOmw) || 0,
                     netto_oplage: processedKatern.netRun,
                     opstart: processedKatern.startup,
                     k_4_4: processedKatern.c4_4,
@@ -748,35 +748,48 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     k_1_0: processedKatern.c1_0,
                     k_1_1: processedKatern.c1_1,
                     k_4_1: processedKatern.c4_1,
-                    max_bruto: Math.round(processedKatern.maxGross as number), // Round to 0 decimals
-                    groen: (processedKatern.green as number) || 0, // This is now actual units
-                    rood: (processedKatern.red as number) || 0, // This is now actual units
-                    delta: Math.round(processedKatern.delta as number), // Round to 0 decimals
+                    max_bruto: Math.round(processedKatern.maxGross as number),
+                    groen: (processedKatern.green as number) || 0,
+                    rood: (processedKatern.red as number) || 0,
+                    delta: Math.round(processedKatern.delta as number),
                     delta_percent: (processedKatern.deltaPercentage as number) || 0,
-                    pers: processedKatern.pressId || pressMap[effectivePress],
+                    pers: processedKatern.pressId || effectivePressId,
                     status: 'check',
                     opmerking: ''
                 };
 
-                const record = await pb.collection('drukwerken').create(pbData);
-                await drukwerkenCache.putRecord(record, user, hasPermission);
+                let record;
+                if (processedKatern.originalId) {
+                    record = await pb.collection('drukwerken').update(processedKatern.originalId, pbData);
+                    await addActivityLog({
+                        action: 'Updated',
+                        entity: 'FinishedJob',
+                        entityId: record.id,
+                        entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
+                        details: `Drukwerk hervat en bijgewerkt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
+                        user: user?.username || 'System',
+                        press: user?.press
+                    });
+                } else {
+                    record = await pb.collection('drukwerken').create(pbData);
+                    await addActivityLog({
+                        action: 'Created',
+                        entity: 'FinishedJob',
+                        entityId: record.id,
+                        entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
+                        details: `Drukwerk afgepunt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
+                        newValue: [
+                            `Order: ${werkorder.orderNr}`,
+                            `Blz: ${processedKatern.pages}`,
+                            `Netto: ${processedKatern.netRun}`,
+                            `Versie: ${processedKatern.version || '-'}`
+                        ].join('|||'),
+                        user: user?.username || 'System',
+                        press: user?.press
+                    });
+                }
 
-                // Log creation
-                await addActivityLog({
-                    action: 'Created',
-                    entity: 'FinishedJob',
-                    entityId: 'new',
-                    entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
-                    details: `Drukwerk afgepunt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
-                    newValue: [
-                        `Order: ${werkorder.orderNr}`,
-                        `Blz: ${processedKatern.pages}`,
-                        `Netto: ${processedKatern.netRun}`,
-                        `Versie: ${processedKatern.version || '-'}`
-                    ].join('|||'),
-                    user: user?.username || 'System',
-                    press: user?.press
-                });
+                await drukwerkenCache.putRecord(record, user, hasPermission);
             }
 
             fetchCalculatedFields();
@@ -839,7 +852,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     const record = records.find((r: any) => r.press === pressId);
 
                     if (record) {
-                        console.log(`[Drukwerken] Found params for ${pressName} (ID: ${pressId})`);
+                        console.log(`[Drukwerken] Found params for ${pressName} (ID: ${pressId})`, record);
                         updated[pressName] = {
                             id: record.id,
                             marge: parseFloat(String(record.marge || '0').replace(',', '.')) / 100 || 0,
@@ -1016,10 +1029,17 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     }, [pressFilter]);
 
     const effectivePress = useMemo(() => {
+        // For press users, use their assigned press name
         if (user?.role === 'press' && user.press) return user.press;
+        // For others, use the filter or the first active press
         if (pressFilter && pressFilter !== 'all') return pressFilter;
         return activePresses[0] || '';
     }, [user, pressFilter, activePresses]);
+
+    const effectivePressId = useMemo(() => {
+        if (user?.role === 'press' && user.pressId) return user.pressId;
+        return pressMap[effectivePress] || '';
+    }, [user, effectivePress, pressMap]);
 
 
     const requestSort = (key: string) => { // Renamed handleSort to requestSort
@@ -1260,6 +1280,55 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
         setEditingJobs(siblings);
         setIsAddJobDialogOpen(true);
+    };
+
+    const handleMoveBackToNew = (jobs: FinishedPrintJob[]) => {
+        if (!jobs || jobs.length === 0) return;
+
+        const firstJob = jobs[0];
+        const newWerkorderId = `resumed-${Date.now()} `;
+
+        const newWerkorder: Werkorder = {
+            id: newWerkorderId,
+            orderNr: firstJob.orderNr,
+            orderName: firstJob.orderName,
+            orderDate: new Date().toISOString().split('T')[0],
+            katernen: jobs.map((job, index) => ({
+                id: `${newWerkorderId}-${index + 1} `,
+                originalId: job.id, // Store the PB ID
+                version: job.version,
+                pages: job.pages,
+                exOmw: job.exOmw,
+                netRun: job.netRun || 0,
+                startup: job.startup,
+                c4_4: job.c4_4 || 0,
+                c4_0: job.c4_0 || 0,
+                c1_0: job.c1_0 || 0,
+                c1_1: job.c1_1 || 0,
+                c4_1: job.c4_1 || 0,
+                maxGross: job.maxGross,
+                green: job.green, // RAW Machine Cycles
+                red: job.red,     // RAW Machine Cycles
+                delta: job.delta_number,
+                deltaPercentage: job.delta_percentage
+            }))
+        };
+
+        setWerkorders([newWerkorder, ...werkorders]);
+        setIsAddJobDialogOpen(false);
+        navigate('/drukwerken/nieuw');
+        toast.success(`Order ${firstJob.orderNr} gekloond naar Nieuw.`);
+
+        // Log action
+        addActivityLog({
+            action: 'Updated',
+            entity: 'FinishedJob',
+            entityId: firstJob.orderNr,
+            entityName: firstJob.orderName,
+            details: `Order hervat: Gekloond van Gedrukt naar Nieuw`,
+            user: user?.username || 'System',
+            press: user?.press
+        });
     };
 
     const confirmDelete = async () => {
@@ -1578,7 +1647,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                             ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo, parameters, activePresses) as number
                                                             : katern.maxGross;
 
-                                                        const divider = outputConversions[pressMap[effectivePress]]?.[String(katern.exOmw)] || 1;
+                                                        const divider = outputConversions[effectivePressId]?.[String(katern.exOmw)] || 1;
                                                         const jobWithCalculatedMaxGross = {
                                                             ...jobWithOrderInfo,
                                                             maxGross: maxGrossVal,
@@ -1608,7 +1677,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                         </SelectTrigger>
                                                                         <SelectContent>
                                                                             {(() => {
-                                                                                const pressId = pressMap[effectivePress] || '';
+                                                                                const pressId = effectivePressId;
                                                                                 const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
                                                                                 // Fallback to 1,2,4 only when no conversions configured at all
                                                                                 const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
@@ -1885,7 +1954,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                 const cycles = (Number(raw) || 0) / divider;
                                                                 return (
                                                                     <div className="flex items-center mb-0.5">
-                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles, 0)} berekend</span>
+                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles, 0)} Omw.</span>
                                                                     </div>
                                                                 );
                                                             })()}
@@ -2064,6 +2133,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     outputConversions={outputConversions}
                     pressMap={pressMap}
                     currentPressName={effectivePress}
+                    onMoveToNew={handleMoveBackToNew}
                 />
             )}
 

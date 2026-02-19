@@ -17,7 +17,7 @@ import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
 import { FinishedPrintJob } from '../utils/drukwerken-utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, ArrowUpLeft } from 'lucide-react';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 
 interface AddFinishedJobDialogProps {
@@ -29,6 +29,7 @@ interface AddFinishedJobDialogProps {
     outputConversions?: Record<string, Record<string, number>>;
     pressMap?: Record<string, string>;
     currentPressName?: string;
+    onMoveToNew?: (jobs: FinishedPrintJob[]) => void;
 }
 
 export function AddFinishedJobDialog({
@@ -39,7 +40,8 @@ export function AddFinishedJobDialog({
     onCalculate,
     outputConversions = {},
     pressMap = {},
-    currentPressName = ''
+    currentPressName = '',
+    onMoveToNew
 }: AddFinishedJobDialogProps) {
 
     const [jobs, setJobs] = useState<FinishedPrintJob[]>([]);
@@ -48,6 +50,7 @@ export function AddFinishedJobDialog({
     const [orderName, setOrderName] = useState('');
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+    const [showDeleteChoices, setShowDeleteChoices] = useState(false);
 
     useEffect(() => {
         if (open) {
@@ -136,7 +139,15 @@ export function AddFinishedJobDialog({
         }
 
         setJobToDelete(jobId);
-        setDeleteModalOpen(true);
+
+        if (jobId.startsWith('temp-')) {
+            // New job, just confirm simple deletion
+            setDeleteModalOpen(true);
+            setShowDeleteChoices(false);
+        } else {
+            // Existing job in DB, offer choices
+            setShowDeleteChoices(true);
+        }
     };
 
     const confirmDelete = () => {
@@ -147,6 +158,23 @@ export function AddFinishedJobDialog({
             setDeletedIds(prev => [...prev, jobToDelete]);
         }
         setJobToDelete(null);
+        setDeleteModalOpen(false);
+    };
+
+    const handleAbandonEditing = () => {
+        if (!jobToDelete) return;
+        setJobs(prev => prev.filter(j => j.id !== jobToDelete));
+        // NOT adding to deletedIds
+        setJobToDelete(null);
+        setShowDeleteChoices(false);
+    };
+
+    const handlePermanentDelete = () => {
+        if (!jobToDelete) return;
+        setJobs(prev => prev.filter(j => j.id !== jobToDelete));
+        setDeletedIds(prev => [...prev, jobToDelete]);
+        setJobToDelete(null);
+        setShowDeleteChoices(false);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -179,9 +207,30 @@ export function AddFinishedJobDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[95vw] w-full max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Afgewerkt Drukwerk Bewerken (Bulk)</DialogTitle>
-                    <DialogDescription>Bewerk alle versies van deze order in één keer.</DialogDescription>
+                <DialogHeader className="relative min-h-[80px] flex flex-row items-center justify-between">
+                    <div className="flex flex-col text-left space-y-1">
+                        <DialogTitle className="text-2xl font-bold">Snel Bewerken</DialogTitle>
+                        <DialogDescription className="text-base">
+                            Bewerk alle versies van deze order in één keer.
+                        </DialogDescription>
+                    </div>
+
+                    {onMoveToNew && (
+                        <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
+                            <Button
+                                type="button"
+                                className="flex items-center gap-2.5 h-14 px-8 text-lg font-bold shadow-md hover:shadow-lg transition-all"
+                                onClick={() => onMoveToNew(jobs)}
+                                title="Kloon deze order terug naar de tab Nieuw order om verder te werken."
+                            >
+                                <ArrowUpLeft className="w-6 h-6" />
+                                Onderbroken Job hervatten
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Empty div to balance flex row if button wasn't absolute */}
+                    <div className="w-[1px]"></div>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-6 mt-4">
@@ -250,7 +299,8 @@ export function AddFinishedJobDialog({
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {(() => {
-                                                        const pressId = pressMap[job.pressName || ''] || '';
+                                                        const resolvedPressName = job.pressName || currentPressName || '';
+                                                        const pressId = pressMap[resolvedPressName] || '';
                                                         const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
                                                         const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
                                                         return options.map(val => (
@@ -284,7 +334,8 @@ export function AddFinishedJobDialog({
                                         <TableCell className="text-right">
                                             <div className="flex flex-col items-end">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const resolvedPressName = job.pressName || currentPressName || '';
+                                                    const pressId = pressMap[resolvedPressName] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
 
                                                     // State stores MACHINE CYCLES. UI shows CYCLES. Subtext shows UNITS.
@@ -311,7 +362,8 @@ export function AddFinishedJobDialog({
                                             <div className="flex flex-col items-end">
                                                 {/* Green/Red in dialog: input is Machine Cycles, stored is Total Units */}
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || currentPressName] || '';
+                                                    const resolvedPressName = job.pressName || currentPressName || '';
+                                                    const pressId = pressMap[resolvedPressName] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const localUnits = Number(job.green || 0); // This is Cycles
                                                     return (
@@ -336,7 +388,8 @@ export function AddFinishedJobDialog({
                                         <TableCell className="text-right">
                                             <div className="flex flex-col items-end">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || currentPressName] || '';
+                                                    const resolvedPressName = job.pressName || currentPressName || '';
+                                                    const pressId = pressMap[resolvedPressName] || '';
                                                     const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const localUnits = Number(job.red || 0); // This is Cycles
                                                     return (
@@ -397,11 +450,58 @@ export function AddFinishedJobDialog({
                     onOpenChange={setDeleteModalOpen}
                     onConfirm={confirmDelete}
                     title="Versie verwijderen"
-                    description="Weet je zeker dat je deze versie wilt verwijderen?"
+                    description="Weet je zeker dat je deze nieuwe versie wilt verwijderen?"
                     confirmText="Verwijderen"
                     variant="destructive"
                 />
+
+                {/* Enhanced Delete Options for DB jobs */}
+                <DeleteOptionsDialog
+                    open={showDeleteChoices}
+                    onOpenChange={setShowDeleteChoices}
+                    onAbandon={handleAbandonEditing}
+                    onDelete={handlePermanentDelete}
+                />
             </DialogContent>
         </Dialog >
+    );
+}
+
+function DeleteOptionsDialog({ open, onOpenChange, onAbandon, onDelete }: {
+    open: boolean,
+    onOpenChange: (open: boolean) => void,
+    onAbandon: () => void,
+    onDelete: () => void
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Versie verwijderen of stoppen met bewerken?</DialogTitle>
+                    <DialogDescription>
+                        Deze versie staat al in de database. Wat wil je doen?
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">1. Stoppen met bewerken</p>
+                        <p className="text-xs text-muted-foreground">Verwijdert de rij uit dit venster, maar de versie blijft ongewijzigd in de database staan.</p>
+                        <Button variant="outline" className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={onAbandon}>
+                            Stop bewerken (Behoud in database)
+                        </Button>
+                    </div>
+                    <div className="space-y-2 mt-2">
+                        <p className="text-sm font-medium text-red-600">2. Definitief verwijderen</p>
+                        <p className="text-xs text-muted-foreground">Verwijdert de versie permanent uit de database zodra je op "Opslaan" klikt.</p>
+                        <Button variant="destructive" className="w-full justify-start" onClick={onDelete}>
+                            Definitief verwijderen uit database
+                        </Button>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuleren</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
