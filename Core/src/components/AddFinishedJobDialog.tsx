@@ -247,9 +247,14 @@ export function AddFinishedJobDialog({
                                                     <SelectValue placeholder="1" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="1">1</SelectItem>
-                                                    <SelectItem value="2">2</SelectItem>
-                                                    <SelectItem value="4">4</SelectItem>
+                                                    {(() => {
+                                                        const pressId = pressMap[job.pressName || ''] || '';
+                                                        const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
+                                                        const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
+                                                        return options.map(val => (
+                                                            <SelectItem key={val} value={val}>{val}</SelectItem>
+                                                        ));
+                                                    })()}
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>

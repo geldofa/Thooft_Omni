@@ -503,23 +503,47 @@ export function ParameterManagement() {
                                         )).sort((a, b) => Number(a) - Number(b)).map(exOmw => (
                                             <TableRow key={exOmw}>
                                                 <TableCell className="font-bold underline text-blue-600">{exOmw}</TableCell>
-                                                {presses.filter(p => !p.archived).map(press => (
-                                                    <TableCell key={press.id}>
-                                                        <Select
-                                                            value={String(outputConversions[press.id]?.[exOmw] || 1)}
-                                                            onValueChange={(val) => handleOutputConversionChange(exOmw, press.id, Number(val))}
-                                                        >
-                                                            <SelectTrigger className="h-8 w-24 mx-auto text-center">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="1">1</SelectItem>
-                                                                <SelectItem value="2">2</SelectItem>
-                                                                <SelectItem value="4">4</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </TableCell>
-                                                ))}
+                                                {presses.filter(p => !p.archived).map(press => {
+                                                    const isEnabled = outputConversions[press.id]?.[exOmw] !== undefined;
+                                                    return (
+                                                        <TableCell key={press.id}>
+                                                            <div className="flex items-center gap-2 justify-center">
+                                                                <Checkbox
+                                                                    checked={isEnabled}
+                                                                    onCheckedChange={(checked) => {
+                                                                        if (checked) {
+                                                                            handleOutputConversionChange(exOmw, press.id, 1);
+                                                                        } else {
+                                                                            // Remove this exOmw for this press
+                                                                            const newConversions = { ...outputConversions };
+                                                                            if (newConversions[press.id]) {
+                                                                                const { [exOmw]: _, ...rest } = newConversions[press.id];
+                                                                                newConversions[press.id] = rest;
+                                                                            }
+                                                                            setOutputConversions(newConversions);
+                                                                            saveOutputConversions(newConversions);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                {isEnabled && (
+                                                                    <Select
+                                                                        value={String(outputConversions[press.id]?.[exOmw] || 1)}
+                                                                        onValueChange={(val) => handleOutputConversionChange(exOmw, press.id, Number(val))}
+                                                                    >
+                                                                        <SelectTrigger className="h-8 w-16 text-center">
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="1">1</SelectItem>
+                                                                            <SelectItem value="2">2</SelectItem>
+                                                                            <SelectItem value="4">4</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    );
+                                                })}
                                                 <TableCell>
                                                     <Button
                                                         variant="ghost"
