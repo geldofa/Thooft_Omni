@@ -108,9 +108,21 @@ routerAdd("GET", "/api/custom/git/recent-commits", (c) => {
             h.set("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
 
-        const result = $os.cmd("git", "log", "-n", "5", "--oneline");
-        const output = result.toString().trim();
-        const commits = output ? output.split('\n') : [];
+        const result = $os.cmd("/usr/bin/git", "-C", "/pb", "log", "-n", "8", "--pretty=format:%B%n[END_COMMIT]");
+        const outputBytes = result.combinedOutput();
+
+        let output = "";
+        if (outputBytes) {
+            // Convert byte slice to string
+            for (let i = 0; i < outputBytes.length; i++) {
+                output += String.fromCharCode(outputBytes[i]);
+            }
+        }
+
+        // Split by the delimiter and filter out empty strings
+        const commits = output.split('[END_COMMIT]')
+            .map(c => c.trim())
+            .filter(c => c.length > 0);
 
         return c.json(200, commits);
     } catch (e) {

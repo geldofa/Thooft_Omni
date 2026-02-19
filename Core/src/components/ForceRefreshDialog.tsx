@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertTriangle, GitCommit, Rocket } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 export function ForceRefreshDialog() {
-    const { refreshTriggeredAt } = useAuth();
+    const { refreshTriggeredAt, recentCommits, fetchRecentCommits } = useAuth();
     const [open, setOpen] = useState(false);
     const [lastTrigger, setLastTrigger] = useState<string | null>(null);
 
@@ -25,11 +25,13 @@ export function ForceRefreshDialog() {
                 console.log("[ForceRefresh] Trigger accepted - showing dialog");
                 setOpen(true);
                 setLastTrigger(refreshTriggeredAt);
+                // Fetch recent commits when showing the dialog
+                fetchRecentCommits();
             } else {
                 console.log("[ForceRefresh] Trigger ignored - too old");
             }
         }
-    }, [refreshTriggeredAt, lastTrigger]);
+    }, [refreshTriggeredAt, lastTrigger, fetchRecentCommits]);
 
     const handleRefresh = () => {
         window.location.reload();
@@ -47,6 +49,37 @@ export function ForceRefreshDialog() {
                         Er is een essentiële update of systeemwijziging doorgevoerd. Om door te gaan dient u de pagina te verversen.
                     </DialogDescription>
                 </DialogHeader>
+
+                {recentCommits && recentCommits.length > 0 && (
+                    <div className="my-2 space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                            <Rocket className="w-3 h-3 text-blue-500" />
+                            Recente Wijzigingen
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 rounded-lg overflow-hidden max-h-[40vh] overflow-y-auto">
+                            {recentCommits.map((commit, idx) => {
+                                const [title, ...bodyLines] = commit.split('\n');
+                                return (
+                                    <div
+                                        key={idx}
+                                        className="px-3 py-2 text-sm text-slate-600 border-b border-slate-100 last:border-0 flex items-start gap-3 hover:bg-white transition-colors"
+                                    >
+                                        <GitCommit className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-slate-800">{title}</span>
+                                            {bodyLines.length > 0 && (
+                                                <span className="text-xs text-slate-500 whitespace-pre-wrap mt-1">
+                                                    {bodyLines.join('\n').trim()}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 <div className="py-4 text-sm text-gray-500 bg-orange-50/50 p-4 rounded-lg border border-orange-100 italic">
                     Niet-opgeslagen wijzigingen kunnen verloren gaan bij het verversen.
                 </div>

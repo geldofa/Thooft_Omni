@@ -24,6 +24,7 @@ services:
       - ./pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations:ro
       - ./pb_hooks:/pb/pb_hooks:ro
+      - ./.git:/pb/.git:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -41,6 +42,7 @@ services:
           if [ "$$ARCH" = "x86_64" ]; then PB_ARCH="amd64"; else PB_ARCH="arm64"; fi &&
           curl -L "https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_$${PB_ARCH}.zip" -o /tmp/pb.zip &&
           unzip -o /tmp/pb.zip -d /pb/ &&
+          git config --global --add safe.directory /pb &&
           touch /pb/.pb_ready
         }
         /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" --dir=/pb/pb_data &&
