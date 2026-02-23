@@ -166,6 +166,7 @@ export interface FeedbackItem {
   roadmap_title?: string;
   completed_version?: string;
   completed_at?: string | null;
+  use_message_as_title?: boolean;
 }
 
 export const EXTERNAL_TAG_NAME = 'Extern';

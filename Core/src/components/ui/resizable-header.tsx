@@ -1,6 +1,6 @@
 import { Resizable } from 'react-resizable';
 import { TableHead } from './table';
-import React from 'react';
+
 
 export const ResizableHeader = ({ onResize, width, ...props }: any) => {
     if (!width) {

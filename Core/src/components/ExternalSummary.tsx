@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { useAuth, MaintenanceTask, EXTERNAL_TAG_NAME, GroupedTask, pb, Tag } from './AuthContext';
+import { MaintenanceTask, EXTERNAL_TAG_NAME, GroupedTask, pb, Tag } from './AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';

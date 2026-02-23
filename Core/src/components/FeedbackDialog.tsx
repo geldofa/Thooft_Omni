@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
+import { Switch } from './ui/switch';
 import { useAuth, FeedbackItem, pb } from './AuthContext';
 import { toast } from 'sonner';
 
@@ -27,10 +28,18 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
     // Roadmap fields
     const [showOnRoadmap, setShowOnRoadmap] = useState(false);
     const [roadmapTitle, setRoadmapTitle] = useState('');
+    const [useMessageAsTitle, setUseMessageAsTitle] = useState(true);
     const [completedVersion, setCompletedVersion] = useState('');
     const [completedAt, setCompletedAt] = useState('');
 
     const isAdmin = user?.role === 'admin';
+
+    // Sync title with message if enabled
+    useEffect(() => {
+        if (useMessageAsTitle && message) {
+            setRoadmapTitle(message);
+        }
+    }, [message, useMessageAsTitle]);
 
     useEffect(() => {
         if (open) {
@@ -52,6 +61,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 setStatus(statusMap[feedbackItem.status || 'pending'] || 'pending');
                 setShowOnRoadmap(feedbackItem.show_on_roadmap || false);
                 setRoadmapTitle(feedbackItem.roadmap_title || feedbackItem.message);
+                setUseMessageAsTitle(feedbackItem.use_message_as_title ?? (feedbackItem.roadmap_title === feedbackItem.message || !feedbackItem.roadmap_title));
                 setCompletedVersion(feedbackItem.completed_version || '');
                 setCompletedAt(feedbackItem.completed_at ? new Date(feedbackItem.completed_at).toISOString().split('T')[0] : '');
             } else {
@@ -72,6 +82,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                 setShowOnRoadmap(false);
                 setStatus('pending');
                 setRoadmapTitle('');
+                setUseMessageAsTitle(true);
                 setCompletedVersion('');
                 setCompletedAt('');
 
@@ -160,6 +171,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     status: status,
                     show_on_roadmap: showOnRoadmap,
                     roadmap_title: roadmapTitle || message,
+                    use_message_as_title: useMessageAsTitle,
                     completed_version: completedVersion,
                     completed_at: completedAt ? new Date(completedAt).toISOString() : null
                 };
@@ -185,6 +197,7 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                     status: status,
                     show_on_roadmap: showOnRoadmap,
                     roadmap_title: roadmapTitle || message,
+                    use_message_as_title: useMessageAsTitle,
                     completed_version: completedVersion,
                     completed_at: completedAt ? new Date(completedAt).toISOString() : null
                 } : {};
@@ -275,6 +288,49 @@ export function FeedbackDialog({ open, onOpenChange, feedbackItem }: FeedbackDia
                                         <SelectItem value="rejected">Afgekeurd</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="roadmap_toggle">Toon op Roadmap</Label>
+                                        <p className="text-[12px] text-muted-foreground">Toon dit item op de publieke roadmap tijdlijn.</p>
+                                    </div>
+                                    <Switch
+                                        id="roadmap_toggle"
+                                        checked={showOnRoadmap}
+                                        onCheckedChange={setShowOnRoadmap}
+                                    />
+                                </div>
+
+                                {showOnRoadmap && (
+                                    <div className="space-y-4 pt-2 border-t mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="use_message_toggle">Bericht als Titel</Label>
+                                                <p className="text-[12px] text-muted-foreground">Gebruik het feedback bericht als titel op de roadmap.</p>
+                                            </div>
+                                            <Switch
+                                                id="use_message_toggle"
+                                                checked={useMessageAsTitle}
+                                                onCheckedChange={setUseMessageAsTitle}
+                                            />
+                                        </div>
+
+                                        {!useMessageAsTitle && (
+                                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                <Label htmlFor="roadmap_title">Roadmap Titel</Label>
+                                                <input
+                                                    id="roadmap_title"
+                                                    value={roadmapTitle}
+                                                    onChange={(e) => setRoadmapTitle(e.target.value)}
+                                                    placeholder="Korte, duidelijke titel voor op de roadmap..."
+                                                    className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {['planned', 'in_progress', 'completed'].includes(status) && (

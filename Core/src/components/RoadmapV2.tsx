@@ -116,6 +116,7 @@ export function RoadmapV2() {
                     contact_operator: operator,
                     admin_comment: r.admin_comment,
                     archived: r.archived === true,
+                    use_message_as_title: r.use_message_as_title,
                 };
             }));
         } catch (e) {
@@ -204,6 +205,11 @@ export function RoadmapV2() {
                         </TableCell>
                         <TableCell className="align-top py-4">
                             <div className={`font-medium ${FONT_SIZES.table_body} whitespace-pre-wrap truncate max-w-full`} title={item.message}>{item.message}</div>
+                            {item.roadmap_title && item.roadmap_title !== item.message && (
+                                <div className={`${FONT_SIZES.table_sub} text-blue-600 mt-1 italic flex items-center gap-1`}>
+                                    <Rocket className="w-3 h-3" /> Title: {item.roadmap_title}
+                                </div>
+                            )}
                             {item.url && canManage && (
                                 <div className={`${FONT_SIZES.table_sub} text-gray-400 mt-1 truncate max-w-[300px]`} title={item.url}>
                                     Op: {item.url}

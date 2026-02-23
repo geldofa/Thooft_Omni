@@ -12,7 +12,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
-import { Katern } from './Drukwerken';
+import { Katern } from '../utils/drukwerken-utils';
 
 interface AddKaternDialogProps {
     open: boolean;

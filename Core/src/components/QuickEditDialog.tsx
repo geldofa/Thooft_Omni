@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MaintenanceTask, Operator, Ploeg, ExternalEntity } from './AuthContext';
-import { useAuth, PressType, pb } from './AuthContext';
+import { useAuth, pb } from './AuthContext';
 import {
   Dialog,
   DialogContent,

@@ -1,555 +1,647 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { MaintenanceTask, pb, Press } from './AuthContext';
-import { useAuth, PressType } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { MaintenanceTask, Press, pb } from './AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
-import { formatNumber } from '../utils/formatNumber';
-import { Printer, FileText, Settings } from 'lucide-react';
+import { Card } from './ui/card';
 import { PageHeader } from './PageHeader';
-import { MaintenanceReportManager } from './MaintenanceReportManager';
+import { MaintenanceReportManagerV2 } from './MaintenanceReportManagerV2';
+import { AllExportsDialog } from './AllExportsDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from './ui/dialog';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+} from './ui/table';
+import {
+  FileText,
+  Archive,
+  Plus,
+  Clock,
+  Pause,
+  Play,
+  Settings,
+  Download,
+  CalendarDays,
+  Zap,
+  BarChart3,
+  AlertTriangle,
+  Eye,
+} from 'lucide-react';
+
+// ─── Real Data Interfaces ──────────────────────────────────
+
+interface MaintenanceReport {
+  id: string;
+  name: string;
+  press_ids: string[];
+  period: 'day' | 'week' | 'month' | 'year';
+  auto_generate: boolean;
+  schedule_day?: number;
+  last_run?: string;
+  email_enabled: boolean;
+  email_recipients: string;
+  email_subject: string;
+  is_rolling: boolean;
+  period_offset: number;
+  schedule_hour?: number;
+  schedule_weekdays?: string[];
+  schedule_month_type?: string;
+  custom_date?: string;
+}
+
+interface GeneratedReport {
+  id: string;
+  name: string;
+  configName: string;
+  createdAt: string;
+  file: string;
+  generated_at?: string;
+  created?: string;
+  expand?: {
+    maintenance_report?: {
+      name: string;
+    };
+  };
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+
+const FREQ_LABELS: Record<string, string> = {
+  day: 'Dagelijks',
+  week: 'Wekelijks',
+  month: 'Maandelijks',
+  year: 'Jaarlijks',
+};
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${date} ${time}`;
+}
+
+function getBadgeStyle(configName: string): React.CSSProperties {
+  if (configName === 'Manueel') {
+    return { backgroundColor: '#ede9fe', color: '#6d28d9', borderColor: '#ddd6fe' };
+  }
+  if (configName.toLowerCase().includes('week')) {
+    return { backgroundColor: '#dbeafe', color: '#1d4ed8', borderColor: '#bfdbfe' };
+  }
+  if (configName.toLowerCase().includes('maand')) {
+    return { backgroundColor: '#d1fae5', color: '#047857', borderColor: '#a7f3d0' };
+  }
+  if (configName.toLowerCase().includes('jaar')) {
+    return { backgroundColor: '#fef3c7', color: '#b45309', borderColor: '#fde68a' };
+  }
+  return { backgroundColor: '#f3f4f6', color: '#374151', borderColor: '#e5e7eb' };
+}
+
+// ─── Component ──────────────────────────────────────────────
 
 interface ReportsProps {
-  tasks?: MaintenanceTask[]; // Optional for backward compatibility during transition
+  tasks?: MaintenanceTask[];
   presses?: Press[];
 }
 
-type OverdueFilter = 'all' | '1m' | '3m' | '1y';
-
-export function Reports({ tasks: initialTasks, presses: initialPresses }: ReportsProps) {
-  const { } = useAuth();
-  const [tasks, setTasks] = useState<MaintenanceTask[]>(initialTasks || []);
-  const [presses, setPresses] = useState<Press[]>(initialPresses || []);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (initialTasks) setTasks(initialTasks);
-  }, [initialTasks]);
-
-  useEffect(() => {
-    if (initialPresses) setPresses(initialPresses);
-  }, [initialPresses]);
+export function Reports({ tasks = [] }: ReportsProps) {
+  const navigate = useNavigate();
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [allExportsOpen, setAllExportsOpen] = useState(false);
+  const [configDialogOpen, setConfigDialogOpen] = useState<MaintenanceReport | null>(null);
+  const [configs, setConfigs] = useState<MaintenanceReport[]>([]);
+  const [presses, setPresses] = useState<Press[]>([]);
+  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>('new');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoadingReports, setIsLoadingReports] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const [records, pressRecords] = await Promise.all([
-        pb.collection('onderhoud').getFullList({
-          sort: 'sort_order,created',
-          expand: 'category,pers,assigned_operator,assigned_team,tags',
-        }),
-        pb.collection('persen').getFullList()
+      setIsLoadingReports(true);
+      const [reportsData, pressesData, filesData] = await Promise.all([
+        pb.collection('maintenance_reports').getFullList<MaintenanceReport>(),
+        pb.collection('persen').getFullList({ sort: 'naam' }),
+        pb.collection('report_files').getList<GeneratedReport>(1, 10, {
+          sort: '-generated_at',
+          expand: 'maintenance_report'
+        })
       ]);
 
-      setPresses(pressRecords.map((r: any) => ({
-        id: r.id,
-        name: r.naam,
-        active: r.active !== false,
-        archived: r.archived === true
+      setConfigs(reportsData);
+      setPresses(pressesData.map((p: any) => ({
+        id: p.id,
+        name: p.naam,
+        active: p.active,
+        archived: p.archived,
+        category_order: p.category_order
       })));
 
-      const flattened: MaintenanceTask[] = records.map((record: any) => {
-        const categoryName = record.expand?.category?.naam || 'Uncategorized';
-        const pressName = record.expand?.pers?.naam || 'Unknown';
-
-        return {
-          id: record.id,
-          task: record.task,
-          subtaskName: record.subtask,
-          taskSubtext: record.task_subtext,
-          subtaskSubtext: record.subtask_subtext,
-          category: categoryName,
-          categoryId: record.category,
-          press: pressName,
-          pressId: record.pers,
-          lastMaintenance: record.last_date ? new Date(record.last_date) : null,
-          nextMaintenance: record.next_date ? new Date(record.next_date) : new Date(),
-          maintenanceInterval: record.interval,
-          maintenanceIntervalUnit: record.interval_unit === 'Dagen' ? 'days' :
-            record.interval_unit === 'Weken' ? 'weeks' :
-              record.interval_unit === 'Maanden' ? 'months' :
-                record.interval_unit === 'Jaren' ? 'years' : 'days',
-          assignedTo: [
-            ...(record.expand?.assigned_operator?.map((o: any) => o.naam) || []),
-            ...(record.expand?.assigned_team?.map((t: any) => t.name) || [])
-          ].join(', '),
-          opmerkingen: record.opmerkingen || '',
-          comment: record.comment || '',
-          commentDate: record.commentDate ? new Date(record.commentDate) : null,
-          sort_order: record.sort_order || 0,
-          isExternal: record.is_external || false,
-          tagIds: record.tags || [],
-          created: record.created,
-          updated: record.updated
-        };
-      });
-
-      setTasks(flattened);
-    } catch (e) {
-      console.error("Failed to fetch data in Reports", e);
+      setGeneratedReports(filesData.items.map(item => ({
+        ...item,
+        name: item.file,
+        configName: item.expand?.maintenance_report?.name || 'Manueel',
+        createdAt: item.generated_at || item.created || '',
+      })));
+    } catch (error) {
+      console.error("Error fetching data:", error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingReports(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!initialTasks || !initialPresses) {
-      fetchData();
-    }
-  }, [fetchData, initialTasks, initialPresses]);
-  const [selectedPress, setSelectedPress] = useState<PressType | 'all'>(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      return (sessionStorage.getItem('reports_selectedPress') as PressType | 'all') || 'all';
-    }
-    return 'all';
+    fetchData();
+  }, [fetchData]);
+
+  const getPressName = (report: MaintenanceReport) => {
+    if (!report.press_ids || !Array.isArray(report.press_ids) || report.press_ids.length === 0) return 'Alle persen';
+    const names = report.press_ids.map(id => presses.find(p => p.id === id)?.name).filter(Boolean);
+    if (names.length === 0) return 'Alle persen';
+    if (names.length > 2) return `${names[0]}, ${names[1]} +${names.length - 2}`;
+    return names.join(', ');
+  };
+
+  // Count due tasks for the quick-export button
+  const dueTasks = tasks.filter(t => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(t.nextMaintenance) < today;
   });
-  const [overdueFilter, setOverdueFilter] = useState<OverdueFilter>(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      return (sessionStorage.getItem('reports_overdueFilter') as OverdueFilter) || 'all';
-    }
-    return 'all';
-  });
 
-  useEffect(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('reports_selectedPress', selectedPress);
-    }
-  }, [selectedPress]);
-
-  useEffect(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('reports_overdueFilter', overdueFilter);
-    }
-  }, [overdueFilter]);
-  const printRef = useRef<HTMLDivElement>(null);
-
-  // --- CONFIGURATION CONSTANTS ---
-  // EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
-  const COL_WIDTHS = {
-    task: '40%',
-    status: '15%',
-    assigned: '10%',
-    remarks: '35%'
-  };
-
-  const FONT_SIZES = {
-    title: 'text-2xl',      // Main report titles
-    section: 'text-lg',    // Press names and summary headers
-    body: 'text-sm',       // Table rows and general text
-    label: 'text-xs',      // Table headers and small labels
-    detail: 'text-[10px]'  // Status details (e.g., "geleden")
-  };
-
-  const REPORT_HEADERS = [
-    { label: 'Taak', w: COL_WIDTHS.task, key: 'task' },
-    { label: 'Gepland / Status', w: COL_WIDTHS.status, key: 'due_status' },
-    { label: 'Laatst door', w: COL_WIDTHS.assigned, key: 'assigned' },
-    { label: 'Opmerkingen', w: COL_WIDTHS.remarks, key: 'opmerkingen' },
-  ];
-
-  // --- STYLING CONSTANTS ---
-
-  const formatDate = (date: Date | null): string => {
-    if (!date) return 'N/A';
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
-  };
-
-  const getOverdueTasks = (press?: PressType) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let filteredTasks = tasks.filter(task => {
-      const dueDate = new Date(task.nextMaintenance);
-      dueDate.setHours(0, 0, 0, 0);
-
-      if (dueDate >= today) return false;
-
-      if (overdueFilter === 'all') return true;
-
-      const diffTime = Math.abs(today.getTime() - dueDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (overdueFilter === '1m') return diffDays > 30;
-      if (overdueFilter === '3m') return diffDays > 90;
-      if (overdueFilter === '1y') return diffDays > 365;
-
-      return true;
-    });
-
-    if (press) {
-      filteredTasks = filteredTasks.filter(task => task.press === press);
-    }
-
-    return filteredTasks;
-  };
-
-  const getDueSoonTasks = (press?: PressType) => {
-    if (overdueFilter !== 'all') return [];
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const weekFromNow = new Date(today);
-    weekFromNow.setDate(weekFromNow.getDate() + 7);
-
-    let filteredTasks = tasks.filter(task => {
-      const next = new Date(task.nextMaintenance);
-      next.setHours(0, 0, 0, 0);
-      return next >= today && next <= weekFromNow;
-    });
-
-    if (press) {
-      filteredTasks = filteredTasks.filter(task => task.press === press);
-    }
-
-    return filteredTasks;
-  };
-
-  const groupTasksByCategory = (tasksToGroup: MaintenanceTask[]) => {
-    const groups: Record<string, MaintenanceTask[]> = {};
-    tasksToGroup.forEach(task => {
-      const category = task.category || 'Uncategorized';
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(task);
-    });
-    return groups;
-  };
-
-  // ... existing code ...
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const [view, setView] = useState<'reports' | 'config'>('reports'); // [NEW] View state
-
-  // [NEW] If in config view, render manager
-  if (view === 'config') {
-    return (
-      <div className="w-full mx-auto space-y-4">
-        <Button
-          variant="ghost"
-          onClick={() => setView('reports')}
-          className="mb-2 pl-0 hover:bg-transparent hover:text-blue-600"
-        >
-          ← Terug naar overzicht
-        </Button>
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          {/* Dynamic Import to avoid circular dependencies if any, though likely fine as static */}
-          <MaintenanceReportManager tasks={initialTasks} />
-        </div>
-      </div>
-    );
-  }
-
-  const activePresses = presses.filter(p => p.active && !p.archived);
-  const pressesToShow = selectedPress === 'all'
-    ? activePresses.map(p => p.name as PressType)
-    : [selectedPress as PressType];
-
-  // Helper component for rendering table headers dynamically
-  const ReportTableHeader = () => (
-    <thead>
-      <tr className="text-xs text-gray-400 uppercase border-b border-gray-100 bg-gray-50/30">
-        {REPORT_HEADERS.map((header) => (
-          <th
-            key={header.key}
-            className="py-2 px-2 font-semibold text-left"
-            style={{ width: header.w }}
-          >
-            {header.label}
-          </th>
-        ))}
-      </tr>
-    </thead>
-  );
-
-  const TableRow = ({ task, isOverdue }: { task: MaintenanceTask, isOverdue: boolean }) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(task.nextMaintenance);
-    dueDate.setHours(0, 0, 0, 0);
-
-    const diffTime = Math.abs(today.getTime() - dueDate.getTime());
-    const daysDiff = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    const displayName = task.subtaskName && task.subtaskName !== task.task
-      ? `${task.task} -> ${task.subtaskName}`
-      : task.task;
-
-    const displaySubtext = task.subtaskName && task.subtaskName !== task.task
-      ? task.subtaskSubtext || task.taskSubtext
-      : task.taskSubtext;
-
-    return (
-      <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${FONT_SIZES.body}`}>
-        {/* Task */}
-        <td className="py-2 px-2" style={{ width: COL_WIDTHS.task }}>
-          <div className="font-medium text-gray-900 truncate" title={displayName}>{displayName}</div>
-          {displaySubtext && (
-            <div className={`text-gray-500 truncate ${FONT_SIZES.label}`} title={displaySubtext}>{displaySubtext}</div>
-          )}
-        </td>
-        {/* Due / Status */}
-        <td className="py-2 px-2 whitespace-nowrap" style={{ width: COL_WIDTHS.status }}>
-          <div className="flex flex-col">
-            <span className="text-gray-600">{formatDate(task.nextMaintenance)}</span>
-            <span className={`${FONT_SIZES.detail} uppercase font-bold tracking-tight ${isOverdue ? 'text-red-600' : 'text-orange-600'}`}>
-              {daysDiff} {daysDiff === 1 ? 'dag' : 'dagen'} {isOverdue ? 'geleden' : 'resterend'}
-            </span>
-          </div>
-        </td>
-        {/* Assigned */}
-        <td className="py-2 px-2 text-gray-600 truncate" style={{ width: COL_WIDTHS.assigned }} title={task.assignedTo || '-'}>
-          {task.assignedTo || '-'}
-        </td>
-        {/* Opmerkingen */}
-        <td className="py-2 px-2 text-gray-500 italic truncate" style={{ width: COL_WIDTHS.remarks }} title={task.opmerkingen}>
-          {task.opmerkingen || '-'}
-        </td>
-      </tr>
-    );
+  const handleCloseConfigDialog = () => {
+    setConfigDialogOpen(null);
   };
 
   return (
-    <div className="w-full mx-auto">
-      {isLoading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-2">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            <p className="font-medium text-blue-900 text-lg">Laden...</p>
+    <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-hidden pb-4">
+      {/* ─── Header ───────────────────────────────────────── */}
+      <PageHeader
+        title="Rapport Beheer"
+        description="Beheer automatische en handmatige onderhoudsrapportages"
+        icon={BarChart3}
+        iconColor="text-blue-600"
+        iconBgColor="bg-blue-50"
+        actions={
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAllExportsOpen(true)}
+              className="gap-2 shrink-0 bg-white"
+            >
+              <Archive className="w-4 h-4" />
+              Alle Exports
+            </Button>
           </div>
+        }
+        className="mb-0 shrink-0"
+      />
+
+      {/* ─── Top Section: Config Cards ────────────────────── */}
+      <div className="shrink-0 flex flex-col min-h-0">
+        <div className="flex items-center gap-2 mb-3 shrink-0">
+          <Settings className="w-4 h-4" style={{ color: '#9ca3af' }} />
+          <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Rapport Configuraties
+          </h2>
         </div>
-      )}
-      <div className="no-print">
-        {/* HEADER ROW - LEFT ALIGNED TITLE, RIGHT ALIGNED BUTTON */}
-        <PageHeader
-          title="Onderhoudsrapportages"
-          description="Overzicht van de onderhoudsstatus"
-          icon={FileText}
-          actions={
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setView('config')} className="gap-2">
-                <Settings className="w-4 h-4" />
-                Beheer
-              </Button>
-              <Button onClick={handlePrint} className="gap-2 shadow-sm">
-                <Printer className="w-4 h-4" />
-                Printen
-              </Button>
-            </div>
-          }
-          className="mb-1"
-        />
 
-        {/* CONTROLS ROW - FORCED SINGLE ROW (justify-between) */}
-        <div className="flex items-center justify-between gap-4 w-full mb-2">
-
-          {/* LEFT: PRESS SELECTION */}
-          <div className="flex-1 overflow-x-auto no-scrollbar py-2">
-            <Tabs value={selectedPress} onValueChange={(value) => setSelectedPress(value as PressType | 'all')}>
-              <TabsList className="tab-pill-list">
-                <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
-                {activePresses.map((press) => (
-                  <TabsTrigger key={press.id} value={press.name} className="tab-pill-trigger">
-                    {press.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* RIGHT: OVERDUE FILTER */}
-          <div>
-            <Tabs value={overdueFilter} onValueChange={(value) => setOverdueFilter(value as OverdueFilter)}>
-              <TabsList className="tab-pill-list">
-                <TabsTrigger value="all" className="tab-pill-trigger">Alle</TabsTrigger>
-                <TabsTrigger value="1m" className="tab-pill-trigger">&gt; 1 Maand</TabsTrigger>
-                <TabsTrigger value="3m" className="tab-pill-trigger">&gt; 3 Maanden</TabsTrigger>
-                <TabsTrigger value="1y" className="tab-pill-trigger">&gt; 1 Jaar</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Printable Content */}
-      <div ref={printRef} className="print-content">
-        <style>{`
-          @media print {
-            body * {
-              visibility: hidden;
-            }
-            .print-content, .print-content * {
-              visibility: visible;
-            }
-            .print-content {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              padding: 0;
-              margin: 0;
-            }
-            .no-print {
-              display: none !important;
-            }
-            @page {
-              size: A4;
-              margin: 20mm;
-            }
-            tr {
-              break-inside: avoid;
-            }
-            thead {
-              display: table-header-group;
-            }
-          }
-        `}</style>
-// ... rest of file
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
-          {/* PRINTABLE REPORT TITLE BLOCK */}
-          <div className="mb-2 border-b pb-4 text-center">
-            <h1 className={`${FONT_SIZES.title} font-extrabold text-gray-900 tracking-tight`}>Onderhoudsrapport</h1>
-            <p className="text-gray-500 text-sm mt-1">Gegenereerd op {new Date().toLocaleDateString('nl-NL')}</p>
-          </div>
-
-          {/* STATS SUMMARY BAR */}
-          <div className="flex justify-around items-center bg-gray-50 rounded-lg p-4 mb-2 border border-gray-100">
-            <div className="text-center">
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Totaal Taken</div>
-              <div className="text-2xl font-bold text-gray-900">{formatNumber(tasks.length)}</div>
-            </div>
-            <div className="text-center border-l border-gray-200 pl-8">
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Achterstallig</div>
-              <div className="text-2xl font-bold text-red-600">{formatNumber(tasks.filter(t => new Date(t.nextMaintenance) < new Date()).length)}</div>
-            </div>
-            <div className="text-center border-l border-gray-200 pl-8">
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Binnen 7 Dagen</div>
-              <div className="text-2xl font-bold text-orange-500">
-                {formatNumber(tasks.filter(t => {
-                  const d = new Date(t.nextMaintenance);
-                  const now = new Date();
-                  const week = new Date();
-                  week.setDate(week.getDate() + 7);
-                  return d >= now && d <= week;
-                }).length)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto pb-2 min-h-[140px]">
+          {/* ── New Export Card ── */}
+          <Card
+            className="overflow-hidden cursor-pointer group"
+            style={{
+              position: 'relative',
+              border: 'none',
+              transition: 'all 0.3s',
+              minHeight: '140px',
+            }}
+            onClick={() => setManualDialogOpen(true)}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(135deg, #6366f1, #2563eb, #7c3aed)',
+                opacity: 0.9,
+              }}
+            />
+            <div style={{ position: 'relative', padding: '1.25rem', color: 'white' }}>
+              <div className="flex items-start justify-between mb-4">
+                <div style={{ padding: '0.5rem', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}>
+                  <Plus className="w-4 h-4" style={{ width: '1.25rem', height: '1.25rem' }} />
+                </div>
               </div>
+              <h3 style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.25rem' }}>Nieuwe Export</h3>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem' }}>
+                Genereer direct een rapport of gebruik een bestaande configuratie
+              </p>
             </div>
-          </div>
+          </Card>
 
-
-          {/* 
-              This table is purely for printing purposes if we wanted a condensed list, 
-              but the below per-press sections are better. 
-              We can keep this structure wrapper. 
-          */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse table-fixed hidden">
-              <ReportTableHeader />
-              <tbody className="divide-y divide-gray-100">
-                {/* Global list if needed */}
-              </tbody>
-            </table>
-          </div>
-
-          {pressesToShow.map((press) => {
-            const overdueTasks = getOverdueTasks(press);
-            const dueSoonTasks = getDueSoonTasks(press);
-
-            const groupedOverdue = groupTasksByCategory(overdueTasks);
-            const groupedDueSoon = groupTasksByCategory(dueSoonTasks);
-
-            const overdueCategories = Object.keys(groupedOverdue).sort();
-            const dueSoonCategories = Object.keys(groupedDueSoon).sort();
-
-            if (overdueTasks.length === 0 && dueSoonTasks.length === 0) return null;
-
-            return (
-              <div key={press} className="mb-10 break-inside-avoid">
-                <div className="flex items-center mb-2 bg-gray-50 p-2 rounded-lg border border-gray-100 flex-nowrap overflow-hidden">
-                  <div className="flex-1" /> {/* Left Spacer */}
-                  <h2 className={`${FONT_SIZES.section} font-bold text-gray-900 text-center whitespace-nowrap mx-4`}>{press}</h2>
-                  <div className="flex-1 flex justify-end items-center gap-2 whitespace-nowrap flex-shrink-0">
-                    {overdueTasks.length > 0 && (
-                      <Badge variant="destructive" className="font-mono">
-                        {formatNumber(overdueTasks.length)} Te laat
+          {/* ── Auto Config Cards ── */}
+          {configs.map((config) => (
+            <Card
+              key={config.id}
+              className="cursor-pointer group"
+              style={{
+                borderLeft: `4px solid ${config.auto_generate ? '#3b82f6' : '#d1d5db'}`,
+                transition: 'all 0.3s',
+              }}
+              onClick={() => { setConfigDialogOpen(config); }}
+            >
+              <div className="p-4" style={{ padding: '1.25rem' }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div
+                    className="rounded-lg"
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: config.auto_generate ? '#eff6ff' : '#f9fafb',
+                    }}
+                  >
+                    <CalendarDays
+                      className="w-4 h-4"
+                      style={{ color: config.auto_generate ? '#2563eb' : '#9ca3af' }}
+                    />
+                  </div>
+                  <div className="flex gap-1" style={{ gap: '0.375rem' }}>
+                    <Badge
+                      variant="secondary"
+                      style={{
+                        fontSize: '10px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        fontWeight: 600,
+                        backgroundColor: '#eff6ff',
+                        color: '#1d4ed8',
+                        borderColor: '#dbeafe',
+                      }}
+                    >
+                      {FREQ_LABELS[config.period]}
+                    </Badge>
+                    {config.auto_generate ? (
+                      <Badge
+                        variant="secondary"
+                        style={{
+                          fontSize: '10px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 600,
+                          backgroundColor: '#ecfdf5',
+                          color: '#047857',
+                          borderColor: '#d1fae5',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                        }}
+                      >
+                        <Play style={{ width: '0.625rem', height: '0.625rem', fill: 'currentColor' }} />
+                        Actief
                       </Badge>
-                    )}
-                    {dueSoonTasks.length > 0 && (
-                      <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 font-mono">
-                        {formatNumber(dueSoonTasks.length)} Binnenkort
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        style={{
+                          fontSize: '10px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 600,
+                          backgroundColor: '#fffbeb',
+                          color: '#b45309',
+                          borderColor: '#fef3c7',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                        }}
+                      >
+                        <Pause style={{ width: '0.625rem', height: '0.625rem' }} />
+                        Gepauzeerd
                       </Badge>
                     )}
                   </div>
                 </div>
-
-                {/* Overdue Section */}
-                {overdueTasks.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-red-700 font-semibold mb-3 border-b border-red-100 pb-1 text-sm uppercase tracking-wide no-print">
-                      Achterstallige Taken
-                    </h3>
-
-                    {overdueCategories.map(category => (
-                      <div key={`overdue-${category}`} className="mb-2 pl-2 border-l-2 border-red-100">
-                        <h4 className={`font-semibold text-gray-700 mb-2 ${FONT_SIZES.body}`}>{category}</h4>
-                        <table className="w-full text-left border-collapse table-fixed">
-                          <ReportTableHeader />
-                          <tbody>
-                            {groupedOverdue[category].map(task => (
-                              <TableRow key={task.id} task={task} isOverdue={true} />
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Due Soon Section */}
-                {dueSoonTasks.length > 0 && (
-                  <div className={`${overdueTasks.length > 0 ? 'mt-8' : ''} mb-6`}>
-                    <h3 className="text-orange-700 font-semibold mb-3 border-b border-orange-100 pb-1 text-sm uppercase tracking-wide no-print">
-                      Gepland voor deze week
-                    </h3>
-
-                    {dueSoonCategories.map(category => (
-                      <div key={`soon-${category}`} className="mb-2 pl-2 border-l-2 border-orange-100">
-                        <h4 className={`font-semibold text-gray-700 mb-2 ${FONT_SIZES.body}`}>{category}</h4>
-                        <table className="w-full text-left border-collapse table-fixed">
-                          <ReportTableHeader />
-                          <tbody>
-                            {groupedDueSoon[category].map(task => (
-                              <TableRow key={task.id} task={task} isOverdue={false} />
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <h3 style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                  {config.name}
+                </h3>
+                <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
+                  {getPressName(config)}
+                </p>
               </div>
-            );
-          })}
-
-          {pressesToShow.every(press => getOverdueTasks(press).length === 0 && getDueSoonTasks(press).length === 0) && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-              <p className="text-gray-500 font-medium">No tasks found matching your criteria.</p>
-              {overdueFilter !== 'all' && (
-                <p className="text-sm text-gray-400 mt-1">Try adjusting the overdue filter.</p>
-              )}
-            </div>
-          )}
+            </Card>
+          ))}
         </div>
       </div>
-    </div>
+
+      {/* ─── Bottom Section: Generated Reports ────────────── */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4" style={{ color: '#9ca3af' }} />
+            <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Laatste {generatedReports.length} Rapporten
+            </h2>
+          </div>
+          <Button variant="link" size="sm" className="text-xs text-blue-600 p-0 h-auto" onClick={() => setAllExportsOpen(true)}>
+            Bekijk volledige historie
+          </Button>
+        </div>
+
+        <Card className="flex-1 overflow-auto border flex flex-col">
+          {isLoadingReports ? (
+            <div className="flex flex-col items-center justify-center p-12 text-gray-400">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mb-2" />
+              <p className="text-[10px] uppercase font-bold tracking-widest">Laden...</p>
+            </div>
+          ) : (
+            <Table className="relative min-w-full">
+              <TableHeader className="sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10 shadow-sm">
+                <TableRow style={{ backgroundColor: '#f9fafb' }}>
+                  <TableHead style={{ width: '180px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Bron</TableHead>
+                  <TableHead style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Rapport</TableHead>
+                  <TableHead style={{ width: '180px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Aangemaakt</TableHead>
+                  <TableHead style={{ width: '80px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', borderRight: 'none' }}>Actie</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {generatedReports.map((report, idx) => (
+                  <TableRow key={report.id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#fafafa' }}>
+                    <td className="p-2" style={{ borderRight: 'none' }}>
+                      <Badge
+                        variant="secondary"
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          ...getBadgeStyle(report.configName),
+                        }}
+                      >
+                        {report.configName}
+                      </Badge>
+                    </td>
+                    <td className="p-2" style={{ fontWeight: 500, color: '#111827', fontSize: '0.875rem', borderRight: 'none' }}>
+                      <div className="flex items-center gap-2">
+                        <FileText style={{ width: '0.875rem', height: '0.875rem', color: '#d1d5db', flexShrink: 0 }} />
+                        {report.name}
+                      </div>
+                    </td>
+                    <td className="p-2" style={{ color: '#6b7280', fontSize: '0.75rem', borderRight: 'none' }}>
+                      <div className="flex items-center gap-1" style={{ gap: '0.375rem' }}>
+                        <Clock style={{ width: '0.75rem', height: '0.75rem', color: '#d1d5db' }} />
+                        {formatDate(report.createdAt)}
+                      </div>
+                    </td>
+                    <td className="p-2" style={{ textAlign: 'right', borderRight: 'none' }}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          style={{ height: '1.75rem', width: '1.75rem', padding: 0, color: '#6b7280' }}
+                          onClick={() => window.open(pb.files.getURL(report, report.file), '_blank')}
+                        >
+                          <Eye style={{ width: '0.875rem', height: '0.875rem' }} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          style={{ height: '1.75rem', width: '1.75rem', padding: 0, color: '#2563eb' }}
+                          onClick={() => window.open(pb.files.getURL(report, report.file) + "?download=1", '_blank')}
+                        >
+                          <Download style={{ width: '0.875rem', height: '0.875rem' }} />
+                        </Button>
+                      </div>
+                    </td>
+                  </TableRow>
+                ))}
+
+                {generatedReports.length === 0 && (
+                  <TableRow>
+                    <td colSpan={4} className="p-2" style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
+                      <FileText style={{ width: '2.5rem', height: '2.5rem', margin: '0 auto 0.75rem', opacity: 0.2 }} />
+                      <p style={{ fontWeight: 500 }}>Nog geen rapporten gegenereerd</p>
+                    </td>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </Card>
+      </div>
+
+      {/* ─── New Export Dialog ────────────────────────────── */}
+      <Dialog open={manualDialogOpen} onOpenChange={(open) => {
+        setManualDialogOpen(open);
+        if (!open) fetchData();
+      }}>
+        <DialogContent className="overflow-y-auto p-0" style={{ maxWidth: '64rem', width: '95vw', maxHeight: '90vh' }}>
+          {previewUrl ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '80vh' }}>
+              <div style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Rapport Voorbeeld</h3>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setPreviewUrl(null)}>
+                    Terug
+                  </Button>
+                  <Button onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = previewUrl + "?download=1";
+                    link.download = ""; // Use original filename from server
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setPreviewUrl(null);
+                    setManualDialogOpen(false);
+                    navigate('/Rapport');
+                  }} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                    <Download className="w-4 h-4" />
+                    Download & Terug
+                  </Button>
+                </div>
+              </div>
+              <iframe src={previewUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="PDF Preview" />
+            </div>
+          ) : (
+            <>
+              <DialogHeader style={{ padding: '1.5rem 1.5rem 0' }}>
+                <DialogTitle className="flex items-center gap-2" style={{ fontSize: '1.25rem', fontWeight: 700 }}>
+                  <div className="rounded-lg" style={{ padding: '0.375rem', backgroundColor: '#e0e7ff' }}>
+                    <Plus className="w-4 h-4" style={{ color: '#4f46e5' }} />
+                  </div>
+                  Nieuwe Export
+                </DialogTitle>
+                <DialogDescription style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                  Exporteer alle openstaande taken of gebruik een bestaande configuratie
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Quick actions bar */}
+              <div style={{ padding: '0 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {/* Due tasks quick export card */}
+                  <Card
+                    className="cursor-pointer group"
+                    style={{
+                      borderLeft: `4px solid ${selectedConfigId === 'new' ? '#3b82f6' : (dueTasks.length > 0 ? '#ef4444' : '#d1d5db')}`,
+                      transition: 'all 0.3s',
+                    }}
+                    onClick={() => setSelectedConfigId('new')}
+                  >
+                    <div className="p-4" style={{ padding: '1.25rem' }}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div
+                          className="rounded-lg"
+                          style={{
+                            padding: '0.5rem',
+                            backgroundColor: selectedConfigId === 'new' ? '#eff6ff' : (dueTasks.length > 0 ? '#fef2f2' : '#f9fafb'),
+                          }}
+                        >
+                          <AlertTriangle
+                            className="w-4 h-4"
+                            style={{ color: selectedConfigId === 'new' ? '#2563eb' : (dueTasks.length > 0 ? '#ef4444' : '#9ca3af') }}
+                          />
+                        </div>
+                      </div>
+                      <h3 style={{ fontWeight: 600, color: '#e03805ff', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                        Onderhoud nu nodig
+                      </h3>
+                      <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
+                        {dueTasks.length > 0
+                          ? `${dueTasks.length} ${dueTasks.length === 1 ? 'taak' : 'taken'}`
+                          : 'Geen taken'}
+                      </p>
+                    </div>
+                  </Card>
+
+                  {/* Existing configs quick-load cards */}
+                  {configs.map(config => (
+                    <Card
+                      key={config.id}
+                      className="cursor-pointer group"
+                      style={{
+                        borderLeft: `4px solid ${selectedConfigId === config.id ? '#3b82f6' : '#d1d5db'}`,
+                        transition: 'all 0.3s',
+                      }}
+                      onClick={() => setSelectedConfigId(config.id)}
+                    >
+                      <div className="p-4" style={{ padding: '1.25rem' }}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div
+                            className="rounded-lg"
+                            style={{
+                              padding: '0.5rem',
+                              backgroundColor: selectedConfigId === config.id ? '#eff6ff' : '#f9fafb',
+                            }}
+                          >
+                            <CalendarDays
+                              className="w-4 h-4"
+                              style={{ color: selectedConfigId === config.id ? '#2563eb' : '#9ca3af' }}
+                            />
+                          </div>
+                          <div className="flex gap-1" style={{ gap: '0.375rem' }}>
+                            <Badge
+                              variant="secondary"
+                              style={{
+                                fontSize: '10px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                fontWeight: 600,
+                                backgroundColor: '#eff6ff',
+                                color: '#1d4ed8',
+                                borderColor: '#dbeafe',
+                              }}
+                            >
+                              {FREQ_LABELS[config.period]}
+                            </Badge>
+                          </div>
+                        </div>
+                        <h3 style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                          {config.name}
+                        </h3>
+                        <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
+                          {getPressName(config)}
+                        </p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '0.5rem' }} />
+              </div>
+
+              <div style={{ padding: '0 1.5rem 1.5rem' }}>
+                <MaintenanceReportManagerV2
+                  key={selectedConfigId || 'new'}
+                  configId={selectedConfigId || 'new'}
+                  initialName={selectedConfigId === 'new' ? 'Onderhoud nu nodig' : undefined}
+                  tasks={tasks}
+                  presses={presses}
+                  onPreviewReady={(url) => setPreviewUrl(url)}
+                  onSave={() => {
+                    fetchData();
+                  }}
+                  onCancel={() => setManualDialogOpen(false)}
+                />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Config Edit Dialog ──────────────────────────── */}
+      <Dialog open={!!configDialogOpen} onOpenChange={(open) => { if (!open) handleCloseConfigDialog(); }}>
+        <DialogContent
+          className="overflow-y-auto"
+          style={{
+            maxWidth: '64rem',
+            width: '95vw',
+            maxHeight: '90vh',
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontSize: '1.125rem', fontWeight: 700 }}>
+              <div className="rounded-lg" style={{ padding: '0.375rem', backgroundColor: '#dbeafe' }}>
+                <Settings className="w-4 h-4" style={{ color: '#2563eb' }} />
+              </div>
+              {configDialogOpen?.name || 'Configuratie'}
+            </DialogTitle>
+            <DialogDescription style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              Pas de instellingen van deze rapportconfiguratie aan
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* ── Expanded editing view with MaintenanceReportManager ── */}
+          {configDialogOpen && (
+            <div>
+              <MaintenanceReportManagerV2
+                configId={configDialogOpen.id}
+                tasks={tasks}
+                presses={presses}
+                onSave={() => {
+                  fetchData();
+                  handleCloseConfigDialog();
+                }}
+                onCancel={handleCloseConfigDialog}
+                onDelete={() => {
+                  fetchData();
+                  handleCloseConfigDialog();
+                }}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── All Exports History Dialog ───────────────────── */}
+      <AllExportsDialog open={allExportsOpen} onOpenChange={setAllExportsOpen} />
+    </div >
   );
 }
