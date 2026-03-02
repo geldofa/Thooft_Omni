@@ -57,7 +57,7 @@ export function QuickEditDialog({
       setIsLoading(true);
       const [opsResult, ploegResult] = await Promise.all([
         pb.collection('operatoren').getFullList(),
-        pb.collection('ploegen').getFullList()
+        pb.collection('ploegen').getFullList({ expand: 'pers' })
       ]);
 
       const mappedOps = opsResult.map((r: any) => ({
@@ -79,13 +79,22 @@ export function QuickEditDialog({
         active: op.active
       })));
 
-      setPloegen(ploegResult.map((r: any) => ({
-        id: r.id,
-        name: r.naam || r.name || '',
-        operatorIds: Array.isArray(r.leden) ? r.leden : Array.isArray(r.operatorIds) ? r.operatorIds : [],
-        presses: Array.isArray(r.presses) && r.presses.length > 0 ? r.presses : [],
-        active: r.active !== false
-      })));
+      setPloegen(ploegResult.map((r: any) => {
+        // Prefer 'presses' array; fall back to expanding 'pers' relation for production compatibility
+        let pressNames: string[] = Array.isArray(r.presses) && r.presses.length > 0 ? r.presses : [];
+        if (pressNames.length === 0 && r.expand?.pers) {
+          const persRec = r.expand.pers;
+          const name = persRec?.naam || persRec?.name;
+          if (name) pressNames = [name];
+        }
+        return {
+          id: r.id,
+          name: r.naam || r.name || '',
+          operatorIds: Array.isArray(r.leden) ? r.leden : Array.isArray(r.operatorIds) ? r.operatorIds : [],
+          presses: pressNames,
+          active: r.active !== false
+        };
+      }));
     } catch (e) {
       console.error("Failed to fetch personnel data in QuickEdit", e);
     } finally {

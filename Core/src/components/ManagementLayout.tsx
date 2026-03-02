@@ -60,7 +60,7 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
             setIsLoading(true);
             const [opsResult, ploegResult, pressResult] = await Promise.all([
                 pb.collection('operatoren').getFullList(),
-                pb.collection('ploegen').getFullList(),
+                pb.collection('ploegen').getFullList({ expand: 'pers' }),
                 pb.collection('persen').getFullList()
             ]);
 
@@ -75,13 +75,22 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                 dienstverband: r.dienstverband || 'Intern'
             })));
 
-            setPloegen(ploegResult.map((r: any) => ({
-                id: r.id,
-                name: r.naam || '',
-                operatorIds: Array.isArray(r.leden) ? r.leden : [],
-                presses: Array.isArray(r.presses) ? r.presses : (r.presses ? [r.presses] : []),
-                active: r.active !== false
-            })));
+            setPloegen(ploegResult.map((r: any) => {
+                // Prefer 'presses' array; fall back to expanding 'pers' relation for production compatibility
+                let pressNames: string[] = Array.isArray(r.presses) && r.presses.length > 0 ? r.presses : [];
+                if (pressNames.length === 0 && r.expand?.pers) {
+                    const persRec = r.expand.pers;
+                    const name = persRec?.naam || persRec?.name;
+                    if (name) pressNames = [name];
+                }
+                return {
+                    id: r.id,
+                    name: r.naam || '',
+                    operatorIds: Array.isArray(r.leden) ? r.leden : [],
+                    presses: pressNames,
+                    active: r.active !== false
+                };
+            }));
 
             setPresses(pressResult.map((p: any) => ({
                 id: p.id,
