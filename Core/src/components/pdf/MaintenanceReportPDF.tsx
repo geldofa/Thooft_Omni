@@ -5,6 +5,7 @@ import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 export interface MaintenanceTask {
     id: string;
     category: string;
+    press?: string;
     taskName: string;
     interval: string;
     completedOn: string;
@@ -280,23 +281,30 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         }
     };
 
-    // Groepeer taken op categorie
-    const groupedTasks = tasks.reduce((acc, task) => {
-        if (!acc[task.category]) acc[task.category] = [];
-        acc[task.category].push(task);
-        return acc;
-    }, {} as Record<string, MaintenanceTask[]>);
+    // Group tasks by press, then by category within each press
+    const pressGroups: Record<string, Record<string, MaintenanceTask[]>> = {};
+    tasks.forEach(task => {
+        const press = task.press || 'Onbekend';
+        if (!pressGroups[press]) pressGroups[press] = {};
+        if (!pressGroups[press][task.category]) pressGroups[press][task.category] = [];
+        pressGroups[press][task.category].push(task);
+    });
 
-    return (
-        <Document>
-            <Page size="A4" style={styles.page}>
-                {/* Vibrant Header */}
+    const pressEntries = Object.entries(pressGroups);
+    const hasMultiplePresses = pressEntries.length > 1;
+
+    const renderPressPage = (pressName: string, categories: Record<string, MaintenanceTask[]>, displayPressName: string) => {
+        const pressTaskCount = Object.values(categories).reduce((sum, arr) => sum + arr.length, 0);
+
+        return (
+            <Page size="A4" style={styles.page} key={pressName}>
+                {/* Header with press name */}
                 <View style={styles.headerWrapper} fixed>
                     <View style={styles.headerContainer}>
                         <View>
                             <Text style={styles.omniLogo}>OMNI</Text>
                             <Text style={styles.filterText}>
-                                {reportTitle} | {selectedPress} | {selectedPeriod}
+                                {reportTitle} | {displayPressName} | {selectedPeriod}
                             </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
@@ -306,15 +314,15 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                     </View>
 
                     <View style={styles.subHeader}>
-                        <Text style={styles.machineName}>{selectedPress}</Text>
+                        <Text style={styles.machineName}>{displayPressName}</Text>
                         <Text style={styles.totalCount}>
-                            Status {selectedStatus}: {tasks.length} taken
+                            Status {selectedStatus}: {pressTaskCount} taken
                         </Text>
                     </View>
                 </View>
 
                 <View style={[styles.pageContent, dynamicStyles.pageContent]}>
-                    {/* Dynamic Table Header */}
+                    {/* Table Header */}
                     <View style={styles.tableHeaderRow} fixed>
                         {activeColumns.map((col, i) => (
                             <View key={col.id} style={[styles.col, { width: widths[i], paddingLeft: i === 0 ? 8 : 4 }]}>
@@ -323,9 +331,8 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                         ))}
                     </View>
 
-                    {/* Data rendering grouped by category */}
                     <View style={styles.table}>
-                        {Object.entries(groupedTasks).map(([category, categoryTasks]) => (
+                        {Object.entries(categories).map(([category, categoryTasks]) => (
                             <React.Fragment key={category}>
                                 <View style={styles.categoryRow} wrap={false}>
                                     <Text style={[styles.categoryTitle, dynamicStyles.text]}>{category.toUpperCase()}</Text>
@@ -343,7 +350,6 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                                             key={task.id}
                                             wrap={false}
                                         >
-                                            {/* Status Left Border */}
                                             {showIndicator && (
                                                 <View style={[styles.statusBorder, { backgroundColor: statusColor.color }]} />
                                             )}
@@ -387,13 +393,28 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                     </View>
                 </View>
 
-                {/* Fixed Footer */}
+                {/* Footer */}
                 <Text
                     style={[styles.pageNumber, dynamicStyles.smallText]}
                     render={({ pageNumber, totalPages }) => `Pagina ${pageNumber} van ${totalPages}`}
                     fixed
                 />
             </Page>
+        );
+    };
+
+    return (
+        <Document>
+            {hasMultiplePresses
+                ? pressEntries.map(([pressName, categories]) =>
+                    renderPressPage(pressName, categories, pressName)
+                )
+                : renderPressPage(
+                    pressEntries[0]?.[0] || selectedPress,
+                    pressEntries[0]?.[1] || {},
+                    selectedPress
+                )
+            }
         </Document>
     );
 };

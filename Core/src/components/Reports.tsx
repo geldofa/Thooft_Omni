@@ -15,7 +15,6 @@ import {
   subMonths,
   subYears,
   addDays,
-  isAfter,
   isBefore
 } from 'date-fns';
 import { PageHeader } from './PageHeader';
@@ -109,20 +108,21 @@ const PERIOD_OPTIONS: Record<string, string[]> = {
 // ─── Helpers ────────────────────────────────────────────────
 
 function buildPeriodFilter(period: string, status: string): string {
-  const now = new Date().toISOString().replace('T', ' ');
-
   const fmt = (d: Date) => format(d, 'yyyy-MM-dd HH:mm:ss');
+  const todayStart = fmt(startOfDay(new Date()));
 
   if (status === 'Nu Nodig') {
-    if (period === 'Alles overtijd') return `next_date < "${now}"`;
-    if (period === '> 6 maanden') return `next_date < "${fmt(subMonths(new Date(), 6))}"`;
-    if (period === '> 1 jaar') return `next_date < "${fmt(subYears(new Date(), 1))}"`;
+    // Overdue = next_date before start of today
+    if (period === 'Alles overtijd') return `next_date < "${todayStart}"`;
+    if (period === '> 6 maanden') return `next_date < "${fmt(subMonths(startOfDay(new Date()), 6))}"`;
+    if (period === '> 1 jaar') return `next_date < "${fmt(subYears(startOfDay(new Date()), 1))}"`;
   }
 
   if (status === 'Binnenkort') {
-    if (period === 'Deze Week') return `next_date >= "${now}" && next_date <= "${fmt(endOfWeek(new Date(), { weekStartsOn: 1 }))}"`;
-    if (period === '14 Dagen') return `next_date >= "${now}" && next_date <= "${fmt(addDays(new Date(), 14))}"`;
-    if (period === 'Deze Maand') return `next_date >= "${now}" && next_date <= "${fmt(endOfMonth(new Date()))}"`;
+    // Upcoming = next_date from start of today onwards (NOT overdue)
+    if (period === 'Deze Week') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfWeek(new Date(), { weekStartsOn: 1 }))}"`;
+    if (period === '14 Dagen') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfDay(addDays(new Date(), 14)))}"`;
+    if (period === 'Deze Maand') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfMonth(new Date()))}"`;
   }
 
   if (status === 'Voltooid') {
@@ -161,17 +161,19 @@ function buildPeriodFilter(period: string, status: string): string {
 }
 
 function matchesStatus(nextDate: Date | null, status: string): boolean {
-  const today = startOfDay(new Date());
+  const todayStart = startOfDay(new Date());
 
   if (status === 'Nu Nodig') {
-    return !!nextDate && isBefore(nextDate, today);
+    // Overdue: next_date is strictly before start of today
+    return !!nextDate && isBefore(nextDate, todayStart);
   }
   if (status === 'Binnenkort') {
-    return !!nextDate && (isAfter(nextDate, today) || nextDate.getTime() === today.getTime());
+    // Upcoming: next_date is today or in the future (not overdue)
+    if (!nextDate) return false;
+    return !isBefore(nextDate, todayStart);
   }
   if (status === 'Voltooid') {
-    // For "Voltooid", we rely primarily on the buildPeriodFilter which uses last_date.
-    // However, if we reach here, we allow the task if it's been completed.
+    // Completed: rely on buildPeriodFilter (uses last_date), allow all through here
     return true;
   }
   return true;
@@ -203,6 +205,12 @@ export function Reports(_props: ReportsProps) {
     report_type: string;
     is_automated: boolean;
     email_recipients: string;
+    schedule_interval: string;
+    schedule_hour: number;
+    schedule_weekday: number;
+    schedule_day_type: string;
+    schedule_exact_day: number;
+    schedule_month: number;
     settings: any;
   }>({
     name: 'Nieuw Sjabloon',
@@ -210,6 +218,12 @@ export function Reports(_props: ReportsProps) {
     report_type: 'taken',
     is_automated: false,
     email_recipients: '',
+    schedule_interval: 'week',
+    schedule_hour: 8,
+    schedule_weekday: 1,
+    schedule_day_type: 'first_day',
+    schedule_exact_day: 1,
+    schedule_month: 1,
     settings: {
       selectedPress: 'Alle persen',
       selectedPeriod: 'Alles overtijd',
@@ -270,13 +284,20 @@ export function Reports(_props: ReportsProps) {
   const openEditor = (preset: ReportPreset | null) => {
     if (preset) {
       setActivePreset(preset);
+      const s = preset.settings || {};
       setActiveConfig({
         name: preset.name,
-        description: preset.description,
-        report_type: 'taken', // default to 'taken' as maintenance_reports is specialized
+        description: preset.description || '',
+        report_type: 'taken',
         is_automated: preset.auto_generate,
-        email_recipients: preset.email_recipients,
-        settings: preset.settings || {}
+        email_recipients: preset.email_recipients || '',
+        schedule_interval: preset.period || 'week',
+        schedule_hour: s.schedule_hour ?? 8,
+        schedule_weekday: s.schedule_weekday ?? 1,
+        schedule_day_type: s.schedule_day_type || 'first_day',
+        schedule_exact_day: s.schedule_exact_day ?? 1,
+        schedule_month: s.schedule_month ?? 1,
+        settings: { selectedPress: s.selectedPress || 'Alle persen', selectedPeriod: s.selectedPeriod || 'Alles overtijd', selectedStatus: s.selectedStatus || 'Nu Nodig' }
       });
     } else {
       setActivePreset(null);
@@ -286,7 +307,13 @@ export function Reports(_props: ReportsProps) {
         report_type: 'taken',
         is_automated: false,
         email_recipients: '',
-        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' }
+        schedule_interval: 'week',
+        schedule_hour: 8,
+        schedule_weekday: 1,
+        schedule_day_type: 'first_day',
+        schedule_exact_day: 1,
+        schedule_month: 1,
+        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Alles overtijd', selectedStatus: 'Nu Nodig' }
       });
     }
     setCurrentView('editor');
@@ -334,9 +361,10 @@ export function Reports(_props: ReportsProps) {
           const ops = Array.isArray(r.expand?.assigned_operator) ? r.expand.assigned_operator : r.expand?.assigned_operator ? [r.expand.assigned_operator] : [];
           const tms = Array.isArray(r.expand?.assigned_team) ? r.expand.assigned_team : r.expand?.assigned_team ? [r.expand.assigned_team] : [];
           const exBy = [...ops, ...tms].map((o: any) => o.naam || o.name || 'Onbekend').join(', ') || '-';
+          const pressName = r.expand?.pers?.naam || 'Onbekend';
 
           mapped.push({
-            id: r.id, category: r.expand?.category?.naam || 'Overig', parentTask: r.task || '-', taskName: r.subtask || r.task || '-',
+            id: r.id, category: r.expand?.category?.naam || 'Overig', press: pressName, parentTask: r.task || '-', taskName: r.subtask || r.task || '-',
             interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'), completedOn: formatDateNL(r.last_date),
             executedBy: exBy, note: r.opmerkingen || '', statusKey: getStatusInfo(nDate).key, daysDiff: dDiff
           });
@@ -371,13 +399,24 @@ export function Reports(_props: ReportsProps) {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
     setIsSaving(true);
     try {
-      const p = {
+      const fullSettings = {
+        ...activeConfig.settings,
+        schedule_hour: activeConfig.schedule_hour,
+        schedule_weekday: activeConfig.schedule_weekday,
+        schedule_day_type: activeConfig.schedule_day_type,
+        schedule_exact_day: activeConfig.schedule_exact_day,
+        schedule_month: activeConfig.schedule_month,
+      };
+      const p: Record<string, any> = {
         name: activeConfig.name,
         description: activeConfig.description,
-        period: activeConfig.settings.selectedPeriod || 'week',
+        period: activeConfig.schedule_interval || 'week',
         auto_generate: activeConfig.is_automated,
         email_recipients: activeConfig.email_recipients,
-        settings: activeConfig.settings
+        schedule_hour: activeConfig.schedule_hour,
+        schedule_day: activeConfig.schedule_exact_day,
+        schedule_month_type: activeConfig.schedule_day_type,
+        settings: fullSettings
       };
       if (activePreset) await pb.collection('maintenance_reports').update(activePreset.id, p);
       else await pb.collection('maintenance_reports').create(p);
@@ -622,14 +661,151 @@ export function Reports(_props: ReportsProps) {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label className="text-sm font-bold">Automatisatie</Label>
-                    <p className="text-[10px] text-muted-foreground italic">Verstuur automatisch per e-mail.</p>
+                    <p className="text-[10px] text-muted-foreground italic">Genereer en verstuur automatisch per e-mail.</p>
                   </div>
                   <Switch checked={activeConfig.is_automated} onCheckedChange={v => setActiveConfig(p => ({ ...p, is_automated: v }))} />
                 </div>
                 {activeConfig.is_automated && (
-                  <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Ontvangers (comma-separated)</Label>
-                    <Input value={activeConfig.email_recipients} onChange={e => setActiveConfig(p => ({ ...p, email_recipients: e.target.value }))} placeholder="admin@thooft.be" className="h-8 text-xs" />
+                  <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                    {/* Interval */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Export Interval</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 'day', label: 'Dagelijks' },
+                          { value: 'week', label: 'Wekelijks' },
+                          { value: 'month', label: 'Maandelijks' },
+                          { value: 'year', label: 'Jaarlijks' },
+                        ].map(opt => (
+                          <Button
+                            key={opt.value}
+                            variant={activeConfig.schedule_interval === opt.value ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setActiveConfig(p => ({ ...p, schedule_interval: opt.value }))}
+                            className={cn(
+                              "rounded-full px-4 h-8 text-xs transition-all",
+                              activeConfig.schedule_interval === opt.value ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                            )}
+                          >
+                            {opt.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Month (yearly only) */}
+                    {activeConfig.schedule_interval === 'year' && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Maand</Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'].map((m, i) => (
+                            <Button
+                              key={i}
+                              variant={activeConfig.schedule_month === i + 1 ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setActiveConfig(p => ({ ...p, schedule_month: i + 1 }))}
+                              className={cn(
+                                "rounded-full px-3 h-7 text-[10px] transition-all",
+                                activeConfig.schedule_month === i + 1 ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                              )}
+                            >
+                              {m}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Day of week (weekly only) */}
+                    {activeConfig.schedule_interval === 'week' && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Dag</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map((d, i) => (
+                            <Button
+                              key={i}
+                              variant={activeConfig.schedule_weekday === i + 1 ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setActiveConfig(p => ({ ...p, schedule_weekday: i + 1 }))}
+                              className={cn(
+                                "rounded-full px-3 h-8 text-xs transition-all",
+                                activeConfig.schedule_weekday === i + 1 ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                              )}
+                            >
+                              {d}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Day type (monthly & yearly) */}
+                    {(activeConfig.schedule_interval === 'month' || activeConfig.schedule_interval === 'year') && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Dag</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { value: 'first_day', label: 'Eerste dag' },
+                            { value: 'first_monday', label: 'Eerste maandag' },
+                            { value: 'last_day', label: 'Laatste dag' },
+                            { value: 'exact_day', label: 'Vaste dag' },
+                          ].map(opt => (
+                            <Button
+                              key={opt.value}
+                              variant={activeConfig.schedule_day_type === opt.value ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setActiveConfig(p => ({ ...p, schedule_day_type: opt.value }))}
+                              className={cn(
+                                "rounded-full px-4 h-8 text-xs transition-all",
+                                activeConfig.schedule_day_type === opt.value ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                              )}
+                            >
+                              {opt.label}
+                            </Button>
+                          ))}
+                        </div>
+                        {activeConfig.schedule_day_type === 'exact_day' && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Label className="text-xs text-muted-foreground whitespace-nowrap">Dag nr.</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={activeConfig.schedule_exact_day}
+                              onChange={e => setActiveConfig(p => ({ ...p, schedule_exact_day: Math.min(31, Math.max(1, Number(e.target.value))) }))}
+                              className="h-8 w-20 text-xs"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Hour */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Uur</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                          <Button
+                            key={h}
+                            variant={activeConfig.schedule_hour === h ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setActiveConfig(p => ({ ...p, schedule_hour: h }))}
+                            className={cn(
+                              "rounded-full w-7 h-7 text-[10px] p-0 transition-all",
+                              activeConfig.schedule_hour === h ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                            )}
+                          >
+                            {String(h).padStart(2, '0')}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recipients */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Ontvangers (comma-separated)</Label>
+                      <Input value={activeConfig.email_recipients} onChange={e => setActiveConfig(p => ({ ...p, email_recipients: e.target.value }))} placeholder="admin@thooft.be" className="h-8 text-xs" />
+                    </div>
                   </div>
                 )}
               </div>
