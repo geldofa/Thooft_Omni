@@ -465,7 +465,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const defaultKaternToAdd: Omit<Katern, 'id'> = {
         version: '',
         pages: null,
-        exOmw: '',
+        exOmw: '1',
         netRun: 0,
         startup: false,
         c4_4: 0,
@@ -526,7 +526,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         id: 'new-katern-1', // Temporary ID, will be replaced with `${ newWerkorder.id } -1`
         version: '',
         pages: null,
-        exOmw: '',
+        exOmw: '1',
         netRun: 0,
         startup: false,
         c4_4: 0,
@@ -740,7 +740,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     klant_order_beschrijving: werkorder.orderName,
                     versie: processedKatern.version,
                     blz: processedKatern.pages,
-                    ex_omw: parseFloat(processedKatern.exOmw) || 0,
+                    ex_omw: parseFloat(processedKatern.exOmw) || 1,
                     netto_oplage: processedKatern.netRun,
                     opstart: processedKatern.startup,
                     k_4_4: processedKatern.c4_4,
@@ -1157,7 +1157,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     klant_order_beschrijving: job.orderName,
                     versie: job.version,
                     blz: job.pages,
-                    ex_omw: parseFloat(job.exOmw) || 0,
+                    ex_omw: parseFloat(job.exOmw) || 1,
                     netto_oplage: job.netRun,
                     opstart: job.startup,
                     k_4_4: job.c4_4,
@@ -1943,30 +1943,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             <TableCell className="text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70">{formatNumber(job.c4_1)}</TableCell>
                                             <TableCell className="py-1 px-1 text-right">
                                                 {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
-                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                     const formula = getFormulaForColumn('maxGross');
-                                                    const showSub = divider > 1 && !!formula;
                                                     return (
-                                                        <div className={`flex flex-col items-end min-h-[36px] ${showSub ? 'justify-end' : 'justify-center'}`}>
-                                                            {showSub && (() => {
-                                                                const raw = evaluateFormula(formula!.formula, job as any, parameters, activePresses);
-                                                                const cycles = (Number(raw) || 0) / divider;
-                                                                return (
-                                                                    <div className="flex items-center mb-0.5">
-                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles, 0)} Omw.</span>
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                            <div className="flex items-center py-1">
-                                                                <span className="font-bold leading-none">{formatNumber(job.maxGross, 0)}</span>
-                                                            </div>
-                                                            {showComparison && (
-                                                                <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
-                                                                    Rec: {formatNumber(job.maxGross, 0)}
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                        <FormulaResultWithTooltip
+                                                            formula={formula?.formula || ''}
+                                                            job={job as any}
+                                                            variant="maxGross"
+                                                            parameters={parameters}
+                                                            activePresses={activePresses}
+                                                            result={Number(job.maxGross)}
+                                                            outputConversions={outputConversions}
+                                                            pressMap={pressMap}
+                                                        />
                                                     );
                                                 })()}
                                             </TableCell>

@@ -1,647 +1,679 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MaintenanceTask, Press, pb } from './AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { pdf, PDFViewer } from '@react-pdf/renderer';
+import {
+  format,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+  subDays,
+  subWeeks,
+  subMonths,
+  subYears,
+  addDays,
+  isAfter,
+  isBefore
+} from 'date-fns';
+import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Card } from './ui/card';
-import { PageHeader } from './PageHeader';
-import { MaintenanceReportManagerV2 } from './MaintenanceReportManagerV2';
-import { AllExportsDialog } from './AllExportsDialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from './ui/dialog';
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
+  TableCell,
   TableHead,
+  TableHeader,
+  TableRow,
 } from './ui/table';
+import { cn } from './ui/utils';
 import {
-  FileText,
-  Archive,
-  Plus,
-  Clock,
-  Pause,
-  Play,
-  Settings,
-  Download,
-  CalendarDays,
-  Zap,
-  BarChart3,
-  AlertTriangle,
-  Eye,
-} from 'lucide-react';
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from './ui/card';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Settings2, Loader2, FileText, Download, Save, History, ArrowLeft, RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle, Check } from 'lucide-react';
+import { Switch } from './ui/switch';
+import { MaintenanceReportPDF, type MaintenanceTask } from './pdf/MaintenanceReportPDF';
+import { pb } from './AuthContext';
+import { getStatusInfo } from '../utils/StatusUtils';
+import { toast } from 'sonner';
 
-// ─── Real Data Interfaces ──────────────────────────────────
+// ─── Column configuration ───────────────────────────────────
 
-interface MaintenanceReport {
+export interface ColumnConfig {
   id: string;
-  name: string;
-  press_ids: string[];
-  period: 'day' | 'week' | 'month' | 'year';
-  auto_generate: boolean;
-  schedule_day?: number;
-  last_run?: string;
-  email_enabled: boolean;
-  email_recipients: string;
-  email_subject: string;
-  is_rolling: boolean;
-  period_offset: number;
-  schedule_hour?: number;
-  schedule_weekdays?: string[];
-  schedule_month_type?: string;
-  custom_date?: string;
+  label: string;
+  field: keyof MaintenanceTask;
 }
 
-interface GeneratedReport {
+const ALL_COLUMNS: ColumnConfig[] = [
+  { id: 'taskName', label: 'Taak', field: 'taskName' },
+  { id: 'interval', label: 'Interval', field: 'interval' },
+  { id: 'completedOn', label: 'Laatste onderhoud', field: 'completedOn' },
+  { id: 'executedBy', label: 'Uitvoerder', field: 'executedBy' },
+  { id: 'note', label: 'Opmerking', field: 'note' },
+  { id: 'daysDiff', label: 'Dagen Over', field: 'daysDiff' },
+];
+
+
+// ─── Types ──────────────────────────────────────────────────
+
+interface ReportsProps {
+  tasks?: any[];
+  presses?: any[];
+}
+
+export interface ReportPreset {
   id: string;
   name: string;
-  configName: string;
-  createdAt: string;
-  file: string;
-  generated_at?: string;
+  description: string;
+  period: string; // From maintenance_reports
+  auto_generate: boolean;
+  email_recipients: string;
+  settings?: any; // Keep for possible future use, but main fields are now top-level
   created?: string;
+  updated?: string;
+}
+
+export interface GeneratedReport {
+  id: string;
+  title?: string; // Derived from maintenance_report expand
+  file: string;   // Was 'document'
+  generated_at: string; // Was 'created'
   expand?: {
     maintenance_report?: {
       name: string;
-    };
+      report_type?: string;
+    }
   };
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────
 
-const FREQ_LABELS: Record<string, string> = {
-  day: 'Dagelijks',
-  week: 'Wekelijks',
-  month: 'Maandelijks',
-  year: 'Jaarlijks',
+const PERIOD_OPTIONS: Record<string, string[]> = {
+  'Nu Nodig': ['Alles overtijd', '> 6 maanden', '> 1 jaar'],
+  'Binnenkort': ['Deze Week', '14 Dagen', 'Deze Maand'],
+  'Voltooid': ['Vandaag', 'Gisteren', 'Deze Week', 'Vorige Week', 'Deze Maand', 'Vorige Maand', 'Dit Jaar', 'Vorig Jaar']
 };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const date = d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' });
-  const time = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${date} ${time}`;
+// ─── Helpers ────────────────────────────────────────────────
+
+function buildPeriodFilter(period: string, status: string): string {
+  const now = new Date().toISOString().replace('T', ' ');
+
+  const fmt = (d: Date) => format(d, 'yyyy-MM-dd HH:mm:ss');
+
+  if (status === 'Nu Nodig') {
+    if (period === 'Alles overtijd') return `next_date < "${now}"`;
+    if (period === '> 6 maanden') return `next_date < "${fmt(subMonths(new Date(), 6))}"`;
+    if (period === '> 1 jaar') return `next_date < "${fmt(subYears(new Date(), 1))}"`;
+  }
+
+  if (status === 'Binnenkort') {
+    if (period === 'Deze Week') return `next_date >= "${now}" && next_date <= "${fmt(endOfWeek(new Date(), { weekStartsOn: 1 }))}"`;
+    if (period === '14 Dagen') return `next_date >= "${now}" && next_date <= "${fmt(addDays(new Date(), 14))}"`;
+    if (period === 'Deze Maand') return `next_date >= "${now}" && next_date <= "${fmt(endOfMonth(new Date()))}"`;
+  }
+
+  if (status === 'Voltooid') {
+    let start, end;
+    const ref = new Date();
+
+    switch (period) {
+      case 'Vandaag': start = startOfDay(ref); end = endOfDay(ref); break;
+      case 'Gisteren': start = startOfDay(subDays(ref, 1)); end = endOfDay(subDays(ref, 1)); break;
+      case 'Deze Week': start = startOfWeek(ref, { weekStartsOn: 1 }); end = endOfWeek(ref, { weekStartsOn: 1 }); break;
+      case 'Vorige Week': {
+        const prev = subWeeks(ref, 1);
+        start = startOfWeek(prev, { weekStartsOn: 1 });
+        end = endOfWeek(prev, { weekStartsOn: 1 });
+        break;
+      }
+      case 'Deze Maand': start = startOfMonth(ref); end = endOfMonth(ref); break;
+      case 'Vorige Maand': {
+        const prev = subMonths(ref, 1);
+        start = startOfMonth(prev);
+        end = endOfMonth(prev);
+        break;
+      }
+      case 'Dit Jaar': start = startOfYear(ref); end = endOfYear(ref); break;
+      case 'Vorig Jaar': {
+        const prev = subYears(ref, 1);
+        start = startOfYear(prev);
+        end = endOfYear(prev);
+        break;
+      }
+      default: return '';
+    }
+    return `last_date >= "${fmt(start)}" && last_date <= "${fmt(end)}"`;
+  }
+  return '';
 }
 
-function getBadgeStyle(configName: string): React.CSSProperties {
-  if (configName === 'Manueel') {
-    return { backgroundColor: '#ede9fe', color: '#6d28d9', borderColor: '#ddd6fe' };
+function matchesStatus(nextDate: Date | null, status: string): boolean {
+  const today = startOfDay(new Date());
+
+  if (status === 'Nu Nodig') {
+    return !!nextDate && isBefore(nextDate, today);
   }
-  if (configName.toLowerCase().includes('week')) {
-    return { backgroundColor: '#dbeafe', color: '#1d4ed8', borderColor: '#bfdbfe' };
+  if (status === 'Binnenkort') {
+    return !!nextDate && (isAfter(nextDate, today) || nextDate.getTime() === today.getTime());
   }
-  if (configName.toLowerCase().includes('maand')) {
-    return { backgroundColor: '#d1fae5', color: '#047857', borderColor: '#a7f3d0' };
+  if (status === 'Voltooid') {
+    // For "Voltooid", we rely primarily on the buildPeriodFilter which uses last_date.
+    // However, if we reach here, we allow the task if it's been completed.
+    return true;
   }
-  if (configName.toLowerCase().includes('jaar')) {
-    return { backgroundColor: '#fef3c7', color: '#b45309', borderColor: '#fde68a' };
-  }
-  return { backgroundColor: '#f3f4f6', color: '#374151', borderColor: '#e5e7eb' };
+  return true;
+}
+
+function formatInterval(val: number, unit: string) {
+  if (!val) return '-';
+  return `${val} ${unit}`;
+}
+
+function formatDateNL(dateStr: string | null) {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('nl-NL');
 }
 
 // ─── Component ──────────────────────────────────────────────
 
-interface ReportsProps {
-  tasks?: MaintenanceTask[];
-  presses?: Press[];
-}
+export function Reports(_props: ReportsProps) {
+  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
+  const [presets, setPresets] = useState<ReportPreset[]>([]);
+  const [archive, setArchive] = useState<GeneratedReport[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [activePreset, setActivePreset] = useState<ReportPreset | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-export function Reports({ tasks = [] }: ReportsProps) {
-  const navigate = useNavigate();
-  const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [allExportsOpen, setAllExportsOpen] = useState(false);
-  const [configDialogOpen, setConfigDialogOpen] = useState<MaintenanceReport | null>(null);
-  const [configs, setConfigs] = useState<MaintenanceReport[]>([]);
-  const [presses, setPresses] = useState<Press[]>([]);
-  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
-  const [selectedConfigId, setSelectedConfigId] = useState<string | null>('new');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [activeConfig, setActiveConfig] = useState<{
+    name: string;
+    description: string;
+    report_type: string;
+    is_automated: boolean;
+    email_recipients: string;
+    settings: any;
+  }>({
+    name: 'Nieuw Sjabloon',
+    description: '',
+    report_type: 'taken',
+    is_automated: false,
+    email_recipients: '',
+    settings: {
+      selectedPress: 'Alle persen',
+      selectedPeriod: 'Alles overtijd',
+      selectedStatus: 'Nu Nodig',
+    }
+  });
 
-  const fetchData = useCallback(async () => {
+  const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pressNames, setPressNames] = useState<string[]>(['Alle persen']);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
+  const [fontSize, setFontSize] = useState(9);
+  const [marginH, setMarginH] = useState(30);
+  const [marginV, setMarginV] = useState(20);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+
+  const reportTitle = activeConfig.name;
+  const selectedPress = activeConfig.settings.selectedPress;
+  const selectedPeriod = activeConfig.settings.selectedPeriod;
+  const selectedStatus = activeConfig.settings.selectedStatus;
+
+  const statusOptions = ['Nu Nodig', 'Binnenkort', 'Voltooid'];
+  const statusColors: Record<string, string> = {
+    'Nu Nodig': 'bg-red-500 hover:bg-red-600',
+    'Binnenkort': 'bg-orange-500 hover:bg-orange-600',
+    'Voltooid': 'bg-emerald-500 hover:bg-emerald-600'
+  };
+
+  const fetchData = async () => {
+    setIsDataLoading(true);
     try {
-      setIsLoadingReports(true);
-      const [reportsData, pressesData, filesData] = await Promise.all([
-        pb.collection('maintenance_reports').getFullList<MaintenanceReport>(),
-        pb.collection('persen').getFullList({ sort: 'naam' }),
-        pb.collection('report_files').getList<GeneratedReport>(1, 10, {
+      const [pList, aList] = await Promise.all([
+        pb.collection('maintenance_reports').getFullList<ReportPreset>({ sort: 'name' }),
+        pb.collection('report_files').getFullList<GeneratedReport>({
           sort: '-generated_at',
           expand: 'maintenance_report'
         })
       ]);
-
-      setConfigs(reportsData);
-      setPresses(pressesData.map((p: any) => ({
-        id: p.id,
-        name: p.naam,
-        active: p.active,
-        archived: p.archived,
-        category_order: p.category_order
-      })));
-
-      setGeneratedReports(filesData.items.map(item => ({
-        ...item,
-        name: item.file,
-        configName: item.expand?.maintenance_report?.name || 'Manueel',
-        createdAt: item.generated_at || item.created || '',
-      })));
-    } catch (error) {
-      console.error("Error fetching data:", error);
+      setPresets(pList);
+      setArchive(aList);
+    } catch (e) {
+      console.error('[Reports] Fetch failed:', e);
+      toast.error("Fout bij ophalen gegevens (Controleer collecties)");
     } finally {
-      setIsLoadingReports(false);
+      setIsDataLoading(false);
     }
-  }, []);
+  };
+
+  useEffect(() => { if (currentView === 'dashboard') fetchData(); }, [currentView]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    (async () => {
+      const records = await pb.collection('persen').getFullList({ sort: 'naam' });
+      setPressNames(['Alle persen', ...records.filter((r: any) => r.active !== false && r.archived !== true).map((r: any) => r.naam)]);
+    })();
+  }, []);
 
-  const getPressName = (report: MaintenanceReport) => {
-    if (!report.press_ids || !Array.isArray(report.press_ids) || report.press_ids.length === 0) return 'Alle persen';
-    const names = report.press_ids.map(id => presses.find(p => p.id === id)?.name).filter(Boolean);
-    if (names.length === 0) return 'Alle persen';
-    if (names.length > 2) return `${names[0]}, ${names[1]} +${names.length - 2}`;
-    return names.join(', ');
+  const openEditor = (preset: ReportPreset | null) => {
+    if (preset) {
+      setActivePreset(preset);
+      setActiveConfig({
+        name: preset.name,
+        description: preset.description,
+        report_type: 'taken', // default to 'taken' as maintenance_reports is specialized
+        is_automated: preset.auto_generate,
+        email_recipients: preset.email_recipients,
+        settings: preset.settings || {}
+      });
+    } else {
+      setActivePreset(null);
+      setActiveConfig({
+        name: 'Nieuw Sjabloon',
+        description: '',
+        report_type: 'taken',
+        is_automated: false,
+        email_recipients: '',
+        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' }
+      });
+    }
+    setCurrentView('editor');
   };
 
-  // Count due tasks for the quick-export button
-  const dueTasks = tasks.filter(t => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return new Date(t.nextMaintenance) < today;
-  });
+  const updateSetting = (k: string, v: any) => setActiveConfig(p => ({ ...p, settings: { ...p.settings, [k]: v } }));
 
-  const handleCloseConfigDialog = () => {
-    setConfigDialogOpen(null);
+  const handleTypeChange = (t: string) => {
+    let s = t === 'taken' ? { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' } : {};
+    setActiveConfig(p => ({ ...p, report_type: t, settings: s }));
   };
 
-  return (
-    <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-hidden pb-4">
-      {/* ─── Header ───────────────────────────────────────── */}
-      <PageHeader
-        title="Rapport Beheer"
-        description="Beheer automatische en handmatige onderhoudsrapportages"
-        icon={BarChart3}
-        iconColor="text-blue-600"
-        iconBgColor="bg-blue-50"
-        actions={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setAllExportsOpen(true)}
-              className="gap-2 shrink-0 bg-white"
-            >
-              <Archive className="w-4 h-4" />
-              Alle Exports
-            </Button>
-          </div>
+  const visibleColumns = useMemo(() => {
+    return ALL_COLUMNS
+      .filter(c => selectedColumns.includes(c.id))
+      .map(c => {
+        if (c.id === 'completedOn') {
+          return { ...c, label: selectedStatus === 'Voltooid' ? 'Voltooid op' : 'Laatste onderhoud' };
         }
-        className="mb-0 shrink-0"
-      />
+        return c;
+      });
+  }, [selectedColumns, selectedStatus]);
 
-      {/* ─── Top Section: Config Cards ────────────────────── */}
-      <div className="shrink-0 flex flex-col min-h-0">
-        <div className="flex items-center gap-2 mb-3 shrink-0">
-          <Settings className="w-4 h-4" style={{ color: '#9ca3af' }} />
-          <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Rapport Configuraties
-          </h2>
-        </div>
+  useEffect(() => {
+    if (currentView !== 'editor' || activeConfig.report_type !== 'taken') return;
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      try {
+        const filters: string[] = [];
+        if (selectedPress !== 'Alle persen') filters.push(`pers.naam = "${selectedPress}"`);
+        const pClause = buildPeriodFilter(selectedPeriod, selectedStatus);
+        if (pClause) filters.push(pClause);
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto pb-2 min-h-[140px]">
-          {/* ── New Export Card ── */}
-          <Card
-            className="overflow-hidden cursor-pointer group"
-            style={{
-              position: 'relative',
-              border: 'none',
-              transition: 'all 0.3s',
-              minHeight: '140px',
-            }}
-            onClick={() => setManualDialogOpen(true)}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(135deg, #6366f1, #2563eb, #7c3aed)',
-                opacity: 0.9,
-              }}
-            />
-            <div style={{ position: 'relative', padding: '1.25rem', color: 'white' }}>
-              <div className="flex items-start justify-between mb-4">
-                <div style={{ padding: '0.5rem', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}>
-                  <Plus className="w-4 h-4" style={{ width: '1.25rem', height: '1.25rem' }} />
-                </div>
-              </div>
-              <h3 style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.25rem' }}>Nieuwe Export</h3>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem' }}>
-                Genereer direct een rapport of gebruik een bestaande configuratie
-              </p>
-            </div>
-          </Card>
+        const records = await pb.collection('onderhoud').getFullList({ filter: filters.join(' && ') || undefined, expand: 'category,pers,assigned_operator,assigned_team' });
+        const mapped: MaintenanceTask[] = [];
+        for (const r of records as any[]) {
+          const nDate = r.next_date ? new Date(r.next_date) : null;
+          if (!matchesStatus(nDate, selectedStatus)) continue;
+          let dDiff = 0;
+          if (nDate) {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            dDiff = Math.ceil((nDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          const ops = Array.isArray(r.expand?.assigned_operator) ? r.expand.assigned_operator : r.expand?.assigned_operator ? [r.expand.assigned_operator] : [];
+          const tms = Array.isArray(r.expand?.assigned_team) ? r.expand.assigned_team : r.expand?.assigned_team ? [r.expand.assigned_team] : [];
+          const exBy = [...ops, ...tms].map((o: any) => o.naam || o.name || 'Onbekend').join(', ') || '-';
 
-          {/* ── Auto Config Cards ── */}
-          {configs.map((config) => (
-            <Card
-              key={config.id}
-              className="cursor-pointer group"
-              style={{
-                borderLeft: `4px solid ${config.auto_generate ? '#3b82f6' : '#d1d5db'}`,
-                transition: 'all 0.3s',
-              }}
-              onClick={() => { setConfigDialogOpen(config); }}
-            >
-              <div className="p-4" style={{ padding: '1.25rem' }}>
-                <div className="flex items-start justify-between mb-3">
-                  <div
-                    className="rounded-lg"
-                    style={{
-                      padding: '0.5rem',
-                      backgroundColor: config.auto_generate ? '#eff6ff' : '#f9fafb',
-                    }}
-                  >
-                    <CalendarDays
-                      className="w-4 h-4"
-                      style={{ color: config.auto_generate ? '#2563eb' : '#9ca3af' }}
-                    />
-                  </div>
-                  <div className="flex gap-1" style={{ gap: '0.375rem' }}>
-                    <Badge
-                      variant="secondary"
-                      style={{
-                        fontSize: '10px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        fontWeight: 600,
-                        backgroundColor: '#eff6ff',
-                        color: '#1d4ed8',
-                        borderColor: '#dbeafe',
-                      }}
-                    >
-                      {FREQ_LABELS[config.period]}
-                    </Badge>
-                    {config.auto_generate ? (
-                      <Badge
-                        variant="secondary"
-                        style={{
-                          fontSize: '10px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          fontWeight: 600,
-                          backgroundColor: '#ecfdf5',
-                          color: '#047857',
-                          borderColor: '#d1fae5',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                        }}
-                      >
-                        <Play style={{ width: '0.625rem', height: '0.625rem', fill: 'currentColor' }} />
-                        Actief
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        style={{
-                          fontSize: '10px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          fontWeight: 600,
-                          backgroundColor: '#fffbeb',
-                          color: '#b45309',
-                          borderColor: '#fef3c7',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                        }}
-                      >
-                        <Pause style={{ width: '0.625rem', height: '0.625rem' }} />
-                        Gepauzeerd
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <h3 style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                  {config.name}
-                </h3>
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
-                  {getPressName(config)}
-                </p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
+          mapped.push({
+            id: r.id, category: r.expand?.category?.naam || 'Overig', parentTask: r.task || '-', taskName: r.subtask || r.task || '-',
+            interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'), completedOn: formatDateNL(r.last_date),
+            executedBy: exBy, note: r.opmerkingen || '', statusKey: getStatusInfo(nDate).key, daysDiff: dDiff
+          });
+        }
+        if (!cancelled) setTasks(mapped);
+      } finally { if (!cancelled) setIsLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPress, selectedPeriod, selectedStatus, currentView, activeConfig.report_type]);
 
-      {/* ─── Bottom Section: Generated Reports ────────────── */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4" style={{ color: '#9ca3af' }} />
-            <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Laatste {generatedReports.length} Rapporten
-            </h2>
-          </div>
-          <Button variant="link" size="sm" className="text-xs text-blue-600 p-0 h-auto" onClick={() => setAllExportsOpen(true)}>
-            Bekijk volledige historie
+  const handleGenerateAndSave = async () => {
+    if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
+    setIsSaving(true);
+    try {
+      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} />).toBlob();
+      const f = new FormData();
+      f.append('file', b, `${activeConfig.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.pdf`);
+      // We don't have a direct 'title' field in report_files, it links to a maintenance_report.
+      // If we are generating from an activePreset, we link it.
+      if (activePreset) {
+        f.append('maintenance_report', activePreset.id);
+      }
+      f.append('generated_at', new Date().toISOString());
+
+      await pb.collection('report_files').create(f);
+      toast.success("Rapport opgeslagen in archief");
+      setCurrentView('dashboard');
+    } catch (e) { console.error(e); toast.error("Fout bij genereren"); } finally { setIsSaving(false); }
+  };
+
+  const handleSavePreset = async () => {
+    if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
+    setIsSaving(true);
+    try {
+      const p = {
+        name: activeConfig.name,
+        description: activeConfig.description,
+        period: activeConfig.settings.selectedPeriod || 'week',
+        auto_generate: activeConfig.is_automated,
+        email_recipients: activeConfig.email_recipients,
+        settings: activeConfig.settings
+      };
+      if (activePreset) await pb.collection('maintenance_reports').update(activePreset.id, p);
+      else await pb.collection('maintenance_reports').create(p);
+      toast.success("Sjabloon opgeslagen");
+      setCurrentView('dashboard');
+    } catch (e) { console.error(e); toast.error("Opslaan mislukt"); } finally { setIsSaving(false); }
+  };
+
+  const generatePresetNow = async (preset: ReportPreset) => {
+    toast.info(`Genereren: ${preset.name}...`);
+    try {
+      const s = preset.settings || { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' };
+      const f: string[] = [];
+      if (s.selectedPress && s.selectedPress !== 'Alle persen') f.push(`pers.naam = "${s.selectedPress}"`);
+      const pC = buildPeriodFilter(s.selectedPeriod, s.selectedStatus);
+      if (pC) f.push(pC);
+      const records = await pb.collection('onderhoud').getFullList({ filter: f.join(' && ') || undefined, expand: 'category,pers' });
+      const mapped = records.map((r: any) => ({
+        id: r.id, taskName: r.subtask || r.task || '-', completedOn: formatDateNL(r.last_date), interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'), note: r.opmerkingen || '', daysDiff: 0, next_date: r.next_date
+      })).filter(t => matchesStatus(t.next_date ? new Date(t.next_date) : null, s.selectedStatus));
+
+      const b = await pdf(<MaintenanceReportPDF tasks={mapped as any} reportTitle={preset.name} selectedPress={s.selectedPress} selectedPeriod={s.selectedPeriod} selectedStatus={s.selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={ALL_COLUMNS} />).toBlob();
+      const fd = new FormData();
+      fd.append('file', b, `${preset.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.pdf`);
+      fd.append('maintenance_report', preset.id);
+      fd.append('generated_at', new Date().toISOString());
+      await pb.collection('report_files').create(fd);
+      toast.success(`Rapport "${preset.name}" opgeslagen`);
+      fetchData();
+    } catch (e) { console.error(e); toast.error("Fout bij direct genereren"); }
+  };
+
+  if (currentView === 'dashboard') {
+    return (
+      <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-auto pb-4">
+        <div className="flex items-center justify-between shrink-0">
+          <PageHeader title="Rapporten & Automatisatie" description="Beheer sjablonen en bekijk het archief." icon={FileText} iconColor="text-indigo-600" iconBgColor="bg-indigo-50" className="mb-0" />
+          <Button onClick={() => openEditor(null)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+            <PlusCircle className="w-4 h-4" /> Nieuw Sjabloon
           </Button>
         </div>
 
-        <Card className="flex-1 overflow-auto border flex flex-col">
-          {isLoadingReports ? (
-            <div className="flex flex-col items-center justify-center p-12 text-gray-400">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mb-2" />
-              <p className="text-[10px] uppercase font-bold tracking-widest">Laden...</p>
-            </div>
-          ) : (
-            <Table className="relative min-w-full">
-              <TableHeader className="sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10 shadow-sm">
-                <TableRow style={{ backgroundColor: '#f9fafb' }}>
-                  <TableHead style={{ width: '180px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Bron</TableHead>
-                  <TableHead style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Rapport</TableHead>
-                  <TableHead style={{ width: '180px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: 'none' }}>Aangemaakt</TableHead>
-                  <TableHead style={{ width: '80px', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', borderRight: 'none' }}>Actie</TableHead>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {presets.map(p => (
+            <Card key={p.id} className="hover:shadow-lg transition-transform hover:-translate-y-1 duration-200 border-indigo-100">
+              <CardHeader className="pb-3 text-center">
+                <div className="mx-auto p-3 rounded-full bg-indigo-50 text-indigo-600 w-fit mb-2">
+                  <History className="w-6 h-6" />
+                </div>
+                <CardTitle className="text-lg">{p.name}</CardTitle>
+                <CardDescription className="line-clamp-2 min-h-[40px]">{p.description || 'Geen beschrijving'}</CardDescription>
+              </CardHeader>
+              <CardFooter className="pt-3 flex gap-2 border-t bg-slate-50/50">
+                <Button variant="outline" size="sm" onClick={() => openEditor(p)} className="flex-1 gap-1"><Edit2 className="w-3.5 h-3.5" /> Bewerk</Button>
+                <Button size="sm" onClick={() => generatePresetNow(p)} className="flex-1 gap-1 bg-indigo-600 hover:bg-indigo-700 text-white"><PlayCircle className="w-3.5 h-3.5" /> Genereer</Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><History className="w-5 h-5 text-indigo-600" /> Archief (Historiek)</h2>
+            <Button variant="ghost" size="sm" onClick={fetchData} disabled={isDataLoading} className="gap-2">{isDataLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Ververs</Button>
+          </div>
+          <Card className="overflow-hidden border-indigo-100 shadow-sm">
+            <Table>
+              <TableHeader className="bg-slate-50/50">
+                <TableRow>
+                  <TableHead>Datum / Tijd</TableHead>
+                  <TableHead>Titel</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-center">Trigger</TableHead>
+                  <TableHead className="text-right">Acties</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {generatedReports.map((report, idx) => (
-                  <TableRow key={report.id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td className="p-2" style={{ borderRight: 'none' }}>
-                      <Badge
-                        variant="secondary"
-                        style={{
-                          fontSize: '10px',
-                          fontWeight: 600,
-                          ...getBadgeStyle(report.configName),
-                        }}
-                      >
-                        {report.configName}
+                {archive.length > 0 ? archive.map(r => (
+                  <TableRow key={r.id} className="group hover:bg-indigo-50/30 transition-colors">
+                    <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(r.generated_at).toLocaleString('nl-NL')}</TableCell>
+                    <TableCell className="font-semibold text-slate-700">{r.expand?.maintenance_report?.name || r.file}</TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.report_type || 'taken'}</Badge></TableCell>
+                    <TableCell className="text-center">
+                      <Badge className={cn("text-[10px] px-1.5 h-5", "bg-blue-100 text-blue-700")}>
+                        Manual
                       </Badge>
-                    </td>
-                    <td className="p-2" style={{ fontWeight: 500, color: '#111827', fontSize: '0.875rem', borderRight: 'none' }}>
-                      <div className="flex items-center gap-2">
-                        <FileText style={{ width: '0.875rem', height: '0.875rem', color: '#d1d5db', flexShrink: 0 }} />
-                        {report.name}
-                      </div>
-                    </td>
-                    <td className="p-2" style={{ color: '#6b7280', fontSize: '0.75rem', borderRight: 'none' }}>
-                      <div className="flex items-center gap-1" style={{ gap: '0.375rem' }}>
-                        <Clock style={{ width: '0.75rem', height: '0.75rem', color: '#d1d5db' }} />
-                        {formatDate(report.createdAt)}
-                      </div>
-                    </td>
-                    <td className="p-2" style={{ textAlign: 'right', borderRight: 'none' }}>
+                    </TableCell>
+                    <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          style={{ height: '1.75rem', width: '1.75rem', padding: 0, color: '#6b7280' }}
-                          onClick={() => window.open(pb.files.getURL(report, report.file), '_blank')}
-                        >
-                          <Eye style={{ width: '0.875rem', height: '0.875rem' }} />
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Open PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
+                          <Download className="w-4 h-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          style={{ height: '1.75rem', width: '1.75rem', padding: 0, color: '#2563eb' }}
-                          onClick={() => window.open(pb.files.getURL(report, report.file) + "?download=1", '_blank')}
-                        >
-                          <Download style={{ width: '0.875rem', height: '0.875rem' }} />
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-300 hover:text-red-500" title="Verwijder" onClick={async () => { if (confirm('Rapport verwijderen?')) { await pb.collection('report_files').delete(r.id); fetchData(); } }}>
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
-                    </td>
+                    </TableCell>
                   </TableRow>
-                ))}
-
-                {generatedReports.length === 0 && (
-                  <TableRow>
-                    <td colSpan={4} className="p-2" style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
-                      <FileText style={{ width: '2.5rem', height: '2.5rem', margin: '0 auto 0.75rem', opacity: 0.2 }} />
-                      <p style={{ fontWeight: 500 }}>Nog geen rapporten gegenereerd</p>
-                    </td>
-                  </TableRow>
+                )) : (
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">Nog geen rapporten in het archief.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
-          )}
-        </Card>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-auto pb-4">
+      <div className="flex items-center justify-between shrink-0">
+        <PageHeader title={activePreset ? "Sjabloon Bewerken" : "Nieuw Sjabloon"} description="Pas filters aan en configureer automatisatie." icon={Settings2} iconColor="text-indigo-600" iconBgColor="bg-indigo-50" className="mb-0" />
+        <Button variant="ghost" onClick={() => setCurrentView('dashboard')} className="text-slate-500 gap-2"><ArrowLeft className="w-4 h-4" /> Terug</Button>
       </div>
 
-      {/* ─── New Export Dialog ────────────────────────────── */}
-      <Dialog open={manualDialogOpen} onOpenChange={(open) => {
-        setManualDialogOpen(open);
-        if (!open) fetchData();
-      }}>
-        <DialogContent className="overflow-y-auto p-0" style={{ maxWidth: '64rem', width: '95vw', maxHeight: '90vh' }}>
-          {previewUrl ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '80vh' }}>
-              <div style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Rapport Voorbeeld</h3>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setPreviewUrl(null)}>
-                    Terug
-                  </Button>
-                  <Button onClick={() => {
-                    const link = document.createElement('a');
-                    link.href = previewUrl + "?download=1";
-                    link.download = ""; // Use original filename from server
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    setPreviewUrl(null);
-                    setManualDialogOpen(false);
-                    navigate('/Rapport');
-                  }} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                    <Download className="w-4 h-4" />
-                    Download & Terug
-                  </Button>
+      <div className="flex flex-row gap-6 items-start w-full h-[calc(100vh-210px)]">
+        <div className="flex-1 min-w-[400px] h-full">
+          <Card className="flex flex-col h-full border-indigo-100 shadow-sm overflow-auto">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base">Configuratie</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 flex-1">
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase text-muted-foreground font-bold">Naam</Label>
+                  <Input value={activeConfig.name} onChange={e => setActiveConfig(prev => ({ ...prev, name: e.target.value }))} placeholder="Bijv. Wekelijks Onderhoud" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase text-muted-foreground font-bold">Type Export</Label>
+                  <Select value={activeConfig.report_type} onValueChange={handleTypeChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="taken">Onderhoudstaken</SelectItem>
+                      <SelectItem value="drukwerken">Drukwerken</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-              <iframe src={previewUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="PDF Preview" />
-            </div>
-          ) : (
-            <>
-              <DialogHeader style={{ padding: '1.5rem 1.5rem 0' }}>
-                <DialogTitle className="flex items-center gap-2" style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-                  <div className="rounded-lg" style={{ padding: '0.375rem', backgroundColor: '#e0e7ff' }}>
-                    <Plus className="w-4 h-4" style={{ color: '#4f46e5' }} />
-                  </div>
-                  Nieuwe Export
-                </DialogTitle>
-                <DialogDescription style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                  Exporteer alle openstaande taken of gebruik een bestaande configuratie
-                </DialogDescription>
-              </DialogHeader>
 
-              {/* Quick actions bar */}
-              <div style={{ padding: '0 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {/* Due tasks quick export card */}
-                  <Card
-                    className="cursor-pointer group"
-                    style={{
-                      borderLeft: `4px solid ${selectedConfigId === 'new' ? '#3b82f6' : (dueTasks.length > 0 ? '#ef4444' : '#d1d5db')}`,
-                      transition: 'all 0.3s',
-                    }}
-                    onClick={() => setSelectedConfigId('new')}
-                  >
-                    <div className="p-4" style={{ padding: '1.25rem' }}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div
-                          className="rounded-lg"
-                          style={{
-                            padding: '0.5rem',
-                            backgroundColor: selectedConfigId === 'new' ? '#eff6ff' : (dueTasks.length > 0 ? '#fef2f2' : '#f9fafb'),
-                          }}
+              {activeConfig.report_type === 'taken' && (
+                <div className="space-y-6 pt-4 border-t">
+                  <div className="space-y-3">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Pers Selectie</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {pressNames.map(p => (
+                        <Button
+                          key={p}
+                          variant={selectedPress === p ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => updateSetting('selectedPress', p)}
+                          className={cn(
+                            "rounded-full px-4 h-8 text-xs transition-all",
+                            selectedPress === p ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                          )}
                         >
-                          <AlertTriangle
-                            className="w-4 h-4"
-                            style={{ color: selectedConfigId === 'new' ? '#2563eb' : (dueTasks.length > 0 ? '#ef4444' : '#9ca3af') }}
-                          />
-                        </div>
-                      </div>
-                      <h3 style={{ fontWeight: 600, color: '#e03805ff', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Onderhoud nu nodig
-                      </h3>
-                      <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
-                        {dueTasks.length > 0
-                          ? `${dueTasks.length} ${dueTasks.length === 1 ? 'taak' : 'taken'}`
-                          : 'Geen taken'}
-                      </p>
+                          {p}
+                        </Button>
+                      ))}
                     </div>
-                  </Card>
+                  </div>
 
-                  {/* Existing configs quick-load cards */}
-                  {configs.map(config => (
-                    <Card
-                      key={config.id}
-                      className="cursor-pointer group"
-                      style={{
-                        borderLeft: `4px solid ${selectedConfigId === config.id ? '#3b82f6' : '#d1d5db'}`,
-                        transition: 'all 0.3s',
-                      }}
-                      onClick={() => setSelectedConfigId(config.id)}
-                    >
-                      <div className="p-4" style={{ padding: '1.25rem' }}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div
-                            className="rounded-lg"
-                            style={{
-                              padding: '0.5rem',
-                              backgroundColor: selectedConfigId === config.id ? '#eff6ff' : '#f9fafb',
+                  <div className="space-y-3">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Status</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {statusOptions.map(s => (
+                        <Button
+                          key={s}
+                          variant={selectedStatus === s ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            const firstPeriod = PERIOD_OPTIONS[s]?.[0] || '';
+                            setActiveConfig(prev => ({
+                              ...prev,
+                              settings: { ...prev.settings, selectedStatus: s, selectedPeriod: firstPeriod }
+                            }));
+                          }}
+                          className={cn(
+                            "rounded-full px-4 h-8 text-xs font-bold transition-all",
+                            selectedStatus === s ? statusColors[s] : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                          )}
+                        >
+                          {s}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Periode</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {(PERIOD_OPTIONS[selectedStatus] || []).map(o => (
+                        <Button
+                          key={o}
+                          variant={selectedPeriod === o ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => updateSetting('selectedPeriod', o)}
+                          className={cn(
+                            "rounded-full px-4 h-8 text-xs transition-all",
+                            selectedPeriod === o ? "bg-slate-800 border-slate-800" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                          )}
+                        >
+                          {o}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-4 border-t border-dashed">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Zichtbare Kolommen</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {ALL_COLUMNS.map(c => {
+                        const active = selectedColumns.includes(c.id);
+                        return (
+                          <Button
+                            key={c.id}
+                            variant={active ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              setSelectedColumns(prev =>
+                                prev.includes(c.id)
+                                  ? (prev.length > 1 ? prev.filter(id => id !== c.id) : prev)
+                                  : [...prev, c.id]
+                              );
                             }}
+                            className={cn(
+                              "h-8 text-[10px] font-bold uppercase tracking-tight gap-1.5 transition-all rounded-md",
+                              active ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100" : "border-slate-200 text-slate-400 opacity-60"
+                            )}
                           >
-                            <CalendarDays
-                              className="w-4 h-4"
-                              style={{ color: selectedConfigId === config.id ? '#2563eb' : '#9ca3af' }}
-                            />
-                          </div>
-                          <div className="flex gap-1" style={{ gap: '0.375rem' }}>
-                            <Badge
-                              variant="secondary"
-                              style={{
-                                fontSize: '10px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.05em',
-                                fontWeight: 600,
-                                backgroundColor: '#eff6ff',
-                                color: '#1d4ed8',
-                                borderColor: '#dbeafe',
-                              }}
-                            >
-                              {FREQ_LABELS[config.period]}
-                            </Badge>
-                          </div>
-                        </div>
-                        <h3 style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                          {config.name}
-                        </h3>
-                        <p style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <Zap style={{ width: '0.75rem', height: '0.75rem' }} />
-                          {getPressName(config)}
-                        </p>
-                      </div>
-                    </Card>
-                  ))}
+                            {active ? <Check className="w-3 h-3" /> : <div className="w-3 h-3 border rounded-sm border-slate-300" />}
+                            {c.id === 'completedOn' ? (selectedStatus === 'Voltooid' ? 'Voltooid op' : 'Laatste onderhoud') : c.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
+              )}
 
-                <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '0.5rem' }} />
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-bold">Automatisatie</Label>
+                    <p className="text-[10px] text-muted-foreground italic">Verstuur automatisch per e-mail.</p>
+                  </div>
+                  <Switch checked={activeConfig.is_automated} onCheckedChange={v => setActiveConfig(p => ({ ...p, is_automated: v }))} />
+                </div>
+                {activeConfig.is_automated && (
+                  <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Ontvangers (comma-separated)</Label>
+                    <Input value={activeConfig.email_recipients} onChange={e => setActiveConfig(p => ({ ...p, email_recipients: e.target.value }))} placeholder="admin@thooft.be" className="h-8 text-xs" />
+                  </div>
+                )}
               </div>
 
-              <div style={{ padding: '0 1.5rem 1.5rem' }}>
-                <MaintenanceReportManagerV2
-                  key={selectedConfigId || 'new'}
-                  configId={selectedConfigId || 'new'}
-                  initialName={selectedConfigId === 'new' ? 'Onderhoud nu nodig' : undefined}
-                  tasks={tasks}
-                  presses={presses}
-                  onPreviewReady={(url) => setPreviewUrl(url)}
-                  onSave={() => {
-                    fetchData();
-                  }}
-                  onCancel={() => setManualDialogOpen(false)}
-                />
+              <div className="pt-2">
+                <Button variant="ghost" size="sm" onClick={() => setIsAdvancedOpen(!isAdvancedOpen)} className="w-full justify-between h-8 text-[10px] font-bold uppercase text-slate-400">
+                  <span>Extra PDF Opties</span>
+                  <ChevronRight className={cn("w-3 h-3 transition-transform", isAdvancedOpen && "rotate-90")} />
+                </Button>
+                {isAdvancedOpen && (
+                  <div className="grid grid-cols-3 gap-2 mt-2 p-2 bg-slate-50 rounded border animate-in fade-in duration-200">
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Font</Label><Input type="number" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge H</Label><Input type="number" value={marginH} onChange={e => setMarginH(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge V</Label><Input type="number" value={marginV} onChange={e => setMarginV(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                  </div>
+                )}
               </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Config Edit Dialog ──────────────────────────── */}
-      <Dialog open={!!configDialogOpen} onOpenChange={(open) => { if (!open) handleCloseConfigDialog(); }}>
-        <DialogContent
-          className="overflow-y-auto"
-          style={{
-            maxWidth: '64rem',
-            width: '95vw',
-            maxHeight: '90vh',
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2" style={{ fontSize: '1.125rem', fontWeight: 700 }}>
-              <div className="rounded-lg" style={{ padding: '0.375rem', backgroundColor: '#dbeafe' }}>
-                <Settings className="w-4 h-4" style={{ color: '#2563eb' }} />
+            </CardContent>
+            <CardFooter className="flex flex-col gap-2 pt-4 border-t bg-slate-50/50">
+              <div className="flex gap-2 w-full">
+                <Button variant="outline" onClick={() => setCurrentView('dashboard')} className="flex-1 h-9 text-xs">Annuleren</Button>
+                <Button onClick={handleSavePreset} disabled={isSaving} className="flex-1 h-9 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1">{isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Sjabloon Opslaan</Button>
               </div>
-              {configDialogOpen?.name || 'Configuratie'}
-            </DialogTitle>
-            <DialogDescription style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              Pas de instellingen van deze rapportconfiguratie aan
-            </DialogDescription>
-          </DialogHeader>
+              <Button onClick={handleGenerateAndSave} disabled={isSaving || tasks.length === 0} className="w-full h-10 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold gap-2">
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />} Genereer & Archiveer Nu
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
 
-          {/* ── Expanded editing view with MaintenanceReportManager ── */}
-          {configDialogOpen && (
-            <div>
-              <MaintenanceReportManagerV2
-                configId={configDialogOpen.id}
-                tasks={tasks}
-                presses={presses}
-                onSave={() => {
-                  fetchData();
-                  handleCloseConfigDialog();
-                }}
-                onCancel={handleCloseConfigDialog}
-                onDelete={() => {
-                  fetchData();
-                  handleCloseConfigDialog();
-                }}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── All Exports History Dialog ───────────────────── */}
-      <AllExportsDialog open={allExportsOpen} onOpenChange={setAllExportsOpen} />
-    </div >
+        <div className="w-[810px] h-full relative group">
+          <div className="absolute inset-0 bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-inner flex items-center justify-center">
+            {isLoading ? (
+              <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
+            ) : activeConfig.report_type === 'taken' ? (
+              <PDFViewer width="100%" height="100%" className="border-none">
+                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} />
+              </PDFViewer>
+            ) : (
+              <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.report_type}" volgt spoedig.</p></div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

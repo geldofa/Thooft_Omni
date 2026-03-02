@@ -49,6 +49,8 @@ interface MaintenanceTableProps {
   onEditGroup?: (group: GroupedTask) => void;
   onAddTask?: () => void;
   statusFilter?: string | null;
+  pressId?: string | null;
+  pressName?: string | null;
 }
 
 // --- HELPERS ---
@@ -87,16 +89,15 @@ interface SortableColumnHeaderProps {
   style?: React.CSSProperties;
 }
 
-export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, statusFilter }: MaintenanceTableProps) {
+export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGroup, statusFilter, pressId: propPressId }: MaintenanceTableProps) {
   const { user, hasPermission } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [, setIsLoading] = useState(false);
 
-  // Active press ID can be derived from the first task if not provided
-  // Active press ID can be derived from the first real task if not provided
-  const activePressId = tasks.find(t => t.pressId && t.pressId !== 'system')?.pressId || tasks[0]?.pressId;
+  // Active press ID can be derived from prop or from the first non-system/non-highlight task
+  const activePressId = propPressId || tasks.find(t => t.pressId && t.pressId !== 'system' && !t.isHighlightGroup)?.pressId || tasks[0]?.pressId;
 
   const fetchData = useCallback(async () => {
     if (!activePressId || activePressId === 'system') return;
@@ -312,9 +313,18 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   // Sort categories by the custom order (IDs)
   const orderedCategoryIds = useMemo(() => {
     const categoryIdsWithTasks = Object.keys(groupedTasksByCategoryId);
+
+    // Common highlight check
+    const isHighlight = (id: string) => id === 'highlights' || id.startsWith('highlight-');
+
     if (!categoryOrder || categoryOrder.length === 0) {
-      // Fallback: Sort by Name if we can resolve it, else ID
+      // Fallback: Sort by Name if we can resolve it, but prioritize highlights
       return categoryIdsWithTasks.sort((a, b) => {
+        const isHighA = isHighlight(a);
+        const isHighB = isHighlight(b);
+        if (isHighA && !isHighB) return -1;
+        if (!isHighA && isHighB) return 1;
+
         const nameA = categories.find(c => c.id === a)?.name || a;
         const nameB = categories.find(c => c.id === b)?.name || b;
         return nameA.localeCompare(nameB);
@@ -326,11 +336,20 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     categoryOrder.forEach((id, index) => idToIndex.set(id, index));
 
     return categoryIdsWithTasks.sort((idA, idB) => {
-      // Explicitly prioritize Highlights
-      const isHighA = idA === 'highlights' || idA.startsWith('highlight-');
-      const isHighB = idB === 'highlights' || idB.startsWith('highlight-');
+      // Explicitly prioritize Highlights ALWAYS
+      const isHighA = isHighlight(idA);
+      const isHighB = isHighlight(idB);
       if (isHighA && !isHighB) return -1;
       if (!isHighA && isHighB) return 1;
+
+      // If both are highlights, maintain internal order (by tag name if possible)
+      if (isHighA && isHighB) {
+        const tagIdA = idA.replace('highlight-', '');
+        const tagIdB = idB.replace('highlight-', '');
+        const tagA = tags?.find(t => t.id === tagIdA)?.naam || idA;
+        const tagB = tags?.find(t => t.id === tagIdB)?.naam || idB;
+        return tagA.localeCompare(tagB);
+      }
 
       const indexA = idToIndex.has(idA) ? idToIndex.get(idA)! : 99999;
       const indexB = idToIndex.has(idB) ? idToIndex.get(idB)! : 99999;
@@ -342,7 +361,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
       const nameB = categories.find(c => c.id === idB)?.name || idB;
       return nameA.localeCompare(nameB);
     });
-  }, [categoryOrder, groupedTasksByCategoryId, categories]);
+  }, [categoryOrder, groupedTasksByCategoryId, categories, tags]);
 
 
   // Sorting functions
@@ -1195,7 +1214,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                     }}
                   />
                   <SortableColumnHeader
-                    label="Toegewezen aan"
+                    label="Uitgevoerd door"
                     sortKey="assignedTo"
                     className="px-3 py-2 text-left"
                     style={{
@@ -1294,7 +1313,7 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
                   key={categoryId}
                   categoryId={categoryId}
                   categoryName={categoryName}
-                  pressId={tasks.length > 0 ? tasks[0].pressId : null} // [NEW] Pass derived PressID
+                  pressId={activePressId} // Use robust activePressId instead of tasks[0].pressId
                   onToggle={(id, e) => toggleCategory(id, e)}
                   isCollapsed={collapsedCategories.has(categoryId)}
                   user={user}

@@ -2,7 +2,7 @@ import { startTransition, Suspense, lazy, useState, useEffect, useCallback, useM
 import { useParams, useNavigate } from 'react-router-dom';
 import { GroupedTask } from './AuthContext';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { Users, Tags, Factory, Key, Tag as TagIcon, Shield, Calculator } from 'lucide-react';
+import { Users, Tags, Factory, Key, Tag as TagIcon, Shield, Calculator, Palette, Bell } from 'lucide-react';
 import { useAuth, pb, Operator, Ploeg, MaintenanceTask, Tag, Press } from './AuthContext';
 import { OperatorManagement } from './OperatorManagement';
 import { CategoryManagement } from './CategoryManagement';
@@ -11,10 +11,12 @@ import { PasswordManagement } from './PasswordManagement';
 import { ExternalSummary } from './ExternalSummary';
 import { TagManagement } from './TagManagement';
 import { PermissionManagement } from './PermissionManagement';
+import { ThemeManagement } from './ThemeManagement';
 import { Reports } from './Reports';
 import { MaintenanceChecklist } from './MaintenanceChecklist';
 
 const ParameterManagement = lazy(() => import('./ParameterManagement').then(m => ({ default: m.ParameterManagement })));
+const NotificationManagement = lazy(() => import('./NotificationManagement').then(m => ({ default: m.NotificationManagement })));
 
 interface ManagementLayoutProps {
     tasks?: GroupedTask[];
@@ -73,16 +75,13 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                 dienstverband: r.dienstverband || 'Intern'
             })));
 
-            setPloegen(ploegResult.map((r: any) => {
-                const press = pressResult.find((p: any) => p.id === r.pers);
-                return {
-                    id: r.id,
-                    name: r.naam || '',
-                    operatorIds: Array.isArray(r.leden) ? r.leden : [],
-                    presses: press ? [press.naam] : [],
-                    active: r.active !== false
-                };
-            }));
+            setPloegen(ploegResult.map((r: any) => ({
+                id: r.id,
+                name: r.naam || '',
+                operatorIds: Array.isArray(r.leden) ? r.leden : [],
+                presses: Array.isArray(r.presses) ? r.presses : (r.presses ? [r.presses] : []),
+                active: r.active !== false
+            })));
 
             setPresses(pressResult.map((p: any) => ({
                 id: p.id,
@@ -310,6 +309,8 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
         'Parameters': 'parameters',
         'Accounts': 'passwords',
         'Rechten': 'permissions',
+        'Thema': 'themes',
+        'Notificaties': 'notifications',
         'Extern': 'extern',
         'Rapport': 'reports',
         'Checklist': 'checklist'
@@ -373,6 +374,17 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                             </TabsTrigger>
                         )}
 
+                        {hasPermission('management_access') && (
+                            <TabsTrigger value="Thema" className="tab-pill-trigger">
+                                <Palette className="w-4 h-4 mr-2" /> Thema
+                            </TabsTrigger>
+                        )}
+
+                        {hasPermission('management_access') && (
+                            <TabsTrigger value="Notificaties" className="tab-pill-trigger">
+                                <Bell className="w-4 h-4 mr-2" /> Notificaties
+                            </TabsTrigger>
+                        )}
 
                     </TabsList>
                 </Tabs>
@@ -396,6 +408,8 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                     {currentTab === 'parameters' && <ParameterManagement />}
                     {currentTab === 'passwords' && <PasswordManagement />}
                     {currentTab === 'permissions' && <PermissionManagement />}
+                    {currentTab === 'themes' && <ThemeManagement />}
+                    {currentTab === 'notifications' && <NotificationManagement />}
                     {currentTab === 'reports' && <Reports tasks={flattenedTasks} />}
                     {currentTab === 'checklist' && <MaintenanceChecklist tasks={flattenedTasks} />}
                 </Suspense>

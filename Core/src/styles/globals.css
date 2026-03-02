@@ -4,13 +4,22 @@
 
 :root {
   --font-size: 16px;
+
+  /* ── Dynamic theme variables (overridden at runtime by ThemeProvider) ──────
+   * Keep these as valid CSS color values (hex / rgb / hsl()) so that
+   * direct uses of var(--background) in Shadcn component styles keep working.
+   * ThemeProvider will override these with the value from app_themes.
+   * ─────────────────────────────────────────────────────────────────────── */
+  --primary: #2563eb;
+  /* Tailwind blue-600 */
   --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+  --foreground: #0f172a;
+  /* Tailwind slate-900 */
+
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;

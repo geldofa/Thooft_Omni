@@ -129,8 +129,45 @@ export function RoadmapV2() {
 
     // --- TIMELINE LOGIC ---
     const allSorted = useMemo(() => [...items].sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime()), [items]);
-    const roadmapUpcoming = useMemo(() => allSorted.filter(i => i.status !== 'completed' && i.status !== 'rejected' && !i.archived), [allSorted]);
-    const roadmapCompleted = useMemo(() => allSorted.filter(i => i.status === 'completed' && !i.archived), [allSorted]);
+
+    // Upcoming: Filtered status (not completed/rejected) and NOT archived, newest first
+    const roadmapUpcoming = useMemo(() =>
+        allSorted.filter(i => i.status !== 'completed' && i.status !== 'rejected' && !i.archived)
+        , [allSorted]);
+
+    // Completed Groups: Grouped by version or month/year, sorted newest first
+    const roadmapCompletedGroups = useMemo(() => {
+        const groups: { label: string, items: FeedbackItem[], date: number, isVersion: boolean }[] = [];
+
+        const completedSorted = [...items]
+            .filter(i => i.status === 'completed' && !i.archived)
+            .sort((a, b) => {
+                const dateA = a.completed_at || a.created;
+                const dateB = b.completed_at || b.created;
+                return new Date(dateB).getTime() - new Date(dateA).getTime();
+            });
+
+        completedSorted.forEach(item => {
+            const isVersion = !!item.completed_version;
+            let label = item.completed_version;
+
+            // If no version, use Month Year
+            if (!label) {
+                const date = new Date(item.completed_at || item.created);
+                label = format(date, 'MMMM yyyy', { locale: nl });
+            }
+
+            let group = groups.find(g => g.label === label);
+            if (!group) {
+                group = { label, items: [], date: new Date(item.completed_at || item.created).getTime(), isVersion };
+                groups.push(group);
+            }
+            group.items.push(item);
+        });
+
+        // Ensure groups themselves are sorted by their newest item date
+        return groups.sort((a, b) => b.date - a.date);
+    }, [items]);
 
     // --- LIST LOGIC ---
     const activeFeedback = useMemo(() => items.filter(f => !f.archived && f.status !== 'completed'), [items]);
@@ -372,10 +409,16 @@ export function RoadmapV2() {
                                                             </div>
 
                                                             <div className="flex flex-col items-start gap-1 opacity-80">
-                                                                <Badge variant="outline" className={`h-auto py-1 px-2.5 ${FONT_SIZES.item} font-semibold rounded-lg border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
-                                                                    {item.roadmap_title}
-                                                                    {item.completed_version && <span className={`ml-1.5 opacity-60 ${FONT_SIZES.sub}`}>v{item.completed_version}</span>}
-                                                                </Badge>
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    {/* Chip 1: Version or Status Label */}
+                                                                    <Badge variant="outline" className={`h-auto py-0.5 px-2 ${FONT_SIZES.sub} font-bold rounded-md border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
+                                                                        {item.completed_version ? `v${item.completed_version}` : STATUS_LABELS[item.status || 'pending']}
+                                                                    </Badge>
+                                                                    {/* Chip 2: Item Title */}
+                                                                    <Badge variant="outline" className={`h-auto py-1 px-2.5 ${FONT_SIZES.item} font-semibold rounded-lg border border-gray-100 shadow-none bg-white text-gray-900`}>
+                                                                        {item.roadmap_title}
+                                                                    </Badge>
+                                                                </div>
                                                                 <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
                                                                     <div className="flex items-center gap-1">
                                                                         <Calendar className="w-2.5 h-2.5" />
@@ -395,36 +438,58 @@ export function RoadmapV2() {
                                         )}
 
                                         {/* History Section Label */}
-                                        {roadmapCompleted.length > 0 && (
-                                            <div className="flex relative z-20">
+                                        {roadmapCompletedGroups.length > 0 && (
+                                            <div className="flex relative z-20 pt-4">
                                                 <span className={`${FONT_SIZES.label} font-bold uppercase tracking-[0.2em] text-green-700 bg-white pr-2`}>
                                                     Geïmplementeerd
                                                 </span>
                                             </div>
                                         )}
 
-                                        {/* Completed Items List */}
-                                        <div className="space-y-5">
-                                            {roadmapCompleted.map((item) => (
-                                                <div key={item.id} className="relative">
-                                                    <div className="absolute left-[-30px] top-2.5 -translate-x-1/2 flex items-center justify-center z-10">
-                                                        <div className={`w-3 h-3 rounded-full border-2 bg-white flex items-center justify-center ${item.type === 'bug' ? 'border-red-300' : 'border-blue-300'}`}>
-                                                            <div className={`w-1 h-1 rounded-full ${item.type === 'bug' ? 'bg-red-300' : 'bg-blue-300'}`} />
+                                        {/* Completed Items Grouped List */}
+                                        <div className="space-y-8">
+                                            {roadmapCompletedGroups.map((group) => (
+                                                <div key={group.label} className="space-y-4">
+                                                    {/* Group Header (Only for non-version groups like Months) */}
+                                                    {!group.isVersion && (
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded border">
+                                                                {group.label}
+                                                            </span>
+                                                            <div className="flex-1 h-[1px] bg-gray-100" />
                                                         </div>
-                                                    </div>
+                                                    )}
 
-                                                    <div className="flex flex-col items-start gap-1 opacity-80">
-                                                        <Badge variant="outline" className={`h-auto py-1 px-2.5 ${FONT_SIZES.item} font-semibold rounded-lg border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
-                                                            <Check className="w-2.5 h-2.5 mr-1" />
-                                                            {item.roadmap_title}
-                                                            {item.completed_version && <span className={`ml-1.5 opacity-60 ${FONT_SIZES.sub}`}>v{item.completed_version}</span>}
-                                                        </Badge>
-                                                        <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
-                                                            <div className="flex items-center gap-1">
-                                                                <Calendar className="w-2.5 h-2.5" />
-                                                                {format(new Date(item.created), 'MMM yy', { locale: nl })}
+                                                    <div className="space-y-5">
+                                                        {group.items.map((item) => (
+                                                            <div key={item.id} className="relative">
+                                                                <div className="absolute left-[-30px] top-2.5 -translate-x-1/2 flex items-center justify-center z-10">
+                                                                    <div className={`w-3 h-3 rounded-full border-2 bg-white flex items-center justify-center ${item.type === 'bug' ? 'border-red-300' : 'border-blue-300'}`}>
+                                                                        <div className={`w-1 h-1 rounded-full ${item.type === 'bug' ? 'bg-red-300' : 'bg-blue-300'}`} />
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex flex-col items-start gap-1 opacity-80">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        {/* Chip 1: Version or Status Label */}
+                                                                        <Badge variant="outline" className={`h-auto py-0.5 px-2 ${FONT_SIZES.sub} font-bold rounded-md border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
+                                                                            {item.completed_version ? `v${item.completed_version}` : STATUS_LABELS[item.status || 'pending']}
+                                                                        </Badge>
+                                                                        {/* Chip 2: Item Title */}
+                                                                        <Badge variant="outline" className={`h-auto py-1 px-2.5 ${FONT_SIZES.item} font-semibold rounded-lg border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
+                                                                            <Check className="w-2.5 h-2.5 mr-1 inline-block" />
+                                                                            {item.roadmap_title}
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Calendar className="w-2.5 h-2.5" />
+                                                                            {format(new Date(item.completed_at || item.created), 'dd MMM yy', { locale: nl })}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             ))}

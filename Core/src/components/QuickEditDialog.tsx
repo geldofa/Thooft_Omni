@@ -83,7 +83,7 @@ export function QuickEditDialog({
         id: r.id,
         name: r.naam || r.name || '',
         operatorIds: Array.isArray(r.leden) ? r.leden : Array.isArray(r.operatorIds) ? r.operatorIds : [],
-        presses: r.pers ? [r.pers] : Array.isArray(r.presses) ? r.presses : Array.isArray(r.persen) ? r.persen : [],
+        presses: Array.isArray(r.presses) && r.presses.length > 0 ? r.presses : [],
         active: r.active !== false
       })));
     } catch (e) {
@@ -126,36 +126,26 @@ export function QuickEditDialog({
     }
   }, [task, hasSiblings, field]);
 
-  // Helper: Get operators not in any active ploeg
-  const getIndividualOperators = () => {
-    const operatorsInPloegen = new Set(
-      ploegen
-        .filter(p => p.active)
-        .flatMap(p => p.operatorIds)
-    );
-    return operators.filter(op => op.active && !operatorsInPloegen.has(op.id));
-  };
 
-  // Helper: Get assignees for the selected press
   // Helper: Get assignees for the selected press
   const getAssigneesForPress = () => {
     if (!task) return { ploegen: [], operators: [], externalEntities: [] };
 
-    // Use pressId if available, otherwise try to find ID by name, or fallback to name
     const pressId = task.pressId;
 
     const filterByPress = (entity: { presses: string[] }) => {
       if (!entity.presses || entity.presses.length === 0) return false;
-      // Check if pressId is in the list (most likely)
       if (pressId && entity.presses.includes(pressId)) return true;
-      // Check if press Name is in the list (legacy)
       if (task.press && entity.presses.includes(task.press)) return true;
       return false;
     };
 
+    const activePloegenForPress = ploegen.filter(p => p.active && filterByPress(p));
+    const operatorIdsInActivePloegen = new Set(activePloegenForPress.flatMap(p => p.operatorIds));
+
     return {
-      ploegen: ploegen.filter(p => p.active && filterByPress(p)),
-      operators: getIndividualOperators().filter(op => filterByPress(op)),
+      ploegen: activePloegenForPress,
+      operators: operators.filter(op => op.active && filterByPress(op) && !operatorIdsInActivePloegen.has(op.id)),
       externalEntities: externalEntities.filter(e => e.active && filterByPress(e))
     };
   };
@@ -390,36 +380,41 @@ export function QuickEditDialog({
                       <div className="space-y-2">
                         {assignees.ploegen.length > 0 ? (
                           <div className="flex flex-wrap gap-4">
-                            {assignees.ploegen.map(ploeg => (
-                              <div key={ploeg.id} className="border rounded-md p-3 bg-gray-50/50" style={{ flex: '1 1 calc(33.333% - 0.75rem)', minWidth: '150px' }}>
-                                <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200 truncate" title={ploeg.name}>
-                                  {ploeg.name}
-                                </div>
-                                {/* Individual Members */}
-                                <div className="space-y-2">
-                                  {ploeg.operatorIds.map(opId => {
-                                    const member = operators.find(o => o.id === opId);
-                                    if (!member) return null;
-                                    return (
-                                      <div key={member.id} className="flex items-center space-x-3">
-                                        <Checkbox
-                                          id={`ploeg-member-${member.id}`}
-                                          checked={isAssigned(member.id, 'operator')}
-                                          onCheckedChange={() => toggleAssignment(member.id, 'operator')}
-                                        />
-                                        <label
-                                          htmlFor={`ploeg-member-${member.id}`}
-                                          className="text-sm text-gray-600 cursor-pointer select-none truncate"
-                                          title={member.name}
-                                        >
-                                          {member.name}
-                                        </label>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
+                            {[...assignees.ploegen]
+                              .sort((a, b) => (a.presses.length > 1 ? 1 : 0) - (b.presses.length > 1 ? 1 : 0))
+                              .map(ploeg => {
+                                const isMultiPress = ploeg.presses.length > 1;
+                                return (
+                                  <div key={ploeg.id} className={`border rounded-md p-3 ${isMultiPress ? 'bg-gray-100/80' : 'bg-gray-50/50'}`} style={{ flex: '1 1 calc(33.333% - 0.75rem)', minWidth: '150px' }}>
+                                    <div className="font-medium text-sm text-gray-700 mb-2 pb-1 border-b border-gray-200 truncate" title={ploeg.name}>
+                                      {ploeg.name}
+                                    </div>
+                                    {/* Individual Members */}
+                                    <div className="space-y-2">
+                                      {ploeg.operatorIds.map(opId => {
+                                        const member = operators.find(o => o.id === opId);
+                                        if (!member) return null;
+                                        return (
+                                          <div key={member.id} className="flex items-center space-x-3">
+                                            <Checkbox
+                                              id={`ploeg-member-${member.id}`}
+                                              checked={isAssigned(member.id, 'operator')}
+                                              onCheckedChange={() => toggleAssignment(member.id, 'operator')}
+                                            />
+                                            <label
+                                              htmlFor={`ploeg-member-${member.id}`}
+                                              className="text-sm text-gray-600 cursor-pointer select-none truncate"
+                                              title={member.name}
+                                            >
+                                              {member.name}
+                                            </label>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                           </div>
                         ) : null}
                       </div>

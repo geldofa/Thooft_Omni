@@ -135,6 +135,7 @@ export const getFormulaSubstitutions = (
     finishedFields.forEach(field => {
         if (formula.includes(field.key)) {
             let value = job?.[field.key] ?? 0;
+            if (field.key === 'exOmw') value = Number(value) || 1; // Default to 1 if empty/zero
             if (field.key === 'startup') value = job?.startup ? (safeParams['opstart'] ?? 0) : 0;
             if (field.key === 'delta_number') value = job?.delta_number || job?.delta || 0;
 
@@ -220,6 +221,9 @@ export const evaluateFormula = (
         finishedFields.forEach(field => {
             const regex = new RegExp('\\b' + escapeRegex(field.key) + '\\b', 'g');
             let value: any = (job as any)[field.key];
+            if (field.key === 'exOmw') {
+                value = Number(value) || 1; // Default to 1 if empty/zero
+            }
             if (field.key === 'startup') {
                 value = value ? (safeParams['opstart'] || 0) : 0;
             }

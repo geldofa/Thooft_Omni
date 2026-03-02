@@ -1,6 +1,7 @@
 import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Category, Tag } from './components/AuthContext';
+import { ThemeProvider } from './components/ThemeProvider';
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
@@ -172,7 +173,9 @@ function MainApp() {
           commentDate: record.commentDate ? new Date(record.commentDate) : null,
           sort_order: record.sort_order || 0,
           isExternal: record.is_external || false,
-          tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : [])
+          tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : []),
+          pressId: pressId, // Added
+          press: pressName   // Added
         } as any);
       });
 
@@ -198,6 +201,7 @@ function MainApp() {
                 id: `highlight-${tag.id}-${origGroup.id}`,
                 categoryId: `highlight-${tag.id}`,
                 category: tag.naam, // Category name = Tag name
+                isHighlightGroup: true,
                 highlightColor: tag.kleur,
                 subtasks: tagMatchingSubtasks.map((s: any) => ({
                   ...s,
@@ -410,26 +414,31 @@ function MainApp() {
     setStatusFilter(statusFilter === status ? null : status);
   };
 
-  const currentPressTasks = useMemo(() => {
+  const { currentPressId, pressNameFromUrl } = useMemo(() => {
     const segments = location.pathname.split('/').filter(Boolean);
-    const press = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
-    if (!press || press === 'Taken') return [];
+    const name = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
+    const id = presses.find(p => p.name.toLowerCase() === name.toLowerCase())?.id;
+    return { currentPressId: id, pressNameFromUrl: name };
+  }, [location.pathname, presses]);
+
+  const currentPressTasks = useMemo(() => {
+    if (!pressNameFromUrl || pressNameFromUrl === 'Taken') return [];
 
     return groupedTasks.map(group => {
       if (group.isHighlightGroup) {
         // Filter subtasks to only those belonging to the current press
         const pressSubtasks = group.subtasks.filter((st: any) =>
-          (st.press && st.press.toLowerCase() === press.toLowerCase()) ||
-          (st.pressId && st.pressId === press)
+          st.pressId === currentPressId
         );
         if (pressSubtasks.length > 0) {
           return { ...group, subtasks: pressSubtasks };
         }
         return null;
       }
-      return (group.press && group.press.toLowerCase() === press.toLowerCase()) ? group : null;
+      // Regular groups are filtered by press
+      return (group.pressId === currentPressId) ? group : null;
     }).filter((g): g is GroupedTask => g !== null);
-  }, [groupedTasks, location.pathname]);
+  }, [groupedTasks, pressNameFromUrl, currentPressId]);
   const allSubtasks = currentPressTasks.flatMap((group: any) => group.subtasks);
 
   const statusCounts = allSubtasks.reduce((acc: any, subtask: any) => {
@@ -853,6 +862,8 @@ function MainApp() {
                       )}
                       <MaintenanceTable
                         tasks={currentPressTasks}
+                        pressId={currentPressId}
+                        pressName={pressNameFromUrl}
                         statusFilter={statusFilter}
                         onEdit={(task) => {
                           startTransition(() => {
@@ -991,11 +1002,13 @@ function onRenderCallback(
 
 function App() {
   return (
-    <AuthProvider>
-      <Profiler id="MainApp" onRender={onRenderCallback}>
-        <MainApp />
-      </Profiler>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Profiler id="MainApp" onRender={onRenderCallback}>
+          <MainApp />
+        </Profiler>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
