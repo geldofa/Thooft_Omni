@@ -9,6 +9,9 @@ version: '3.8'
 
 services:
   app:
+    build:
+      context: .
+      dockerfile: Core/Dockerfile
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "80:80"
@@ -16,20 +19,27 @@ services:
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
-      - db
+      db:
+        condition: service_started
     restart: unless-stopped
     container_name: thooft_omni
+
+  db_init:
+    image: docker.io/geldofa/thooft_omni:latest
+    command: ["sync"]
+    volumes:
+      - pb_migrations_relay:/relay/migrations
+      - pb_hooks_relay:/relay/hooks
+    container_name: thooft_db_init
 
   db:
     image: alpine:latest
     ports:
       - "8090:8090"
     volumes:
-      # Map persistent data to the Windows Documents folder. Set OMNI_DOCS_PATH in stack.env.
-      # Defaults to Public Documents if not set.
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data:/pb/pb_data"
-      - "./pb_migrations:/pb/pb_migrations:ro"
-      - "./pb_hooks:/pb/pb_hooks:ro"
+      - pb_migrations_relay:/pb/pb_migrations:ro
+      - pb_hooks_relay:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -38,7 +48,10 @@ services:
     restart: unless-stopped
     container_name: thooft_db
     depends_on:
-      - rclone
+      db_init:
+        condition: service_completed
+      rclone:
+        condition: service_started
     command: >
       sh -c '
         [ ! -f /pb/.pb_ready ] && {
@@ -64,3 +77,7 @@ services:
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data\\backups:/backups"
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
+
+volumes:
+  pb_migrations_relay:
+  pb_hooks_relay:

@@ -3,13 +3,31 @@ FROM node:20-alpine AS build-stage
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
-COPY . .
+# Since build context is repository root, we need to handle paths correctly.
+# The app source is in Core/
+COPY Core/ . 
 RUN npm run build:prod
 
 # Production stage
 FROM nginx:stable-alpine AS production-stage
 COPY --from=build-stage /app/dist /usr/share/nginx/html
-# Custom nginx config to handle SPA routing if necessary
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY Core/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Bundle PocketBase migrations & hooks (from repo root context)
+COPY pb_migrations /pb_migrations_bundled
+COPY pb_hooks /pb_hooks_bundled
+
+# Add script to sync migrations to a shared volume
+RUN printf "#!/bin/sh\n\
+    if [ \"\$1\" = \"sync\" ]; then\n\
+    echo '🚀 Syncing bundled migrations to relay volume...'\n\
+    mkdir -p /relay/migrations /relay/hooks\n\
+    cp -r /pb_migrations_bundled/* /relay/migrations/ 2>/dev/null || true\n\
+    cp -r /pb_hooks_bundled/* /relay/hooks/ 2>/dev/null || true\n\
+    echo '✅ Sync complete.'\n\
+    exit 0\n\
+    fi\n\
+    exec nginx -g 'daemon off;'" > /entrypoint.sh && chmod +x /entrypoint.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]
