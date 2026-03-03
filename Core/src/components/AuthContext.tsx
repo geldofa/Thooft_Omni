@@ -303,6 +303,7 @@ interface AuthContextType {
   performUpdate: () => Promise<{ success: boolean; message: string; output?: string }>;
   recentCommits: string[];
   fetchRecentCommits: () => Promise<void>;
+  appStartTime: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -328,6 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [recentCommits, setRecentCommits] = useState<string[]>([]);
+  const [appStartTime] = useState<number>(Date.now());
 
 
   const setOnboardingDismissed = (val: boolean) => {
@@ -1395,6 +1397,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsUpdating,
       recentCommits,
       fetchRecentCommits,
+      appStartTime,
     }}>
       {children}
     </AuthContext.Provider>

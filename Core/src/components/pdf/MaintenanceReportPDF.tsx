@@ -32,7 +32,6 @@ export interface MaintenanceReportPDFProps {
     columns?: ColumnDef[];
     fontSize?: number;
     marginH?: number;
-    marginV?: number;
 }
 
 // ─── Default columns (fallback when prop is not provided) ───────────────────
@@ -237,7 +236,7 @@ const styles = StyleSheet.create({
     pageNumber: {
         position: 'absolute',
         fontSize: 8,
-        bottom: 20,
+        bottom: 10,
         left: 0,
         right: 0,
         textAlign: 'center',
@@ -264,7 +263,6 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     columns,
     fontSize = 9,
     marginH = 30,
-    marginV = 20,
 }) => {
     const activeColumns = (columns && columns.length > 0) ? columns : DEFAULT_COLUMNS;
     const widths = computeColumnWidths(activeColumns);
@@ -276,8 +274,11 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         smallText: { fontSize: fontSize - 2 },
         pageContent: {
             paddingHorizontal: marginH,
-            paddingVertical: marginV,
             paddingTop: 10,
+            paddingBottom: 10 + 30, // Extra space for fixed footer
+        },
+        pageNumber: {
+            bottom: 10,
         }
     };
 
@@ -334,12 +335,54 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                     <View style={styles.table}>
                         {Object.entries(categories).map(([category, categoryTasks]) => (
                             <React.Fragment key={category}>
-                                <View style={styles.categoryRow} wrap={false}>
-                                    <Text style={[styles.categoryTitle, dynamicStyles.text]}>{category.toUpperCase()}</Text>
-                                    <Text style={[styles.categoryCount, dynamicStyles.smallText]}>{categoryTasks.length} taken</Text>
-                                </View>
+                                {categoryTasks.length > 0 && (
+                                    <View wrap={false}>
+                                        <View style={styles.categoryRow}>
+                                            <Text style={[styles.categoryTitle, dynamicStyles.text]}>{category.toUpperCase()}</Text>
+                                            <Text style={[styles.categoryCount, dynamicStyles.smallText]}>{categoryTasks.length} taken</Text>
+                                        </View>
+                                        {/* Render the first task inside the same wrap={false} container as the header */}
+                                        {(() => {
+                                            const task = categoryTasks[0];
+                                            const statusColor = task.statusKey ? STATUS_COLORS[task.statusKey] : STATUS_COLORS['Gepland'];
+                                            const showIndicator = task.statusKey && task.statusKey !== 'Gepland';
+                                            const isChild = task.parentTask && task.taskName !== task.parentTask;
 
-                                {categoryTasks.map((task) => {
+                                            return (
+                                                <View style={styles.tableRow} key={task.id}>
+                                                    {showIndicator && (
+                                                        <View style={[styles.statusBorder, { backgroundColor: statusColor.color }]} />
+                                                    )}
+                                                    {activeColumns.map((col, i) => (
+                                                        <View key={col.id} style={[styles.col, i === 0 ? styles.colTask : {}, { width: widths[i] }]}>
+                                                            {col.id === 'taskName' ? (
+                                                                <View style={{ flexDirection: 'column' }}>
+                                                                    {isChild && <Text style={[styles.parentTaskText, { fontSize: fontSize - 2 }]}>{task.parentTask}</Text>}
+                                                                    <View style={styles.childTaskWrapper}>
+                                                                        {isChild && <Text style={[styles.childArrow, dynamicStyles.text]}>↳</Text>}
+                                                                        <Text style={[styles.tableCell, dynamicStyles.text, showIndicator ? { color: statusColor.color } : {}]}>
+                                                                            {task.taskName}
+                                                                        </Text>
+                                                                    </View>
+                                                                </View>
+                                                            ) : (col.id === 'interval' || col.id === 'completedOn' || col.id === 'daysDiff') ? (
+                                                                <Text style={[styles.tableCellNoWrap, dynamicStyles.text, showIndicator ? { color: statusColor.color } : {}]}>
+                                                                    {col.id === 'daysDiff' ? formatDaysDiff(task.daysDiff) : (task[col.field] ?? '')}
+                                                                </Text>
+                                                            ) : (
+                                                                <Text style={[styles.tableCell, dynamicStyles.text]}>
+                                                                    {task[col.field] ?? ''}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            );
+                                        })()}
+                                    </View>
+                                )}
+
+                                {categoryTasks.slice(1).map((task) => {
                                     const statusColor = task.statusKey ? STATUS_COLORS[task.statusKey] : STATUS_COLORS['Gepland'];
                                     const showIndicator = task.statusKey && task.statusKey !== 'Gepland';
                                     const isChild = task.parentTask && task.taskName !== task.parentTask;
@@ -395,7 +438,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
 
                 {/* Footer */}
                 <Text
-                    style={[styles.pageNumber, dynamicStyles.smallText]}
+                    style={[styles.pageNumber, dynamicStyles.smallText, dynamicStyles.pageNumber]}
                     render={({ pageNumber, totalPages }) => `Pagina ${pageNumber} van ${totalPages}`}
                     fixed
                 />

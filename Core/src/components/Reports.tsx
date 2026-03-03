@@ -15,7 +15,8 @@ import {
   subMonths,
   subYears,
   addDays,
-  isBefore
+  isBefore,
+  getISOWeek
 } from 'date-fns';
 import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
@@ -40,10 +41,10 @@ import {
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Settings2, Loader2, FileText, Download, Save, History, ArrowLeft, RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle, Check } from 'lucide-react';
+import { Settings2, Loader2, FileText, Download, Save, History, ArrowLeft, RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle, Check, Eye } from 'lucide-react';
 import { Switch } from './ui/switch';
 import { MaintenanceReportPDF, type MaintenanceTask } from './pdf/MaintenanceReportPDF';
-import { pb } from './AuthContext';
+import { pb, useAuth } from './AuthContext';
 import { getStatusInfo } from '../utils/StatusUtils';
 import { toast } from 'sonner';
 
@@ -89,6 +90,8 @@ export interface GeneratedReport {
   title?: string; // Derived from maintenance_report expand
   file: string;   // Was 'document'
   generated_at: string; // Was 'created'
+  trigger?: string; // 'manual' or 'auto'
+  created_by?: string; // User name for manual triggers
   expand?: {
     maintenance_report?: {
       name: string;
@@ -189,9 +192,39 @@ function formatDateNL(dateStr: string | null) {
   return new Date(dateStr).toLocaleDateString('nl-NL');
 }
 
+// ─── Naming helper ──────────────────────────────────────────
+
+function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
+  if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
+  if (['Deze Week', 'Vorige Week'].includes(selectedPeriod)) return 'week';
+  if (['Deze Maand', 'Vorige Maand', '14 Dagen'].includes(selectedPeriod)) return 'month';
+  if (['Dit Jaar', 'Vorig Jaar'].includes(selectedPeriod)) return 'year';
+  return 'day'; // default for Alles overtijd, > 6 maanden, > 1 jaar
+}
+
+function buildReportFilename(
+  pressName: string,
+  reportType: string,
+  periodType: 'day' | 'week' | 'month' | 'year',
+  presetName?: string // if provided, use preset name instead of Press_Type
+): string {
+  const now = new Date();
+  const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+  const prefix = presetName ? sanitize(presetName) : `${sanitize(pressName)}_${sanitize(reportType)}`;
+  const yyyy = format(now, 'yyyy');
+
+  switch (periodType) {
+    case 'day': return `${prefix}_${yyyy}_${format(now, 'MM')}_${format(now, 'dd')}.pdf`;
+    case 'week': return `${prefix}_${yyyy}_W${String(getISOWeek(now)).padStart(2, '0')}.pdf`;
+    case 'month': return `${prefix}_${yyyy}_${format(now, 'MM')}.pdf`;
+    case 'year': return `${prefix}_${yyyy}.pdf`;
+  }
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export function Reports(_props: ReportsProps) {
+  const { user } = useAuth();
   const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
   const [presets, setPresets] = useState<ReportPreset[]>([]);
   const [archive, setArchive] = useState<GeneratedReport[]>([]);
@@ -237,7 +270,6 @@ export function Reports(_props: ReportsProps) {
   const [selectedColumns, setSelectedColumns] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
   const [fontSize, setFontSize] = useState(9);
   const [marginH, setMarginH] = useState(30);
-  const [marginV, setMarginV] = useState(20);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const reportTitle = activeConfig.name;
@@ -297,8 +329,14 @@ export function Reports(_props: ReportsProps) {
         schedule_day_type: s.schedule_day_type || 'first_day',
         schedule_exact_day: s.schedule_exact_day ?? 1,
         schedule_month: s.schedule_month ?? 1,
-        settings: { selectedPress: s.selectedPress || 'Alle persen', selectedPeriod: s.selectedPeriod || 'Alles overtijd', selectedStatus: s.selectedStatus || 'Nu Nodig' }
+        settings: {
+          selectedPress: s.selectedPress || 'Alle persen',
+          selectedPeriod: s.selectedPeriod || 'Alles overtijd',
+          selectedStatus: s.selectedStatus || 'Nu Nodig'
+        }
       });
+      setFontSize(s.fontSize ?? 9);
+      setMarginH(s.marginH ?? 30);
     } else {
       setActivePreset(null);
       setActiveConfig({
@@ -315,6 +353,8 @@ export function Reports(_props: ReportsProps) {
         schedule_month: 1,
         settings: { selectedPress: 'Alle persen', selectedPeriod: 'Alles overtijd', selectedStatus: 'Nu Nodig' }
       });
+      setFontSize(9);
+      setMarginH(30);
     }
     setCurrentView('editor');
   };
@@ -379,15 +419,17 @@ export function Reports(_props: ReportsProps) {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
     setIsSaving(true);
     try {
-      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} />).toBlob();
+      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} />).toBlob();
+      const periodType = detectPeriodType(selectedPeriod);
+      const filename = buildReportFilename(selectedPress, activeConfig.report_type, periodType);
       const f = new FormData();
-      f.append('file', b, `${activeConfig.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.pdf`);
-      // We don't have a direct 'title' field in report_files, it links to a maintenance_report.
-      // If we are generating from an activePreset, we link it.
+      f.append('file', b, filename);
       if (activePreset) {
         f.append('maintenance_report', activePreset.id);
       }
       f.append('generated_at', new Date().toISOString());
+      f.append('trigger', 'manual');
+      f.append('created_by', user?.name || user?.username || 'Onbekend');
 
       await pb.collection('report_files').create(f);
       toast.success("Rapport opgeslagen in archief");
@@ -406,6 +448,8 @@ export function Reports(_props: ReportsProps) {
         schedule_day_type: activeConfig.schedule_day_type,
         schedule_exact_day: activeConfig.schedule_exact_day,
         schedule_month: activeConfig.schedule_month,
+        fontSize,
+        marginH,
       };
       const p: Record<string, any> = {
         name: activeConfig.name,
@@ -433,16 +477,61 @@ export function Reports(_props: ReportsProps) {
       if (s.selectedPress && s.selectedPress !== 'Alle persen') f.push(`pers.naam = "${s.selectedPress}"`);
       const pC = buildPeriodFilter(s.selectedPeriod, s.selectedStatus);
       if (pC) f.push(pC);
-      const records = await pb.collection('onderhoud').getFullList({ filter: f.join(' && ') || undefined, expand: 'category,pers' });
-      const mapped = records.map((r: any) => ({
-        id: r.id, taskName: r.subtask || r.task || '-', completedOn: formatDateNL(r.last_date), interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'), note: r.opmerkingen || '', daysDiff: 0, next_date: r.next_date
-      })).filter(t => matchesStatus(t.next_date ? new Date(t.next_date) : null, s.selectedStatus));
+      const records = await pb.collection('onderhoud').getFullList({
+        filter: f.join(' && ') || undefined,
+        expand: 'category,pers,assigned_operator,assigned_team'
+      });
+      const mapped: MaintenanceTask[] = [];
+      for (const r of records as any[]) {
+        const nDate = r.next_date ? new Date(r.next_date) : null;
+        if (!matchesStatus(nDate, s.selectedStatus)) continue;
 
-      const b = await pdf(<MaintenanceReportPDF tasks={mapped as any} reportTitle={preset.name} selectedPress={s.selectedPress} selectedPeriod={s.selectedPeriod} selectedStatus={s.selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={ALL_COLUMNS} />).toBlob();
+        let dDiff = 0;
+        if (nDate) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          dDiff = Math.ceil((nDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        const ops = Array.isArray(r.expand?.assigned_operator) ? r.expand.assigned_operator : r.expand?.assigned_operator ? [r.expand.assigned_operator] : [];
+        const tms = Array.isArray(r.expand?.assigned_team) ? r.expand.assigned_team : r.expand?.assigned_team ? [r.expand.assigned_team] : [];
+        const exBy = [...ops, ...tms].map((o: any) => o.naam || o.name || 'Onbekend').join(', ') || '-';
+        const pressName = r.expand?.pers?.naam || 'Onbekend';
+
+        mapped.push({
+          id: r.id,
+          category: r.expand?.category?.naam || 'Overig',
+          press: pressName,
+          parentTask: r.task || '-',
+          taskName: r.subtask || r.task || '-',
+          interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'),
+          completedOn: formatDateNL(r.last_date),
+          executedBy: exBy,
+          note: r.opmerkingen || '',
+          statusKey: getStatusInfo(nDate).key,
+          daysDiff: dDiff
+        });
+      }
+
+      const periodType = (preset.period as 'day' | 'week' | 'month' | 'year') || detectPeriodType(s.selectedPeriod);
+      const filename = buildReportFilename(s.selectedPress || 'AllePersen', 'Taken', periodType, preset.name);
+      const b = await pdf(<MaintenanceReportPDF
+        tasks={mapped as any}
+        reportTitle={preset.name}
+        selectedPress={s.selectedPress}
+        selectedPeriod={s.selectedPeriod}
+        selectedStatus={s.selectedStatus}
+        generatedAt={new Date().toLocaleDateString('nl-NL')}
+        columns={ALL_COLUMNS}
+        fontSize={s.fontSize || 9}
+        marginH={s.marginH || 30}
+      />).toBlob();
       const fd = new FormData();
-      fd.append('file', b, `${preset.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.pdf`);
+      fd.append('file', b, filename);
       fd.append('maintenance_report', preset.id);
       fd.append('generated_at', new Date().toISOString());
+      fd.append('trigger', 'manual');
+      fd.append('created_by', user?.name || user?.username || 'Onbekend');
       await pb.collection('report_files').create(fd);
       toast.success(`Rapport "${preset.name}" opgeslagen`);
       fetchData();
@@ -500,13 +589,35 @@ export function Reports(_props: ReportsProps) {
                     <TableCell className="font-semibold text-slate-700">{r.expand?.maintenance_report?.name || r.file}</TableCell>
                     <TableCell><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.report_type || 'taken'}</Badge></TableCell>
                     <TableCell className="text-center">
-                      <Badge className={cn("text-[10px] px-1.5 h-5", "bg-blue-100 text-blue-700")}>
-                        Manual
-                      </Badge>
+                      {r.trigger === 'auto' ? (
+                        <Badge className={cn("text-[10px] px-1.5 h-5", "bg-green-100 text-green-700")}>
+                          Auto
+                        </Badge>
+                      ) : (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <Badge className={cn("text-[10px] px-1.5 h-5", "bg-blue-100 text-blue-700")}>
+                            Manual
+                          </Badge>
+                          {r.created_by && (
+                            <span className="text-[10px] text-slate-400 truncate max-w-[100px]" title={r.created_by}>{r.created_by}</span>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Open PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download PDF" onClick={() => {
+                          const url = pb.files.getURL(r, r.file);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = r.file || 'rapport.pdf';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        }}>
                           <Download className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-300 hover:text-red-500" title="Verwijder" onClick={async () => { if (confirm('Rapport verwijderen?')) { await pb.collection('report_files').delete(r.id); fetchData(); } }}>
@@ -816,10 +927,9 @@ export function Reports(_props: ReportsProps) {
                   <ChevronRight className={cn("w-3 h-3 transition-transform", isAdvancedOpen && "rotate-90")} />
                 </Button>
                 {isAdvancedOpen && (
-                  <div className="grid grid-cols-3 gap-2 mt-2 p-2 bg-slate-50 rounded border animate-in fade-in duration-200">
+                  <div className="grid grid-cols-2 gap-2 mt-2 p-2 bg-slate-50 rounded border animate-in fade-in duration-200">
                     <div className="space-y-1"><Label className="text-[9px] uppercase">Font</Label><Input type="number" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="h-7 text-[10px]" /></div>
                     <div className="space-y-1"><Label className="text-[9px] uppercase">Marge H</Label><Input type="number" value={marginH} onChange={e => setMarginH(Number(e.target.value))} className="h-7 text-[10px]" /></div>
-                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge V</Label><Input type="number" value={marginV} onChange={e => setMarginV(Number(e.target.value))} className="h-7 text-[10px]" /></div>
                   </div>
                 )}
               </div>
@@ -842,7 +952,7 @@ export function Reports(_props: ReportsProps) {
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
             ) : activeConfig.report_type === 'taken' ? (
               <PDFViewer width="100%" height="100%" className="border-none">
-                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} />
+                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} />
               </PDFViewer>
             ) : (
               <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.report_type}" volgt spoedig.</p></div>

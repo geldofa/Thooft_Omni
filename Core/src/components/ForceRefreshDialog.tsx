@@ -5,7 +5,7 @@ import { RefreshCw, AlertTriangle, GitCommit, Rocket } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 export function ForceRefreshDialog() {
-    const { refreshTriggeredAt, recentCommits, fetchRecentCommits } = useAuth();
+    const { refreshTriggeredAt, recentCommits, fetchRecentCommits, appStartTime } = useAuth();
     const [open, setOpen] = useState(false);
     const [lastTrigger, setLastTrigger] = useState<string | null>(null);
 
@@ -15,7 +15,7 @@ export function ForceRefreshDialog() {
         // and if it's not the same trigger we already reacted to
         if (refreshTriggeredAt && refreshTriggeredAt !== lastTrigger) {
             const triggerTime = new Date(refreshTriggeredAt).getTime();
-            const sessionStartTime = performance.timing.navigationStart;
+            const sessionStartTime = appStartTime;
 
             console.log("[ForceRefresh] Trigger time:", triggerTime, "Session start:", sessionStartTime, "Diff:", triggerTime - sessionStartTime);
 

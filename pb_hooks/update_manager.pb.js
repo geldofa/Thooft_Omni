@@ -108,24 +108,44 @@ routerAdd("GET", "/api/custom/git/recent-commits", (c) => {
             h.set("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
 
-        const result = $os.cmd("/usr/bin/git", "-C", "/pb", "log", "-n", "8", "--pretty=format:%B%n[END_COMMIT]");
-        const outputBytes = result.combinedOutput();
-
         let output = "";
-        if (outputBytes) {
-            // Convert byte slice to string
-            for (let i = 0; i < outputBytes.length; i++) {
-                output += String.fromCharCode(outputBytes[i]);
+        try {
+            // Try primary path (/pb for Docker)
+            let result = $os.cmd("/usr/bin/git", "-C", "/pb", "log", "-n", "8", "--pretty=format:%B%n[END_COMMIT]");
+            let outputBytes = result.combinedOutput();
+
+            if (outputBytes) {
+                for (let i = 0; i < outputBytes.length; i++) {
+                    output += String.fromCharCode(outputBytes[i]);
+                }
             }
+
+            // If primary failed or returned error, try fallback (current directory)
+            if (!output || output.includes("fatal:") || output.includes("error:")) {
+                let fallback = $os.cmd("git", "log", "-n", "8", "--pretty=format:%B%n[END_COMMIT]");
+                let fallbackBytes = fallback.combinedOutput();
+                if (fallbackBytes) {
+                    let fallbackOutput = "";
+                    for (let i = 0; i < fallbackBytes.length; i++) {
+                        fallbackOutput += String.fromCharCode(fallbackBytes[i]);
+                    }
+                    if (fallbackOutput && !fallbackOutput.includes("fatal:")) {
+                        output = fallbackOutput;
+                    }
+                }
+            }
+        } catch (cmdErr) {
+            console.log(">>> [Update Manager] Git cmd execution failed: " + cmdErr);
         }
 
         // Split by the delimiter and filter out empty strings
         const commits = output.split('[END_COMMIT]')
             .map(c => c.trim())
-            .filter(c => c.length > 0);
+            .filter(c => c.length > 0 && !c.includes("fatal:") && !c.includes("error:"));
 
         return c.json(200, commits);
     } catch (e) {
-        return c.json(500, { message: "Failed to fetch git history", details: e.toString() });
+        console.log(">>> [Update Manager] recent-commits crash: " + e);
+        return c.json(200, []); // Return empty array instead of 500 to prevent frontend crash
     }
 });
