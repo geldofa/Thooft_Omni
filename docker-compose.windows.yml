@@ -9,9 +9,6 @@ version: '3.8'
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Core/Dockerfile
     image: docker.io/geldofa/thooft_omni:latest
     ports:
       - "80:80"
