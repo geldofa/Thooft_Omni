@@ -1,10 +1,10 @@
 # Build stage
 FROM node:20-alpine AS build-stage
 WORKDIR /app
-COPY package*.json ./
+# Use package.json from Core/ directory for build tools
+COPY Core/package*.json ./
 RUN npm install
-# Since build context is repository root, we need to handle paths correctly.
-# The app source is in Core/
+# Copy actual app source from Core/
 COPY Core/ . 
 RUN npm run build:prod
 
