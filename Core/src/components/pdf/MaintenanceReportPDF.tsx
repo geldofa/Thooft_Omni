@@ -32,6 +32,7 @@ export interface MaintenanceReportPDFProps {
     columns?: ColumnDef[];
     fontSize?: number;
     marginH?: number;
+    marginV?: number;
 }
 
 // ─── Default columns (fallback when prop is not provided) ───────────────────
@@ -263,6 +264,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     columns,
     fontSize = 9,
     marginH = 30,
+    marginV = 10,
 }) => {
     const activeColumns = (columns && columns.length > 0) ? columns : DEFAULT_COLUMNS;
     const widths = computeColumnWidths(activeColumns);
@@ -274,8 +276,8 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         smallText: { fontSize: fontSize - 2 },
         pageContent: {
             paddingHorizontal: marginH,
-            paddingTop: 10,
-            paddingBottom: 10 + 30, // Extra space for fixed footer
+            paddingTop: marginV,
+            paddingBottom: marginV + 30, // Extra space for fixed footer
         },
         pageNumber: {
             bottom: 10,
