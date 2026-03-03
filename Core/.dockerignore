@@ -10,4 +10,3 @@ build
 *.db-shm
 *.db-wal
 pb_data
-pb_migrations

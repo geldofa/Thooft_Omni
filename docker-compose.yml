@@ -44,7 +44,7 @@ services:
     container_name: thooft_db
     depends_on:
       db_init:
-        condition: service_completed
+        condition: service_completed_successfully
       rclone:
         condition: service_started
     command: >

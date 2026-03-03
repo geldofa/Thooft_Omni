@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "Core/**"
+      - "pb_migrations/**"
+      - "pb_hooks/**"
       - ".github/workflows/docker-build-push.yml"
 
 jobs:
@@ -34,7 +36,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./Core
+          context: .
+          file: Core/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

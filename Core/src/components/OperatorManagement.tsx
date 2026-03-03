@@ -1144,14 +1144,24 @@ export function OperatorManagement({ operators, ploegen, presses, isLoading, onR
               try {
                 if (editingPloeg) {
                   await pb.collection('ploegen').update(editingPloeg.id, {
-                    name: finalPloegData.name,
-                    operatorIds: finalPloegData.operatorIds,
+                    naam: finalPloegData.name,
+                    leden: finalPloegData.operatorIds,
                     active: finalPloegData.active,
-                    presses: finalPloegData.presses
+                    presses: finalPloegData.presses,
+                    // Backward compatibility: if only one press is selected, sync to the old 'pers' field
+                    ...(finalPloegData.presses.length === 1 ? { pers: finalPloegData.presses[0] } : {})
                   });
                   toast.success('Ploeg updated successfully');
                 } else {
-                  await pb.collection('ploegen').create(finalPloegData);
+                  // Ensure we use the correct field names for create as well
+                  const createData = {
+                    naam: finalPloegData.name,
+                    leden: finalPloegData.operatorIds,
+                    active: finalPloegData.active,
+                    presses: finalPloegData.presses,
+                    ...(finalPloegData.presses.length === 1 ? { pers: finalPloegData.presses[0] } : {})
+                  };
+                  await pb.collection('ploegen').create(createData);
                   toast.success('Ploeg added successfully');
                 }
                 onRefresh();

@@ -8,3 +8,7 @@ storage
 *.db
 *.db-shm
 *.db-wal
+
+# Ensure these are always included in the build context
+!pb_migrations
+!pb_hooks
