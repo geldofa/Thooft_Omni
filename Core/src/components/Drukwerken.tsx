@@ -92,7 +92,8 @@ const FormulaResultWithTooltip = ({
     variant = 'default',
     outputConversions = {},
     pressMap = {},
-    suffix = ''
+    suffix = '',
+    hideTooltip = false
 }: {
     formula: string;
     job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern;
@@ -104,6 +105,7 @@ const FormulaResultWithTooltip = ({
     outputConversions?: Record<string, Record<string, number>>;
     pressMap?: Record<string, string>;
     suffix?: string;
+    hideTooltip?: boolean;
 }) => {
     const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
     const pressId = pressMap[pressName] || '';
@@ -301,38 +303,44 @@ const FormulaResultWithTooltip = ({
                     <span className="text-[9px] text-gray-400 leading-none">{formattedCycles} berekend</span>
                 </div>
             )}
-            <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                    <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
-                        {formattedTotal}
-                    </span>
-                </TooltipTrigger>
-                <TooltipContent
-                    side="top"
-                    sideOffset={4}
-                    avoidCollisions
-                    style={{ backgroundColor: 'white', color: '#1f2937' }}
-                    className="border border-gray-200 shadow-2xl max-w-[95vw] p-4 z-[100] rounded-2xl"
-                >
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
-                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berekening</span>
-                            {divider > 1 && (
-                                <div className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
-                                    Deler: {divider}
+            {hideTooltip ? (
+                <span className="whitespace-nowrap font-bold leading-none py-1">
+                    {formattedTotal}
+                </span>
+            ) : (
+                <Tooltip delayDuration={300}>
+                    <TooltipTrigger asChild>
+                        <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
+                            {formattedTotal}
+                        </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                        side="top"
+                        sideOffset={4}
+                        avoidCollisions
+                        style={{ backgroundColor: 'white', color: '#1f2937' }}
+                        className="border border-gray-200 shadow-2xl max-w-[95vw] p-4 z-[100] rounded-2xl"
+                    >
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berekening</span>
+                                {divider > 1 && (
+                                    <div className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
+                                        Deler: {divider}
+                                    </div>
+                                )}
+                            </div>
+                            {renderCalculationFlow()}
+                            {variant === 'maxGross' && divider > 1 && (
+                                <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase">Totaal (Output)</span>
+                                    <span className="text-sm font-black text-gray-900">{numericRawResult.toLocaleString('nl-BE')}{suffix}</span>
                                 </div>
                             )}
                         </div>
-                        {renderCalculationFlow()}
-                        {variant === 'maxGross' && divider > 1 && (
-                            <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase">Totaal (Output)</span>
-                                <span className="text-sm font-black text-gray-900">{numericRawResult.toLocaleString('nl-BE')}{suffix}</span>
-                            </div>
-                        )}
-                    </div>
-                </TooltipContent>
-            </Tooltip>
+                    </TooltipContent>
+                </Tooltip>
+            )}
         </div>
     );
 };
@@ -1786,10 +1794,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                                     parameters={parameters}
                                                                                     activePresses={activePresses}
                                                                                     decimals={2}
-                                                                                    result={numericValue}
+                                                                                    result={numericValue * 100}
                                                                                     outputConversions={outputConversions}
                                                                                     pressMap={pressMap}
                                                                                     suffix="%"
+                                                                                    hideTooltip={true}
                                                                                 />
                                                                             );
                                                                         }
@@ -2033,10 +2042,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                 parameters={parameters}
                                                                 activePresses={activePresses}
                                                                 decimals={2}
-                                                                result={Number(job.delta_percentage)}
+                                                                result={(Number(job.delta_percentage) || 0) * 100}
                                                                 outputConversions={outputConversions}
                                                                 pressMap={pressMap}
                                                                 suffix="%"
+                                                                hideTooltip={true}
                                                             />
                                                         );
                                                     }
