@@ -34,14 +34,17 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
   CardFooter,
 } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Settings2, Loader2, FileText, Download, Save, History, ArrowLeft, RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle, Check, Eye } from 'lucide-react';
+import {
+  Settings2, Loader2, FileText, Download, Save, History, ArrowLeft,
+  RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle,
+  Check, Eye, Mail, AlertCircle
+} from 'lucide-react';
 import { Switch } from './ui/switch';
 import { MaintenanceReportPDF, type MaintenanceTask } from './pdf/MaintenanceReportPDF';
 import { pb, useAuth } from './AuthContext';
@@ -66,6 +69,16 @@ const ALL_COLUMNS: ColumnConfig[] = [
 ];
 
 
+// --- CONFIGURATION CONSTANTS ---
+const ARCHIVE_COL_WIDTHS = {
+  date: '140px',
+  period: '120px',
+  title: 'auto',
+  type: '100px',
+  trigger: '100px',
+  actions: '100px'
+};
+
 // ─── Types ──────────────────────────────────────────────────
 
 interface ReportsProps {
@@ -81,6 +94,7 @@ export interface ReportPreset {
   auto_generate: boolean;
   email_recipients: string;
   settings?: any; // Keep for possible future use, but main fields are now top-level
+  last_run?: string;
   created?: string;
   updated?: string;
 }
@@ -92,6 +106,9 @@ export interface GeneratedReport {
   generated_at: string; // Was 'created'
   trigger?: string; // 'manual' or 'auto'
   created_by?: string; // User name for manual triggers
+  email_status?: 'sent' | 'failed' | 'none' | string;
+  email_recipients?: string;
+  email_error?: string;
   expand?: {
     maintenance_report?: {
       name: string;
@@ -189,10 +206,120 @@ function formatInterval(val: number, unit: string) {
 
 function formatDateNL(dateStr: string | null) {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('nl-NL');
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function parseReportFileInfo(filename: string | undefined) {
+  if (!filename) return null;
+
+  // PocketBase appends a random hash, so we optionally match it before .pdf
+
+  // Day: _YYYY_MM_DD
+  let match = filename.match(/_(\d{4})_(\d{2})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { type: 'day', year: match[1], date: `${match[3]}/${match[2]}/${match[1]}` };
+
+  // Week: _YYYY_Www
+  match = filename.match(/_(\d{4})_W(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { type: 'week', year: match[1], week: `W${match[2]}` };
+
+  // Month: _YYYY_MM
+  match = filename.match(/_(\d{4})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { type: 'month', year: match[1], month: match[2] };
+
+  // Year: _YYYY
+  match = filename.match(/_(\d{4})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { type: 'year', year: match[1] };
+
+  return null;
+}
+
+function cleanReportFilename(filename: string | undefined) {
+  if (!filename) return '';
+  // Remove the .pdf extension and the last _hash added by PocketBase (usually 10 alphanumeric chars)
+  return filename.replace(/(_[a-zA-Z0-9]{10})?\.pdf$/i, '');
 }
 
 // ─── Naming helper ──────────────────────────────────────────
+
+function getNextRunDate(p: ReportPreset): Date | null {
+  if (!p.auto_generate) return null;
+
+  const now = new Date();
+  const hour = p.settings?.schedule_hour ?? 0;
+  const interval = p.period || 'week'; // Note: 'period' in DB stores 'day', 'week', etc.
+
+  let next = new Date(now);
+  next.setHours(hour, 0, 0, 0);
+
+  // If next is in the past today, start from tomorrow
+  if (next <= now) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  if (interval === 'day') {
+    return next;
+  }
+
+  if (interval === 'week') {
+    const targetDay = p.settings?.schedule_weekday; // 1 (Ma) to 7 (Zo)
+    if (targetDay === undefined) return next;
+
+    // Map UI 1-7 (Ma-Zo) to JS 1-0 (Mon-Sun)
+    const jsDayMap: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 0 };
+    const targetJsDay = jsDayMap[targetDay];
+
+    while (next.getDay() !== targetJsDay) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  }
+
+  if (interval === 'month') {
+    const dayType = p.settings?.schedule_day_type || 'first_day';
+    const exactDay = p.settings?.schedule_exact_day || 1;
+
+    const findMonthRun = (date: Date): Date => {
+      let d = new Date(date.getFullYear(), date.getMonth(), 1, hour, 0, 0, 0);
+      if (dayType === 'first_day') {
+        // Already at 1st
+      } else if (dayType === 'last_day') {
+        d = new Date(date.getFullYear(), date.getMonth() + 1, 0, hour, 0, 0, 0);
+      } else if (dayType === 'exact_day') {
+        d.setDate(exactDay);
+      } else if (dayType === 'first_weekday') {
+        // First weekday logic: 
+        // If 1st is Mon-Fri, that's it.
+        // If 1st is Sat (6), then 3rd is Mon.
+        // If 1st is Sun (0), then 2nd is Mon.
+        const firstDay = d.getDay();
+        if (firstDay === 6) d.setDate(3);
+        else if (firstDay === 0) d.setDate(2);
+      }
+      return d;
+    };
+
+    let nextRun = findMonthRun(next);
+    if (nextRun <= now) {
+      nextRun = findMonthRun(new Date(next.getFullYear(), next.getMonth() + 1, 1));
+    }
+    return nextRun;
+  }
+
+  if (interval === 'year') {
+    const month = p.settings?.schedule_month || 1;
+    let nextRun = new Date(now.getFullYear(), month - 1, 1, hour, 0, 0, 0);
+    if (nextRun <= now) {
+      nextRun.setFullYear(now.getFullYear() + 1);
+    }
+    return nextRun;
+  }
+
+  return null;
+}
 
 function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
   if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
@@ -231,6 +358,14 @@ export function Reports(_props: ReportsProps) {
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [activePreset, setActivePreset] = useState<ReportPreset | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAutoProcessing, setIsAutoProcessing] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const [activeConfig, setActiveConfig] = useState<{
     name: string;
@@ -245,6 +380,7 @@ export function Reports(_props: ReportsProps) {
     schedule_exact_day: number;
     schedule_month: number;
     settings: any;
+    columnWidths: Record<string, string>;
   }>({
     name: 'Nieuw Sjabloon',
     description: '',
@@ -261,7 +397,8 @@ export function Reports(_props: ReportsProps) {
       selectedPress: 'Alle persen',
       selectedPeriod: 'Alles overtijd',
       selectedStatus: 'Nu Nodig',
-    }
+    },
+    columnWidths: {},
   });
 
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
@@ -270,6 +407,7 @@ export function Reports(_props: ReportsProps) {
   const [selectedColumns, setSelectedColumns] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
   const [fontSize, setFontSize] = useState(9);
   const [marginH, setMarginH] = useState(30);
+  const [marginV, setMarginV] = useState(10);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const reportTitle = activeConfig.name;
@@ -306,6 +444,43 @@ export function Reports(_props: ReportsProps) {
 
   useEffect(() => { if (currentView === 'dashboard') fetchData(); }, [currentView]);
 
+  // --- Automated Catch-up Logic ---
+  useEffect(() => {
+    if (currentView !== 'dashboard' || isAutoProcessing || isDataLoading) return;
+
+    const checkForMissedRuns = async () => {
+      // Find a preset that has auto_generate=true and last_run is significantly newer than its latest archive file
+      for (const preset of presets) {
+        if (!preset.auto_generate || !preset.last_run) continue;
+
+        const lastRunDate = new Date(preset.last_run);
+
+        // Find latest file in archive for this preset
+        const archiveFiles = archive.filter(f => f.expand?.maintenance_report?.name === preset.name);
+        if (archiveFiles.length > 0) {
+          const latestFileDate = new Date(archiveFiles[0].generated_at);
+          // If last_run is at least 5 minutes newer than latest file, it's a candidate for catch-up
+          if (lastRunDate.getTime() > latestFileDate.getTime() + 300000) {
+            console.log(`[Reports] Catch-up triggered for: ${preset.name}`);
+            setIsAutoProcessing(true);
+            await generatePresetNow(preset, 'auto');
+            setIsAutoProcessing(false);
+            return; // Only process one at a time per check
+          }
+        } else {
+          // No files in archive yet, but it was triggered
+          console.log(`[Reports] Initial auto-generation catch-up for: ${preset.name}`);
+          setIsAutoProcessing(true);
+          await generatePresetNow(preset, 'auto');
+          setIsAutoProcessing(false);
+          return;
+        }
+      }
+    };
+
+    checkForMissedRuns();
+  }, [presets, archive, currentView, isAutoProcessing, isDataLoading]);
+
   useEffect(() => {
     (async () => {
       const records = await pb.collection('persen').getFullList({ sort: 'naam' });
@@ -333,10 +508,13 @@ export function Reports(_props: ReportsProps) {
           selectedPress: s.selectedPress || 'Alle persen',
           selectedPeriod: s.selectedPeriod || 'Alles overtijd',
           selectedStatus: s.selectedStatus || 'Nu Nodig'
-        }
+        },
+        columnWidths: s.columnWidths || {},
       });
+      setSelectedColumns(s.selectedColumns || ALL_COLUMNS.map(c => c.id));
       setFontSize(s.fontSize ?? 9);
       setMarginH(s.marginH ?? 30);
+      setMarginV(s.marginV ?? 10);
     } else {
       setActivePreset(null);
       setActiveConfig({
@@ -351,10 +529,13 @@ export function Reports(_props: ReportsProps) {
         schedule_day_type: 'first_day',
         schedule_exact_day: 1,
         schedule_month: 1,
-        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Alles overtijd', selectedStatus: 'Nu Nodig' }
+        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Alles overtijd', selectedStatus: 'Nu Nodig' },
+        columnWidths: {},
       });
+      setSelectedColumns(ALL_COLUMNS.map(c => c.id));
       setFontSize(9);
       setMarginH(30);
+      setMarginV(10);
     }
     setCurrentView('editor');
   };
@@ -419,7 +600,7 @@ export function Reports(_props: ReportsProps) {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
     setIsSaving(true);
     try {
-      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} />).toBlob();
+      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
       const periodType = detectPeriodType(selectedPeriod);
       const filename = buildReportFilename(selectedPress, activeConfig.report_type, periodType);
       const f = new FormData();
@@ -450,6 +631,9 @@ export function Reports(_props: ReportsProps) {
         schedule_month: activeConfig.schedule_month,
         fontSize,
         marginH,
+        marginV,
+        selectedColumns,
+        columnWidths: activeConfig.columnWidths,
       };
       const p: Record<string, any> = {
         name: activeConfig.name,
@@ -458,6 +642,8 @@ export function Reports(_props: ReportsProps) {
         auto_generate: activeConfig.is_automated,
         email_recipients: activeConfig.email_recipients,
         schedule_hour: activeConfig.schedule_hour,
+        // Normalize Sunday (7 in UI -> 0 for JS/DB)
+        schedule_weekdays: activeConfig.schedule_interval === 'week' ? [(activeConfig.schedule_weekday === 7 ? 0 : activeConfig.schedule_weekday).toString()] : [],
         schedule_day: activeConfig.schedule_exact_day,
         schedule_month_type: activeConfig.schedule_day_type,
         settings: fullSettings
@@ -469,8 +655,10 @@ export function Reports(_props: ReportsProps) {
     } catch (e) { console.error(e); toast.error("Opslaan mislukt"); } finally { setIsSaving(false); }
   };
 
-  const generatePresetNow = async (preset: ReportPreset) => {
-    toast.info(`Genereren: ${preset.name}...`);
+  const generatePresetNow = async (preset: ReportPreset, trigger: 'manual' | 'auto' = 'manual') => {
+    if (trigger === 'manual') toast.info(`Genereren: ${preset.name}...`);
+    else console.log(`[Reports] Processing automated run: ${preset.name}`);
+
     try {
       const s = preset.settings || { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' };
       const f: string[] = [];
@@ -522,20 +710,26 @@ export function Reports(_props: ReportsProps) {
         selectedPeriod={s.selectedPeriod}
         selectedStatus={s.selectedStatus}
         generatedAt={new Date().toLocaleDateString('nl-NL')}
-        columns={ALL_COLUMNS}
+        columns={ALL_COLUMNS.filter(c => (s.selectedColumns || ALL_COLUMNS.map(ac => ac.id)).includes(c.id))}
         fontSize={s.fontSize || 9}
         marginH={s.marginH || 30}
+        marginV={s.marginV || 10}
+        columnWidths={s.columnWidths || {}}
       />).toBlob();
       const fd = new FormData();
       fd.append('file', b, filename);
       fd.append('maintenance_report', preset.id);
       fd.append('generated_at', new Date().toISOString());
-      fd.append('trigger', 'manual');
-      fd.append('created_by', user?.name || user?.username || 'Onbekend');
+      fd.append('trigger', trigger);
+      fd.append('created_by', trigger === 'manual' ? (user?.name || user?.username || 'Onbekend') : 'Systeem');
       await pb.collection('report_files').create(fd);
-      toast.success(`Rapport "${preset.name}" opgeslagen`);
+      if (trigger === 'manual') toast.success(`Rapport "${preset.name}" opgeslagen`);
+      else console.log(`[Reports] Automated run completed: ${preset.name}`);
       fetchData();
-    } catch (e) { console.error(e); toast.error("Fout bij direct genereren"); }
+    } catch (e) {
+      console.error(e);
+      if (trigger === 'manual') toast.error("Fout bij direct genereren");
+    }
   };
 
   if (currentView === 'dashboard') {
@@ -548,22 +742,66 @@ export function Reports(_props: ReportsProps) {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {presets.map(p => (
-            <Card key={p.id} className="hover:shadow-lg transition-transform hover:-translate-y-1 duration-200 border-indigo-100">
-              <CardHeader className="pb-3 text-center">
-                <div className="mx-auto p-3 rounded-full bg-indigo-50 text-indigo-600 w-fit mb-2">
-                  <History className="w-6 h-6" />
+        {/* Outer grid: 1 col < 640px, 2 col 640-1199px, 2 or 4 col >= 1200px based on preset count */}
+        <div
+          className="grid gap-6"
+          style={{ gridTemplateColumns: `repeat(${windowWidth < 640 ? 1 : windowWidth < 1200 ? 2 : presets.length <= 2 ? 2 : 4}, minmax(0, 1fr))` }}
+        >
+          {presets.map(p => {
+            const nextRun = getNextRunDate(p);
+            const settings = p.settings || {};
+            // Each card is ~half the viewport at 2-col, ~quarter at 4-col. Stack inner layout below ~560px card width.
+            const cardWidth = windowWidth < 640 ? windowWidth : windowWidth < 1200 ? windowWidth / 2 : windowWidth / (presets.length <= 2 ? 2 : 4);
+            const innerStacked = cardWidth < 480;
+            return (
+              <Card key={p.id} className="hover:shadow-lg transition-all hover:-translate-y-1 duration-200 border-indigo-100 flex flex-col h-full bg-white overflow-hidden shadow-sm">
+                <div style={{ display: 'grid', gridTemplateColumns: innerStacked ? '1fr' : '3fr 2fr', flex: 1 }}>
+                  <div className="p-4 pr-3 flex flex-col justify-start border-r border-slate-50 min-w-0">
+                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 w-fit mb-3">
+                      {p.auto_generate ? <RefreshCw className="w-5 h-5 animate-spin-slow" /> : <FileText className="w-5 h-5" />}
+                    </div>
+                    <h3 className="text-[14px] font-bold text-slate-800 leading-tight line-clamp-2">{p.name}</h3>
+                    <p className="text-[11px] mt-1.5 text-slate-500 font-medium line-clamp-2 leading-relaxed">{p.description || 'Geen beschrijving'}</p>
+                  </div>
+
+                  <div className={cn("p-4 pl-3 flex flex-col justify-center bg-slate-50/20 min-w-0", innerStacked && "border-t border-slate-50")}>
+                    <div className="space-y-2.5">
+                      <div className={cn("flex text-[10px]", innerStacked ? "flex-col gap-0.5" : "justify-between items-center")}>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider">Pers</span>
+                        <span className="font-semibold text-slate-700 truncate">{settings.selectedPress || 'Alle Persen'}</span>
+                      </div>
+                      <div className={cn("flex text-[10px]", innerStacked ? "flex-col gap-0.5" : "justify-between items-center")}>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider">Status</span>
+                        <Badge variant="outline" className={cn("text-[9px] h-4 font-bold border-none px-1.5 w-fit",
+                          settings.selectedStatus === 'Nu Nodig' ? "bg-red-50 text-red-600" :
+                            settings.selectedStatus === 'Binnenkort' ? "bg-orange-50 text-orange-600" :
+                              "bg-green-50 text-green-600"
+                        )}>{settings.selectedStatus || 'N.v.t.'}</Badge>
+                      </div>
+                      <div className={cn("flex text-[10px]", innerStacked ? "flex-col gap-0.5" : "justify-between items-center")}>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider">Periode</span>
+                        <span className="font-semibold text-slate-600 italic truncate">"{settings.selectedPeriod || 'N.v.t.'}"</span>
+                      </div>
+                      {p.auto_generate && (
+                        <div className="pt-2 border-t border-slate-200/50 mt-1">
+                          <div className={cn("flex text-[10px]", innerStacked ? "flex-col gap-0.5" : "justify-between items-center")}>
+                            <span className="text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                              <RefreshCw className="w-2.5 h-2.5" /> Volgende Run
+                            </span>
+                            <span className="font-black text-indigo-600">{nextRun ? nextRun.toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Onbekend'}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <CardTitle className="text-lg">{p.name}</CardTitle>
-                <CardDescription className="line-clamp-2 min-h-[40px]">{p.description || 'Geen beschrijving'}</CardDescription>
-              </CardHeader>
-              <CardFooter className="pt-3 flex gap-2 border-t bg-slate-50/50">
-                <Button variant="outline" size="sm" onClick={() => openEditor(p)} className="flex-1 gap-1"><Edit2 className="w-3.5 h-3.5" /> Bewerk</Button>
-                <Button size="sm" onClick={() => generatePresetNow(p)} className="flex-1 gap-1 bg-indigo-600 hover:bg-indigo-700 text-white"><PlayCircle className="w-3.5 h-3.5" /> Genereer</Button>
-              </CardFooter>
-            </Card>
-          ))}
+                <CardFooter className="pt-3 flex gap-2 border-t bg-slate-50/50 shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => openEditor(p)} className="flex-1 gap-1 h-9 rounded-lg border-indigo-100 text-indigo-700 hover:bg-indigo-50/50"><Edit2 className="w-3.5 h-3.5" /> Configuratie</Button>
+                  <Button size="sm" onClick={() => generatePresetNow(p)} className="flex-1 gap-1 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100"><PlayCircle className="w-3.5 h-3.5" /> Nu Run</Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
 
         <div className="mt-8">
@@ -573,22 +811,95 @@ export function Reports(_props: ReportsProps) {
           </div>
           <Card className="overflow-hidden border-indigo-100 shadow-sm">
             <Table>
-              <TableHeader className="bg-slate-50/50">
+              <TableHeader className="bg-slate-50/50 text-[10px] uppercase tracking-wider font-black text-slate-500">
                 <TableRow>
-                  <TableHead>Datum / Tijd</TableHead>
-                  <TableHead>Titel</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-center">Trigger</TableHead>
-                  <TableHead className="text-right">Acties</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.date }}>Datum / Tijd</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.period }}>Periode</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.title }}>Configuratie</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.type }} className="text-center">Type</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.trigger }} className="text-center">Trigger</TableHead>
+                  <TableHead style={{ width: ARCHIVE_COL_WIDTHS.actions }} className="text-center">Acties</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {archive.length > 0 ? archive.map(r => (
                   <TableRow key={r.id} className="group hover:bg-indigo-50/30 transition-colors">
-                    <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(r.generated_at).toLocaleString('nl-NL')}</TableCell>
-                    <TableCell className="font-semibold text-slate-700">{r.expand?.maintenance_report?.name || r.file}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.report_type || 'taken'}</Badge></TableCell>
-                    <TableCell className="text-center">
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.date }} className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(r.generated_at).toLocaleString('nl-NL')}</TableCell>
+
+                    {/* Dedicated Column for Period Chips */}
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.period }} className="py-3">
+                      {(() => {
+                        const parsed = parseReportFileInfo(r.file);
+                        if (!parsed) return <span className="text-slate-300 italic text-[10px]">Geen info</span>;
+                        return (
+                          <div className="flex flex-row items-center gap-1.5 overflow-hidden">
+                            <Badge variant="outline" className="bg-indigo-50/50 text-indigo-700 border-indigo-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
+                              {parsed.year}
+                            </Badge>
+                            {parsed.type === 'day' && (
+                              <Badge variant="outline" className="bg-blue-50/50 text-blue-700 border-blue-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
+                                {parsed.date}
+                              </Badge>
+                            )}
+                            {parsed.type === 'week' && (
+                              <Badge variant="outline" className="bg-emerald-50/50 text-emerald-700 border-emerald-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
+                                {parsed.week}
+                              </Badge>
+                            )}
+                            {parsed.type === 'month' && (
+                              <Badge variant="outline" className="bg-orange-50/50 text-orange-700 border-orange-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
+                                Maand {parsed.month}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
+
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.title }} className="py-3">
+                      <div className="flex items-center justify-between gap-4 w-full">
+                        {/* Left Side: Title + Handmatig Badge if applicable */}
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700 text-[13px]">
+                            {r.expand?.maintenance_report?.name || "Eenmalige Export"}
+                          </span>
+                          {!r.expand?.maintenance_report && (
+                            <Badge variant="outline" className="text-[9px] uppercase tracking-wider h-5 px-1.5 bg-slate-50 text-slate-500 border-slate-200">
+                              Handmatig
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Right Side: Mailing Info & Raw Filename */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Mailing Chips */}
+                          {r.email_status === 'sent' && (
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] px-2 h-5 font-bold flex gap-1.5 items-center max-w-[250px] overflow-hidden">
+                              <Mail className="w-3 h-3 shrink-0" />
+                              <span className="shrink-0 uppercase tracking-tighter">Mailed to:</span>
+                              <span className="font-normal opacity-80 truncate" title={r.email_recipients}>{r.email_recipients}</span>
+                            </Badge>
+                          )}
+                          {r.email_status === 'failed' && (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-100 text-[10px] px-2 h-5 font-bold flex gap-1.5 items-center" title={r.email_error}>
+                              <AlertCircle className="w-3 h-3 shrink-0" />
+                              <span className="uppercase tracking-tighter">Mail Fout</span>
+                            </Badge>
+                          )}
+
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="secondary" className="bg-red-50 text-red-600 border-transparent text-[9px] px-1 h-4 rounded font-black tracking-wide">
+                              PDF
+                            </Badge>
+                            <span className="text-[11px] text-slate-400 font-mono" title={r.file}>
+                              {cleanReportFilename(r.file)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.type }} className="text-center"><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.report_type || 'taken'}</Badge></TableCell>
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.trigger }} className="text-center">
                       {r.trigger === 'auto' ? (
                         <Badge className={cn("text-[10px] px-1.5 h-5", "bg-green-100 text-green-700")}>
                           Auto
@@ -604,7 +915,7 @@ export function Reports(_props: ReportsProps) {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.actions }} className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
                           <Eye className="w-4 h-4" />
@@ -738,29 +1049,50 @@ export function Reports(_props: ReportsProps) {
 
                   <div className="space-y-3 pt-4 border-t border-dashed">
                     <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Zichtbare Kolommen</Label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       {ALL_COLUMNS.map(c => {
                         const active = selectedColumns.includes(c.id);
                         return (
-                          <Button
-                            key={c.id}
-                            variant={active ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => {
-                              setSelectedColumns(prev =>
-                                prev.includes(c.id)
-                                  ? (prev.length > 1 ? prev.filter(id => id !== c.id) : prev)
-                                  : [...prev, c.id]
-                              );
-                            }}
-                            className={cn(
-                              "h-8 text-[10px] font-bold uppercase tracking-tight gap-1.5 transition-all rounded-md",
-                              active ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100" : "border-slate-200 text-slate-400 opacity-60"
+                          <div key={c.id} className="flex flex-col gap-1.5 p-2 bg-white rounded-lg border border-slate-100 shadow-sm transition-all hover:border-indigo-100">
+                            <Button
+                              variant={active ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => {
+                                setSelectedColumns(prev =>
+                                  prev.includes(c.id)
+                                    ? (prev.length > 1 ? prev.filter(id => id !== c.id) : prev)
+                                    : [...prev, c.id]
+                                );
+                              }}
+                              className={cn(
+                                "h-8 text-[10px] font-bold uppercase tracking-tight gap-1.5 transition-all w-full",
+                                active ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-200 text-slate-400 opacity-60"
+                              )}
+                            >
+                              {active ? <Check className="w-3 h-3" /> : <PlusCircle className="w-3 h-3" />}
+                              {c.id === 'completedOn' ? (selectedStatus === 'Voltooid' ? 'Voltooid op' : 'Laatste onderhoud') : c.label}
+                            </Button>
+                            {active && (
+                              <div className="flex items-center gap-2 px-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <Label className="text-[9px] uppercase text-slate-400 font-black whitespace-nowrap">Breedte %</Label>
+                                <Input
+                                  type="number"
+                                  min={5}
+                                  max={90}
+                                  value={activeConfig.columnWidths[c.id] || ''}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setActiveConfig(prev => ({
+                                      ...prev,
+                                      columnWidths: { ...prev.columnWidths, [c.id]: val }
+                                    }));
+                                  }}
+                                  placeholder="Auto"
+                                  className="h-6 text-[10px] px-1 py-0 w-full bg-slate-50 border-slate-200 text-center font-bold"
+                                />
+                              </div>
                             )}
-                          >
-                            {active ? <Check className="w-3 h-3" /> : <div className="w-3 h-3 border rounded-sm border-slate-300" />}
-                            {c.id === 'completedOn' ? (selectedStatus === 'Voltooid' ? 'Voltooid op' : 'Laatste onderhoud') : c.label}
-                          </Button>
+                          </div>
                         );
                       })}
                     </div>
@@ -930,6 +1262,7 @@ export function Reports(_props: ReportsProps) {
                   <div className="grid grid-cols-2 gap-2 mt-2 p-2 bg-slate-50 rounded border animate-in fade-in duration-200">
                     <div className="space-y-1"><Label className="text-[9px] uppercase">Font</Label><Input type="number" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="h-7 text-[10px]" /></div>
                     <div className="space-y-1"><Label className="text-[9px] uppercase">Marge H</Label><Input type="number" value={marginH} onChange={e => setMarginH(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge V</Label><Input type="number" value={marginV} onChange={e => setMarginV(Number(e.target.value))} className="h-7 text-[10px]" /></div>
                   </div>
                 )}
               </div>
@@ -952,7 +1285,7 @@ export function Reports(_props: ReportsProps) {
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
             ) : activeConfig.report_type === 'taken' ? (
               <PDFViewer width="100%" height="100%" className="border-none">
-                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} />
+                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />
               </PDFViewer>
             ) : (
               <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.report_type}" volgt spoedig.</p></div>

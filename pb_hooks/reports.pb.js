@@ -13,7 +13,11 @@
 cronAdd("report_automation_check", "0 * * * *", () => {
     try {
         const now = new Date();
-        const currentHour = now.getHours();
+        // Server runs in UTC. schedule_hour is stored in local time (CET = UTC+1).
+        // Convert UTC hour to local hour before matching.
+        const UTC_OFFSET_HOURS = 1; // CET (UTC+1). Change to 2 for CEST if needed.
+        const currentHourUTC = now.getHours();
+        const currentHour = (currentHourUTC + UTC_OFFSET_HOURS) % 24;
         const currentDate = now.getDate();
         const currentDay = now.getDay(); // JS: 0=Sun, 1=Mon, ..., 6=Sat
 
@@ -52,12 +56,8 @@ cronAdd("report_automation_check", "0 * * * *", () => {
                 } else if (monthType === 'first_weekday') {
                     // Logic for first weekday:
                     // 1st is Mon-Fri -> 1st is first weekday
-                    // 1st is Sat -> 3rd is first weekday
-                    // 1st is Sun -> 2nd is first weekday
-                    const isFirstWeekday = (currentDate === 1 && currentDay >= 1 && currentDay <= 5) ||
-                        (currentDate === 2 && currentDay === 1 && now.getDay() === 1) ||
-                        (currentDate === 3 && currentDay === 1 && now.getDay() === 1);
-                    // Simplify: a day is the first weekday if it's a weekday AND (date is 1 OR (day is Mon AND date is 2 or 3))
+                    // 1st is Sat (6) -> 3rd is Mon
+                    // 1st is Sun (0) -> 2nd is Mon
                     const checkFirstWeekday = (currentDay >= 1 && currentDay <= 5) &&
                         (currentDate === 1 || (currentDay === 1 && (currentDate === 2 || currentDate === 3)));
                     if (checkFirstWeekday) shouldRun = true;
@@ -82,16 +82,12 @@ cronAdd("report_automation_check", "0 * * * *", () => {
 
             // 3. Trigger Report
             if (shouldRun) {
-                console.log(`>>> [Report Automation] Triggering: ${report.getString("name")} (${report.id})`);
+                $app.logger().info(`>>> [Report Automation] Triggering automated run for: ${report.getString("name")} (${report.id})`);
 
                 // Update last_run
                 report.set("last_run", now.toISOString());
                 $app.save(report);
 
-                // Note: Actual PDF generation happens in the frontend (shared code not available to JSVM).
-                // Or via a dedicated service if implemented. For now, we update the state to signal the hit.
-                // If the user wants the PDF generated, we would need to bridge this with a headless browser
-                // or a different PDF library that works in the JSVM environment.
                 $app.logger().info(`[Report Automation] Successfully scheduled: ${report.getString("name")}`);
             }
         });

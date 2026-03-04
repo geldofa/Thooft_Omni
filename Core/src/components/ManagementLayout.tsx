@@ -2,7 +2,7 @@ import { startTransition, Suspense, lazy, useState, useEffect, useCallback, useM
 import { useParams, useNavigate } from 'react-router-dom';
 import { GroupedTask } from './AuthContext';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { Users, Tags, Factory, Key, Tag as TagIcon, Shield, Calculator, Palette, Bell } from 'lucide-react';
+import { Users, Tags, Factory, Key, Tag as TagIcon, Shield, Calculator, Palette, Bell, CalendarClock } from 'lucide-react';
 import { useAuth, pb, Operator, Ploeg, MaintenanceTask, Tag, Press } from './AuthContext';
 import { OperatorManagement } from './OperatorManagement';
 import { CategoryManagement } from './CategoryManagement';
@@ -14,6 +14,7 @@ import { PermissionManagement } from './PermissionManagement';
 import { ThemeManagement } from './ThemeManagement';
 import { Reports } from './Reports';
 import { MaintenanceChecklist } from './MaintenanceChecklist';
+import { SystemTasks } from './SystemTasks';
 
 const ParameterManagement = lazy(() => import('./ParameterManagement').then(m => ({ default: m.ParameterManagement })));
 const NotificationManagement = lazy(() => import('./NotificationManagement').then(m => ({ default: m.NotificationManagement })));
@@ -322,7 +323,8 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
         'Notificaties': 'notifications',
         'Extern': 'extern',
         'Rapport': 'reports',
-        'Checklist': 'checklist'
+        'Checklist': 'checklist',
+        'Taken': 'tasks'
     };
 
     const currentTab = tabMapping[activeTab] || 'operators';
@@ -395,6 +397,12 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                             </TabsTrigger>
                         )}
 
+                        {hasPermission('management_access') && (
+                            <TabsTrigger value="Taken" className="tab-pill-trigger">
+                                <CalendarClock className="w-4 h-4 mr-2" /> Taken
+                            </TabsTrigger>
+                        )}
+
                     </TabsList>
                 </Tabs>
             </div>
@@ -421,6 +429,7 @@ export function ManagementLayout({ tasks: propsTasks, tags: propsTags }: Managem
                     {currentTab === 'notifications' && <NotificationManagement />}
                     {currentTab === 'reports' && <Reports tasks={flattenedTasks} />}
                     {currentTab === 'checklist' && <MaintenanceChecklist tasks={flattenedTasks} />}
+                    {currentTab === 'tasks' && <SystemTasks />}
                 </Suspense>
             </main>
         </div>

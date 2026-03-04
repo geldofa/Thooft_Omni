@@ -33,6 +33,7 @@ export interface MaintenanceReportPDFProps {
     fontSize?: number;
     marginH?: number;
     marginV?: number;
+    columnWidths?: Record<string, string>;
 }
 
 // ─── Default columns (fallback when prop is not provided) ───────────────────
@@ -44,8 +45,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
     { id: 'note', label: 'Opmerking', field: 'note' },
 ];
 
-/** Distribute width: fixed for narrow columns, flexible for text-heavy columns */
-const computeColumnWidths = (columns: ColumnDef[]): string[] => {
+/** Distribute width: respect custom widths, then flexible for others */
+const computeColumnWidths = (columns: ColumnDef[], customWidths?: Record<string, string>): string[] => {
     const totalWidth = 100;
     const count = columns.length;
     if (count === 0) return [];
@@ -54,24 +55,38 @@ const computeColumnWidths = (columns: ColumnDef[]): string[] => {
     let remainingWidth = totalWidth;
     let flexColumnCount = 0;
 
-    // Fixed widths for specific IDs
+    // 1. Apply custom widths first
     columns.forEach((col, i) => {
-        if (col.id === 'interval') {
-            widths[i] = '12%';
-            remainingWidth -= 12;
-        } else if (col.id === 'completedOn') {
-            widths[i] = '12%';
-            remainingWidth -= 12;
-        } else if (col.id === 'daysDiff') {
-            widths[i] = '15%';
-            remainingWidth -= 15;
+        if (customWidths && customWidths[col.id]) {
+            const val = customWidths[col.id];
+            // Support both "15%" and "15"
+            const numericVal = parseFloat(val);
+            if (!isNaN(numericVal)) {
+                widths[i] = `${numericVal}%`;
+                remainingWidth -= numericVal;
+            } else {
+                flexColumnCount++;
+            }
         } else {
-            flexColumnCount++;
+            // 2. Default logic for specific columns if no custom width
+            if (col.id === 'interval') {
+                widths[i] = '12%';
+                remainingWidth -= 12;
+            } else if (col.id === 'completedOn') {
+                widths[i] = '12%';
+                remainingWidth -= 12;
+            } else if (col.id === 'daysDiff') {
+                widths[i] = '18%';
+                remainingWidth -= 18;
+            } else {
+                flexColumnCount++;
+            }
         }
     });
 
+    // 3. Flex remaining width
     if (flexColumnCount > 0) {
-        const flexWidth = remainingWidth / flexColumnCount;
+        const flexWidth = Math.max(5, remainingWidth / flexColumnCount); // Ensure min-width
         columns.forEach((col, i) => {
             if (widths[i] === 'auto') {
                 // Taak gets more if it's there
@@ -109,8 +124,6 @@ const styles = StyleSheet.create({
     // Header
     headerWrapper: {
         backgroundColor: '#4f46e5', // Indigo-600
-        padding: 25,
-        paddingBottom: 20,
         color: '#ffffff',
     },
     headerContainer: {
@@ -249,8 +262,7 @@ const formatDaysDiff = (days: number | undefined): string => {
     if (days === undefined) return '-';
     if (days === 0) return 'Vandaag!';
     if (days > 0) return `In ${days} ${days === 1 ? 'dag' : 'dagen'}`;
-    const over = Math.abs(days);
-    return `${over} ${over === 1 ? 'dag' : 'dagen'} OVER`;
+    return `${Math.abs(days)}`;
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -265,22 +277,28 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     fontSize = 9,
     marginH = 30,
     marginV = 10,
+    columnWidths,
 }) => {
     const activeColumns = (columns && columns.length > 0) ? columns : DEFAULT_COLUMNS;
-    const widths = computeColumnWidths(activeColumns);
+    const widths = computeColumnWidths(activeColumns, columnWidths);
 
     // Dynamic style overrides
     const dynamicStyles = {
         text: { fontSize },
         headerText: { fontSize: fontSize + 1 },
         smallText: { fontSize: fontSize - 2 },
+        headerWrapper: {
+            paddingHorizontal: marginH,
+            paddingTop: marginV + 15, // Increase base padding for header
+            paddingBottom: 20,
+        },
         pageContent: {
             paddingHorizontal: marginH,
-            paddingTop: marginV,
+            paddingTop: 10, // Maintain small gap between header and content
             paddingBottom: marginV + 30, // Extra space for fixed footer
         },
         pageNumber: {
-            bottom: 10,
+            bottom: marginV,
         }
     };
 
@@ -302,7 +320,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         return (
             <Page size="A4" style={styles.page} key={pressName}>
                 {/* Header with press name */}
-                <View style={styles.headerWrapper} fixed>
+                <View style={[styles.headerWrapper, dynamicStyles.headerWrapper]} fixed>
                     <View style={styles.headerContainer}>
                         <View>
                             <Text style={styles.omniLogo}>OMNI</Text>
@@ -329,7 +347,13 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                     <View style={styles.tableHeaderRow} fixed>
                         {activeColumns.map((col, i) => (
                             <View key={col.id} style={[styles.col, { width: widths[i], paddingLeft: i === 0 ? 8 : 4 }]}>
-                                <Text style={[styles.tableHeaderCell, dynamicStyles.smallText]}>{col.label}</Text>
+                                <Text style={[
+                                    styles.tableHeaderCell,
+                                    dynamicStyles.smallText,
+                                    (col.id === 'daysDiff' || col.id === 'interval' || col.id === 'completedOn') ? { textAlign: 'right' } : {}
+                                ]}>
+                                    {col.label}
+                                </Text>
                             </View>
                         ))}
                     </View>
@@ -368,7 +392,13 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                                                                     </View>
                                                                 </View>
                                                             ) : (col.id === 'interval' || col.id === 'completedOn' || col.id === 'daysDiff') ? (
-                                                                <Text style={[styles.tableCellNoWrap, dynamicStyles.text, showIndicator ? { color: statusColor.color } : {}]}>
+                                                                <Text style={[
+                                                                    styles.tableCellNoWrap,
+                                                                    dynamicStyles.text,
+                                                                    showIndicator ? { color: statusColor.color } : {},
+                                                                    (col.id === 'daysDiff' || col.id === 'interval' || col.id === 'completedOn') ? { textAlign: 'right' } : {},
+                                                                    (col.id === 'daysDiff' && task.daysDiff !== undefined && task.daysDiff < 0) ? { fontFamily: 'Helvetica-Bold' } : {}
+                                                                ]}>
                                                                     {col.id === 'daysDiff' ? formatDaysDiff(task.daysDiff) : (task[col.field] ?? '')}
                                                                 </Text>
                                                             ) : (
@@ -419,7 +449,9 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                                                         <Text style={[
                                                             styles.tableCellNoWrap,
                                                             dynamicStyles.text,
-                                                            showIndicator ? { color: statusColor.color } : {}
+                                                            showIndicator ? { color: statusColor.color } : {},
+                                                            (col.id === 'daysDiff' || col.id === 'interval' || col.id === 'completedOn') ? { textAlign: 'right' } : {},
+                                                            (col.id === 'daysDiff' && task.daysDiff !== undefined && task.daysDiff < 0) ? { fontFamily: 'Helvetica-Bold' } : {}
                                                         ]}>
                                                             {col.id === 'daysDiff' ? formatDaysDiff(task.daysDiff) : (task[col.field] ?? '')}
                                                         </Text>
