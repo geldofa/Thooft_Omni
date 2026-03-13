@@ -634,31 +634,8 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
         });
     }, [step, importMode, csvData, mappings, resolutions, categories, presses]);
 
-    // Determine which matched rows should be skipped (same/older date)
-    const skippedRows = useMemo(() => {
-        const skipped = new Set<number>();
-        if (importMode !== 'update' || !mappings.lastMaintenance) return skipped;
-
-        matchingDisplayData.forEach(row => {
-            const matchedRecId = combinedMatches[row.originalIndex];
-            if (!matchedRecId) return; // not matched, skip check
-
-            const matchedRec = existingRecordsMap.get(matchedRecId);
-            if (!matchedRec) return;
-
-            const existingDate = matchedRec.last_date ? new Date(matchedRec.last_date) : null;
-            const importedDate = parseImportDate(row.importedLastDate);
-
-            if (!importedDate || isNaN(importedDate.getTime())) return; // no valid import date
-            if (existingDate && !isNaN(existingDate.getTime()) && importedDate <= existingDate) {
-                skipped.add(row.originalIndex);
-            }
-        });
-        return skipped;
-    }, [importMode, mappings.lastMaintenance, matchingDisplayData, combinedMatches, existingRecordsMap]);
-
     const processedData = useMemo(() => {
-        if (step !== 'preview') return [];
+        if (step !== 'matching' && step !== 'preview') return [];
 
         return csvData.map((row, index) => {
             const item: any = {};
@@ -675,8 +652,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                             val = 'months';
                         }
                     } else {
-                        // Default to months if missing, or maybe we should default to days? 
-                        // For now, consistent behavior with previous logic (implicit fallback)
+                        // Default to months if missing
                         val = 'months';
                     }
                 }
@@ -688,8 +664,6 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 if ((target.systemField === 'lastMaintenance' || target.systemField === 'nextMaintenance' || target.systemField === 'commentDate') && val) {
                     val = parseImportDate(val);
                 }
-
-                // isExternal is now determined by tags, not a separate column
 
                 item[target.systemField] = val;
             });
@@ -713,10 +687,8 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             if (opName) {
                 const names = opName.split(',').map((n: string) => n.trim()).filter(Boolean);
                 names.forEach((n: string) => {
-                    // Check if this name matches a ploeg - if so, expand to all members
                     const matchingPloeg = ploegen.find(p => p.name.toLowerCase() === n.toLowerCase() && p.active);
                     if (matchingPloeg) {
-                        // Expansion: Add all operators from this ploeg if they have members
                         if (matchingPloeg.operatorIds && matchingPloeg.operatorIds.length > 0) {
                             matchingPloeg.operatorIds.forEach(opId => {
                                 if (!resolvedOpIds.includes(opId)) {
@@ -724,12 +696,10 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                     resolvedOpTypes.push('operator');
                                 }
                             });
-                            console.log(`[Import] Expanded ploeg "${n}" to ${matchingPloeg.operatorIds.length} operators`);
                         }
-                        return; // Skip normal operator lookup for this name
+                        return;
                     }
 
-                    // Normal operator resolution logic
                     const resOp = resolutions.operators[n];
                     if (resOp?.type === 'existing') {
                         if (resOp.value.startsWith('__PENDING__')) {
@@ -740,7 +710,6 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                         } else {
                             const selectedPloeg = ploegen.find(p => p.id === resOp.value);
                             if (selectedPloeg) {
-                                // Expansion: Add all operators from this ploeg
                                 if (selectedPloeg.operatorIds && selectedPloeg.operatorIds.length > 0) {
                                     selectedPloeg.operatorIds.forEach(opId => {
                                         if (!resolvedOpIds.includes(opId)) {
@@ -779,8 +748,8 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             const finalTaskName = mod?.task || item.task;
             const finalSubtaskName = mod?.subtaskName || (item.subtaskName || item.task);
 
-            // Match info for update mode
-            const matchedRecordId = importMode === 'update' ? (combinedMatches[index] || null) : null;
+            const matchResult = importMode === 'update' ? combinedMatches[index] : null;
+            const matchedRecordId = matchResult ?? null;
             const matchedRecord = matchedRecordId ? existingRecords.find((r: any) => r.id === matchedRecordId) : null;
 
             return {
@@ -801,7 +770,116 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 matchedRecord,
             };
         });
-    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions, ploegen, importMode, combinedMatches, existingRecords]);
+    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions, ploegen, importMode, combinedMatches, existingRecords, rowModifications]);
+
+    // Determine which matched rows should be skipped (no changes detected)
+    const skippedRows = useMemo(() => {
+        const skipped = new Set<number>();
+        if (importMode !== 'update') return skipped;
+
+        processedData.forEach(row => {
+            const matchedRecId = combinedMatches[row.originalIndex];
+            if (!matchedRecId) return;
+
+            const matchedRec = existingRecordsMap.get(matchedRecId);
+            if (!matchedRec) return;
+
+            let hasChanges = false;
+
+            if (mappings.task && row.task !== matchedRec.task) hasChanges = true;
+            if (mappings.subtaskName && row.subtaskName !== matchedRec.subtask) hasChanges = true;
+            if (mappings.taskSubtext && (row.taskSubtext || '') !== (matchedRec.task_subtext || '')) hasChanges = true;
+            if (mappings.subtaskSubtext && (row.subtaskSubtext || '') !== (matchedRec.subtask_subtext || '')) hasChanges = true;
+
+            if (mappings.category && row.categoryId && !row.categoryId.startsWith('__NEW_CAT__') && row.categoryId !== matchedRec.category) hasChanges = true;
+            if (mappings.press && row.pressId && !row.pressId.startsWith('__NEW_PRESS__') && row.pressId !== matchedRec.pers) hasChanges = true;
+            
+            if (mappings.maintenanceInterval && (row.maintenanceInterval || 1) !== matchedRec.interval) hasChanges = true;
+            if (mappings.maintenanceIntervalUnit && row.maintenanceIntervalUnit) {
+                const mapUnit = (u: string) => {
+                    const l = u.toLowerCase();
+                    if (l === 'days' || l === 'dagen') return 'Dagen';
+                    if (l === 'weeks' || l === 'weken') return 'Weken';
+                    if (l === 'months' || l === 'maanden') return 'Maanden';
+                    if (l === 'years' || l === 'jaren') return 'Jaren';
+                    return 'Maanden';
+                };
+                if (mapUnit(row.maintenanceIntervalUnit) !== matchedRec.interval_unit) hasChanges = true;
+            }
+
+            if (mappings.comment && (row.comment || '') !== (matchedRec.opmerkingen || '')) hasChanges = true;
+
+            if (mappings.tagIds) {
+                const existingIsExt = matchedRec.is_external || false;
+                const importIsExt = row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false;
+                if (existingIsExt !== importIsExt) hasChanges = true;
+                
+                const existingTags = matchedRec.tags || [];
+                const importTags = row.rawTags ? row.rawTags.split(',').map((s: string)=>s.trim()).filter(Boolean) : [];
+                if (existingTags.length !== importTags.length) hasChanges = true;
+            }
+
+            if (mappings.lastMaintenance) {
+                const existingDate = matchedRec.last_date ? new Date(matchedRec.last_date) : null;
+                const importedDate = row.lastMaintenance ? new Date(row.lastMaintenance) : null;
+                
+                if (importedDate && !isNaN(importedDate.getTime())) {
+                    if (!existingDate || isNaN(existingDate.getTime())) {
+                        hasChanges = true;
+                    } else if (importedDate > existingDate) {
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            if (mappings.assignedTo) {
+                const existingOpIds = (matchedRec.assigned_operator || []).sort();
+                const resolvedImportOpIds = row.assignedToIds.filter((id: string)=>!id.startsWith('__NEW_OP__') && !id.startsWith('__PENDING_OP__')).sort();
+                if (JSON.stringify(existingOpIds) !== JSON.stringify(resolvedImportOpIds)) {
+                    hasChanges = true;
+                }
+                if (row.assignedToIds.some((id: string) => id.startsWith('__NEW_OP__') || id.startsWith('__PENDING_OP__'))) {
+                    hasChanges = true;
+                }
+            }
+
+            if (!hasChanges) {
+                skipped.add(row.originalIndex);
+            }
+        });
+        return skipped;
+    }, [importMode, processedData, combinedMatches, existingRecordsMap, mappings]);
+
+    const importSummary = useMemo(() => {
+        if (importMode !== 'update') {
+            const validRows = processedData.filter(d => d.isValid);
+            const invalidRows = processedData.filter(d => !d.isValid);
+            return {
+                valid: validRows.length,
+                invalid: invalidRows.length,
+                updates: 0,
+                new: validRows.length,
+                skipped: 0,
+                missing: 0
+            };
+        }
+
+        // Use combinedMatches as the single source of truth — works on both Step 3 (matching) and Step 4 (preview)
+        const entries = Object.entries(combinedMatches);
+        const updates = entries.filter(([idx, v]) => v !== null && v !== undefined && !skippedRows.has(Number(idx))).length;
+        const nieuw = entries.filter(([idx, v]) => v === null && !skippedRows.has(Number(idx))).length;
+        const skipped = skippedRows.size;
+        const missing = entries.filter(([idx, v]) => v === undefined && !skippedRows.has(Number(idx))).length;
+
+        return {
+            valid: updates + nieuw,
+            invalid: missing,
+            updates,
+            new: nieuw,
+            skipped,
+            missing
+        };
+    }, [processedData, importMode, skippedRows, combinedMatches]);
 
     const handleImport = async () => {
         const validRows = processedData.filter(d => d.isValid);
@@ -811,7 +889,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
         }
 
         const rowsToUpdate = importMode === 'update' ? validRows.filter(r => r.matchedRecordId && !skippedRows.has(r.originalIndex)) : [];
-        const rowsToCreate = importMode === 'update' ? validRows.filter(r => r.matchedRecordId === null && !skippedRows.has(r.originalIndex)) : validRows;
+        const rowsToCreate = importMode === 'update' ? validRows.filter(r => combinedMatches[r.originalIndex] === null && !skippedRows.has(r.originalIndex)) : validRows;
 
         setIsImporting(true);
         let successCount = 0;
@@ -1459,13 +1537,13 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             )}
 
             {step === 'matching' && (
-                <Card>
+                <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
                     <CardHeader className="border-b bg-gray-50/50">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <CardTitle className="text-lg">Stap 3: Koppeling aan Bestaande Taken</CardTitle>
                                 <CardDescription>
-                                    Controleer welke rijen automatisch zijn gekoppeld. Rijen met dezelfde of oudere datum worden overgeslagen.
+                                    Controleer welke rijen automatisch zijn gekoppeld. Ongewijzigde rijen worden overgeslagen.
                                 </CardDescription>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1481,7 +1559,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="p-0 max-h-[60vh] overflow-y-auto">
+                    <CardContent className="p-0 flex-1 min-h-0 overflow-y-auto">
                         {isLoadingExisting ? (
                             <div className="py-16 text-center">
                                 <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
@@ -1489,14 +1567,14 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                             </div>
                         ) : (
                             <>
-                            <Table>
+                            <Table className="table-fixed w-full">
                                 <TableHeader className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                                     <TableRow>
-                                        <TableHead className="w-[100px]">Status</TableHead>
-                                        <TableHead className="min-w-[350px]">Taak & Koppeling</TableHead>
-                                        <TableHead className="min-w-[150px]">Huidige data</TableHead>
-                                        <TableHead className="w-[40px] text-center">→</TableHead>
-                                        <TableHead className="min-w-[150px]">Nieuwe data</TableHead>
+                                        <TableHead className="w-[90px]">Status</TableHead>
+                                        <TableHead>Taak & Koppeling</TableHead>
+                                        <TableHead className="w-[130px]">Huidige data</TableHead>
+                                        <TableHead className="w-[30px] text-center">→</TableHead>
+                                        <TableHead className="w-[130px]">Nieuwe data</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1540,13 +1618,13 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                                         </Badge>
                                                     )}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="text-sm mb-2">
+                                                <TableCell className="overflow-hidden">
+                                                    <div className="text-sm mb-2 truncate">
                                                         <span className="font-medium text-gray-900">{row.task}</span>
                                                         {row.subtaskName && row.subtaskName !== row.task && (
                                                             <span className="text-gray-500"> → {row.subtaskName}</span>
                                                         )}
-                                                        <div className="text-xs text-gray-400 mt-0.5">{row.pressName} · {row.categoryName}</div>
+                                                        <div className="text-xs text-gray-400 mt-0.5 truncate">{row.pressName} · {row.categoryName}</div>
                                                     </div>
                                                     {matchedRecId === undefined ? (
                                                         <div className="flex gap-2">
@@ -1634,7 +1712,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                         <div className="flex items-center gap-2 text-sm text-gray-500">
                                             <AlertCircle className="w-4 h-4 text-gray-400" />
                                             <span className="font-medium">Overgeslagen ({skippedRows.size})</span>
-                                            <span className="text-xs text-gray-400">— datum in import is gelijk of ouder</span>
+                                            <span className="text-xs text-gray-400">— geen wijzigingen gedetecteerd</span>
                                         </div>
                                         <div className={`transform transition-transform duration-200 ${showSkipped ? 'rotate-180' : ''}`}>
                                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
@@ -1685,10 +1763,10 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                     </CardContent>
                     <div className="p-4 border-t bg-gray-50 flex items-center justify-between gap-3">
                         <div className="text-sm text-gray-500 flex items-center gap-3">
-                            <span><strong className="text-green-700">{Object.entries(combinedMatches).filter(([idx, v]) => v !== null && v !== undefined && !skippedRows.has(Number(idx))).length}</strong> bijwerken</span>
-                            <span><strong className="text-yellow-700">{Object.entries(combinedMatches).filter(([idx, v]) => v === null && !skippedRows.has(Number(idx))).length}</strong> nieuw</span>
-                            <span><strong className="text-gray-400">{skippedRows.size}</strong> overgeslagen</span>
-                            <span className="text-red-600 border-l pl-3 ml-2"><strong className="text-red-700">{Object.entries(combinedMatches).filter(([idx, v]) => v === undefined && !skippedRows.has(Number(idx))).length}</strong> ontbreekt (worden genegeerd)</span>
+                            <span><strong className="text-green-700">{importSummary.updates}</strong> bijwerken</span>
+                            <span><strong className="text-yellow-700">{importSummary.new}</strong> nieuw</span>
+                            <span><strong className="text-gray-400">{importSummary.skipped}</strong> overgeslagen</span>
+                            <span className="text-red-600 border-l pl-3 ml-2"><strong className="text-red-700">{importSummary.missing}</strong> ontbreekt (worden genegeerd)</span>
                         </div>
                         <div className="flex gap-3">
                             <Button variant="outline" onClick={() => setStep('resolve')} className="h-11 px-8">Vorige</Button>
@@ -1801,9 +1879,14 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                     <CardDescription>
                                         Controleer de data voordat u deze definitief importeert.
                                         {importMode === 'update' ? (
-                                            <> ({processedData.filter(d => d.isValid && d.matchedRecordId).length} bijwerken, {processedData.filter(d => d.isValid && !d.matchedRecordId).length} nieuw, {processedData.filter(d => !d.isValid).length} ongeldig)</>
+                                            <> (
+                                                <span className="text-blue-700 font-bold">{importSummary.updates} bijwerken</span>,{' '}
+                                                <span className="text-green-700 font-bold">{importSummary.new} nieuw</span>,{' '}
+                                                <span className="text-gray-500 font-bold">{importSummary.skipped} overgeslagen</span>,{' '}
+                                                <span className="text-red-600 font-bold">{importSummary.missing} ontbreekt (genegeerd)</span>
+                                            )</>
                                         ) : (
-                                            <> ({processedData.filter(d => d.isValid).length} geldig, {processedData.filter(d => !d.isValid).length} ongeldig)</>
+                                            <> ({importSummary.valid} geldig, {importSummary.invalid} ongeldig)</>
                                         )}
                                     </CardDescription>
                                 </div>
@@ -1847,7 +1930,9 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {processedData.map((row) => (
+                                    {processedData
+                                        .filter(row => importMode !== 'update' || (!skippedRows.has(row.originalIndex) && combinedMatches[row.originalIndex] !== undefined))
+                                        .map((row) => (
                                         <TableRow
                                             key={row.originalIndex}
                                             className={row.isValid ? (selectedRows.has(row.originalIndex) ? 'bg-blue-50/50' : '') : 'bg-red-50/50'}
@@ -1918,11 +2003,12 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                             <div className="text-sm text-gray-500">
                                 {importMode === 'update' ? (
                                     <>
-                                        <span className="font-bold text-blue-700">{processedData.filter(d => d.isValid && d.matchedRecordId).length}</span> worden bijgewerkt,{' '}
-                                        <span className="font-bold text-green-700">{processedData.filter(d => d.isValid && !d.matchedRecordId).length}</span> worden nieuw aangemaakt.
+                                        <span className="font-bold text-blue-700">{importSummary.updates}</span> worden bijgewerkt,{' '}
+                                        <span className="font-bold text-green-700">{importSummary.new}</span> worden nieuw aangemaakt.
+                                        {importSummary.skipped > 0 && <span className="ml-2 text-gray-400">({importSummary.skipped} worden overgeslagen)</span>}
                                     </>
                                 ) : (
-                                    <><span className="font-bold text-gray-900">{processedData.filter(d => d.isValid).length}</span> taken worden toegevoegd.</>
+                                    <><span className="font-bold text-gray-900">{importSummary.valid}</span> taken worden toegevoegd.</>
                                 )}
                             </div>
                             <div className="flex flex-row items-center justify-end gap-3 w-auto ml-auto">
