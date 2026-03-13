@@ -173,7 +173,7 @@ class DrukwerkenCacheService {
         this.notifyStatus({ totalDocs: totalItems, cachedDocs: currentCacheCount });
 
         let page = 1;
-        let pageSize = 50; // Start with a decent batch for quick initial render
+        const pageSize = 150; // MUST be consistent - changing pageSize mid-pagination skips records!
 
         while (true) {
             this.notifyStatus({ statusText: `Loading data (page ${page})...` });
@@ -193,18 +193,11 @@ class DrukwerkenCacheService {
                 const displayCount = Math.min(realCount, totalItems);
                 this.notifyStatus({ cachedDocs: displayCount });
                 await this.notifyJobs();
-
-                // After first successful page, we can mark a partial sync success to avoid full resync on refresh
-                if (page === 1) {
-                    await db.syncState.put({ id: 'global', lastSync: new Date() });
-                }
             }
 
             if (page >= result.totalPages) break;
 
             page++;
-            // Subsequent pages can be larger for better throughput
-            if (page === 2) pageSize = 150;
         }
 
         await db.syncState.put({ id: 'global', lastSync: new Date() });

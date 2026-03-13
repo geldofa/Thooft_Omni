@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useAuth, Operator, ExternalEntity, Ploeg, PressType, pb, Press } from './AuthContext';
+import { useAuth, Operator, ExternalEntity, Ploeg, PressType, pb, Press } from '../AuthContext';
 import {
   Table,
   TableBody,
@@ -7,9 +7,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from './ui/table';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Edit, Trash2, Plus, Check, Users } from 'lucide-react';
 import {
   AlertDialog,
@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from './ui/alert-dialog';
+} from '../ui/alert-dialog';
 import {
   Dialog,
   DialogContent,
@@ -29,14 +29,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Switch } from './ui/switch';
-import { Checkbox } from './ui/checkbox';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+} from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
+import { Checkbox } from '../ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { toast } from 'sonner';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from '../layout/PageHeader';
 
 
 interface OperatorManagementProps {

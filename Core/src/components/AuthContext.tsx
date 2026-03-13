@@ -1,14 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import PocketBase from 'pocketbase';
-import { toast } from 'sonner';
-import { APP_URL, APP_VERSION } from '../config';
-import { drukwerkenCache } from '../services/DrukwerkenCache';
+import { pb, client } from '../lib/pocketbase';
+export { pb, client };
 
-// Initialize PocketBase Client
-const PB_URL = APP_URL || import.meta.env.VITE_PB_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8090`;
-export const client = new PocketBase(PB_URL);
-export const pb = client;
-pb.autoCancellation(false);
+import { toast } from 'sonner';
+import { APP_VERSION } from '../config';
+import { drukwerkenCache } from '../services/DrukwerkenCache';
 
 export interface GroupedTask {
   id: string;
@@ -97,7 +93,10 @@ export type Permission =
   | 'logs_view'
   | 'logs_view_all'
   | 'feedback_view'
-  | 'feedback_manage';
+  | 'feedback_manage'
+  | 'manage_themes'
+  | 'manage_notifications'
+  | 'manage_system_tasks';
 
 export interface RolePermissions {
   role: UserRole;

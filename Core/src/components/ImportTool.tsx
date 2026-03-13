@@ -13,7 +13,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Upload, ArrowRight, Check, AlertCircle, Save, X } from 'lucide-react';
+import { Upload, ArrowRight, Check, AlertCircle, Save, X, Link, Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import {
@@ -84,16 +84,36 @@ const UNIT_MAPPING: Record<string, 'days' | 'weeks' | 'months' | 'years'> = {
     'yr': 'years',
 };
 
-export function ImportTool({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'preview') => void }) {
+export function ImportTool({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'matching' | 'preview') => void }) {
     const { addActivityLog, user } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
     const [headers, setHeaders] = useState<string[]>([]);
     const [mappings, setMappings] = useState<Record<string, string | null>>({});
-    const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
+    const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'matching' | 'preview'>('upload');
     const [isImporting, setIsImporting] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [ploegen, setPloegen] = useState<Ploeg[]>([]);
+
+    // Import mode: 'create' (default) or 'update' (match & update existing)
+    const [importMode, setImportMode] = useState<'create' | 'update'>('create');
+
+    // Existing records for matching (fetched when entering matching step)
+    const [existingRecords, setExistingRecords] = useState<any[]>([]);
+    const [isLoadingExisting, setIsLoadingExisting] = useState(false);
+
+    // Manual match overrides: csvRowIndex -> existing record id (or '_new' for create new)
+    const [manualMatches, setManualMatches] = useState<Record<number, string>>({});
+
+    // Search filter for the matching step
+    const [matchSearchFilter, setMatchSearchFilter] = useState('');
+
+    // Which row index is currently being manually matched (dialog)
+    const [matchDialogRowIndex, setMatchDialogRowIndex] = useState<number | null>(null);
+    const [matchDialogSearch, setMatchDialogSearch] = useState('');
+
+    // Collapsed section for skipped rows
+    const [showSkipped, setShowSkipped] = useState(false);
 
     // Local state for data not provided by AuthContext
     const [categories, setCategories] = useState<Category[]>([]);
@@ -452,6 +472,191 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
         return true;
     };
 
+    // Fetch existing records when entering matching step
+    useEffect(() => {
+        if (step === 'matching' && importMode === 'update' && existingRecords.length === 0) {
+            const fetchExisting = async () => {
+                setIsLoadingExisting(true);
+                try {
+                    const records = await pb.collection('onderhoud').getFullList({
+                        expand: 'category,pers,assigned_operator',
+                    });
+                    setExistingRecords(records);
+                } catch (err) {
+                    console.error('Failed to fetch existing records for matching', err);
+                    toast.error('Kon bestaande taken niet ophalen.');
+                } finally {
+                    setIsLoadingExisting(false);
+                }
+            };
+            fetchExisting();
+        }
+    }, [step, importMode]);
+
+    // Auto-matching: compute matches based on task+subtask+pers+category
+    const autoMatches = useMemo(() => {
+        if (importMode !== 'update' || existingRecords.length === 0 || csvData.length === 0) return {};
+
+        const matches: Record<number, string> = {};
+
+        // Normalize subtask: if subtask is empty or same as task, treat as ''
+        const normalizeSubtask = (task: string, subtask: string) => {
+            const t = (task || '').toLowerCase().trim();
+            const s = (subtask || '').toLowerCase().trim();
+            return (s === '' || s === t) ? '' : s;
+        };
+
+        // Build lookup maps from existing records
+        const existingLookup = new Map<string, string>();
+        // Also build a subtask-based lookup: subtask|pressId|catId -> record id
+        const existingSubtaskLookup = new Map<string, string>();
+        existingRecords.forEach(r => {
+            const t = (r.task || '').toLowerCase().trim();
+            const s = normalizeSubtask(r.task, r.subtask);
+            const key = `${t}|${s}|${r.pers || ''}|${r.category || ''}`;
+            existingLookup.set(key, r.id);
+            // Also index by subtask as the "task" (for when CSV task matches DB subtask)
+            const sub = (r.subtask || '').toLowerCase().trim();
+            if (sub) {
+                const subKey = `${sub}||${r.pers || ''}|${r.category || ''}`;
+                if (!existingSubtaskLookup.has(subKey)) {
+                    existingSubtaskLookup.set(subKey, r.id);
+                }
+            }
+        });
+
+        csvData.forEach((row, index) => {
+            const taskName = row[mappings.task!]?.toString().trim().toLowerCase() || '';
+            const rawSubtask = mappings.subtaskName ? row[mappings.subtaskName]?.toString().trim().toLowerCase() : '';
+            const subtaskName = normalizeSubtask(taskName, rawSubtask);
+
+            const rawCatName = mappings.category ? row[mappings.category]?.toString().trim() : '';
+            const resCat = resolutions.categories[rawCatName];
+            const resolvedCategory = resCat?.type === 'existing'
+                ? (categories || []).find(c => c.id === resCat.value)
+                : (categories || []).find(c => c.name.toLowerCase() === (rawCatName?.toLowerCase() || ''));
+            const catId = resolvedCategory?.id || '';
+
+            const rawPressName = mappings.press ? row[mappings.press]?.toString().trim() : '';
+            const resPress = resolutions.presses[rawPressName];
+            const resolvedPress = resPress?.type === 'existing'
+                ? (presses || []).find(p => p.id === resPress.value)
+                : (presses || []).find(p => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
+            const pressId = resolvedPress?.id || '';
+
+            if (!taskName || !catId || !pressId) return;
+
+            // O(1) lookup: try exact match first, then fallback to subtask-based
+            const key = `${taskName}|${subtaskName}|${pressId}|${catId}`;
+            const matchId = existingLookup.get(key)
+                // Fallback: CSV task might match a DB subtask (no subtask in CSV)
+                || existingSubtaskLookup.get(`${taskName}||${pressId}|${catId}`);
+            if (matchId) {
+                matches[index] = matchId;
+            }
+        });
+
+        return matches;
+    }, [importMode, existingRecords, csvData, mappings, resolutions, categories, presses]);
+
+    // Pre-compute: existing records grouped by press (for dropdown)
+    const groupedExistingRecords = useMemo(() => {
+        if (existingRecords.length === 0) return [];
+        const grouped: Record<string, any[]> = {};
+        existingRecords.forEach(r => {
+            const pressName = r.expand?.pers?.naam || r.expand?.pers?.name || 'Onbekend';
+            if (!grouped[pressName]) grouped[pressName] = [];
+            grouped[pressName].push(r);
+        });
+        return Object.entries(grouped);
+    }, [existingRecords]);
+
+    // Pre-compute: existing records by id (for fast lookup)
+    const existingRecordsMap = useMemo(() => {
+        const map = new Map<string, any>();
+        existingRecords.forEach(r => map.set(r.id, r));
+        return map;
+    }, [existingRecords]);
+
+    // Combined matches: manual overrides take precedence over auto
+    const combinedMatches = useMemo(() => {
+        const combined: Record<number, string | null | undefined> = {};
+        csvData.forEach((_, index) => {
+            if (manualMatches[index] !== undefined) {
+                combined[index] = manualMatches[index] === '_new' ? null : manualMatches[index];
+            } else if (autoMatches[index]) {
+                combined[index] = autoMatches[index];
+            } else {
+                combined[index] = undefined;
+            }
+        });
+        return combined;
+    }, [autoMatches, manualMatches, csvData]);
+
+    // Lightweight data for the matching step (no heavy resolution)
+    const matchingDisplayData = useMemo(() => {
+        if (step !== 'matching' || importMode !== 'update') return [];
+        return csvData.map((row, index) => {
+            const task = row[mappings.task!]?.toString().trim() || '';
+            const subtaskName = (mappings.subtaskName ? row[mappings.subtaskName]?.toString().trim() : '') || task;
+            const rawCatName = mappings.category ? row[mappings.category]?.toString().trim() : '';
+            const resCat = resolutions.categories[rawCatName];
+            const resolvedCat = resCat?.type === 'existing'
+                ? (categories || []).find(c => c.id === resCat.value)
+                : (categories || []).find(c => c.name.toLowerCase() === (rawCatName?.toLowerCase() || ''));
+            const rawPressName = mappings.press ? row[mappings.press]?.toString().trim() : '';
+            const resPress = resolutions.presses[rawPressName];
+            const resolvedPress = resPress?.type === 'existing'
+                ? (presses || []).find(p => p.id === resPress.value)
+                : (presses || []).find(p => p.name.toLowerCase() === (rawPressName?.toLowerCase() || ''));
+            // Resolve operators for display
+            const rawAssignees = mappings.assignedTo ? row[mappings.assignedTo]?.toString().trim() : '';
+            const assigneeNames = rawAssignees ? rawAssignees.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+            const resolvedOpNames = assigneeNames.map((name: string) => {
+                const res = resolutions.operators[name];
+                if (res?.type === 'existing' || res?.type === 'new' || res?.type === 'external') {
+                    return res.value || name;
+                }
+                return name;
+            }).join(', ');
+
+            return {
+                originalIndex: index,
+                task,
+                subtaskName,
+                pressId: resolvedPress?.id || '',
+                pressName: resolvedPress?.name || rawPressName || 'Onbekend',
+                categoryId: resolvedCat?.id || '',
+                categoryName: resolvedCat?.name || rawCatName || 'Onbekend',
+                importedLastDate: mappings.lastMaintenance ? row[mappings.lastMaintenance]?.toString().trim() || '' : '',
+                importedOperatorNames: resolvedOpNames,
+            };
+        });
+    }, [step, importMode, csvData, mappings, resolutions, categories, presses]);
+
+    // Determine which matched rows should be skipped (same/older date)
+    const skippedRows = useMemo(() => {
+        const skipped = new Set<number>();
+        if (importMode !== 'update' || !mappings.lastMaintenance) return skipped;
+
+        matchingDisplayData.forEach(row => {
+            const matchedRecId = combinedMatches[row.originalIndex];
+            if (!matchedRecId) return; // not matched, skip check
+
+            const matchedRec = existingRecordsMap.get(matchedRecId);
+            if (!matchedRec) return;
+
+            const existingDate = matchedRec.last_date ? new Date(matchedRec.last_date) : null;
+            const importedDate = parseImportDate(row.importedLastDate);
+
+            if (!importedDate || isNaN(importedDate.getTime())) return; // no valid import date
+            if (existingDate && !isNaN(existingDate.getTime()) && importedDate <= existingDate) {
+                skipped.add(row.originalIndex);
+            }
+        });
+        return skipped;
+    }, [importMode, mappings.lastMaintenance, matchingDisplayData, combinedMatches, existingRecordsMap]);
+
     const processedData = useMemo(() => {
         if (step !== 'preview') return [];
 
@@ -574,6 +779,10 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             const finalTaskName = mod?.task || item.task;
             const finalSubtaskName = mod?.subtaskName || (item.subtaskName || item.task);
 
+            // Match info for update mode
+            const matchedRecordId = importMode === 'update' ? (combinedMatches[index] || null) : null;
+            const matchedRecord = matchedRecordId ? existingRecords.find((r: any) => r.id === matchedRecordId) : null;
+
             return {
                 ...item,
                 originalIndex: index,
@@ -587,10 +796,12 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 assignedToTypes: resolvedOpTypes,
                 isValid: errors.length === 0,
                 errors,
-                rawTags: item.tagIds?.toString() || ''
+                rawTags: item.tagIds?.toString() || '',
+                matchedRecordId,
+                matchedRecord,
             };
         });
-    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions, ploegen]);
+    }, [csvData, mappings, step, categories, presses, operators, externalEntities, resolutions, ploegen, importMode, combinedMatches, existingRecords]);
 
     const handleImport = async () => {
         const validRows = processedData.filter(d => d.isValid);
@@ -598,6 +809,9 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
             toast.error("Geen geldige rijen gevonden om te importeren.");
             return;
         }
+
+        const rowsToUpdate = importMode === 'update' ? validRows.filter(r => r.matchedRecordId && !skippedRows.has(r.originalIndex)) : [];
+        const rowsToCreate = importMode === 'update' ? validRows.filter(r => r.matchedRecordId === null && !skippedRows.has(r.originalIndex)) : validRows;
 
         setIsImporting(true);
         let successCount = 0;
@@ -738,14 +952,8 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 }
             }
 
-            // 6. Create the tasks
-            const groupCounts: Record<string, number> = {};
-            validRows.forEach(row => {
-                const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
-                groupCounts[groupKey] = (groupCounts[groupKey] || 0) + 1;
-            });
-
-            for (const row of validRows) {
+            // 6. Helper to resolve IDs for a row
+            const resolveRow = (row: any) => {
                 const finalCatId = row.categoryId.startsWith('__NEW_CAT__') ? catMap[row.categoryId] : row.categoryId;
                 const finalPressId = row.pressId.startsWith('__NEW_PRESS__') ? pressMap[row.pressId] : row.pressId;
                 const assignedIds = Array.isArray(row.assignedToIds) ? row.assignedToIds : [];
@@ -760,19 +968,83 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                     }
                     return id;
                 });
-
-                const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
-                const isSingleTask = groupCounts[groupKey] === 1;
-
-                // Map interval unit to Dutch for the database
                 const intervalUnit =
                     row.maintenanceIntervalUnit === 'days' ? 'Dagen' :
                         row.maintenanceIntervalUnit === 'weeks' ? 'Weken' :
                             row.maintenanceIntervalUnit === 'months' ? 'Maanden' :
                                 row.maintenanceIntervalUnit === 'years' ? 'Jaren' : 'Maanden';
-
-                // Separate assignments for the database fields
                 const assignedOperatorIds = finalAssignedToIds.filter((_: string, i: number) => row.assignedToTypes[i] === 'operator' || row.assignedToTypes[i] === 'external');
+                const resolvedTags = (row.rawTags?.split(',').map((s: string) => s.trim()).filter(Boolean).map((n: string) => finalTagMap[n]).filter(Boolean)) || [];
+                return { finalCatId, finalPressId, assignedOperatorIds, intervalUnit, resolvedTags };
+            };
+
+            // 7. Group counts for create logic
+            const groupCounts: Record<string, number> = {};
+            rowsToCreate.forEach(row => {
+                const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
+                groupCounts[groupKey] = (groupCounts[groupKey] || 0) + 1;
+            });
+
+            // 8. Update existing records
+            let updateCount = 0;
+            for (const row of rowsToUpdate) {
+                const { finalCatId, finalPressId, assignedOperatorIds, intervalUnit, resolvedTags } = resolveRow(row);
+
+                // Build update data — only include mapped fields
+                const updateData: any = {};
+                if (mappings.task) { updateData.task = row.task; }
+                if (mappings.subtaskName) { updateData.subtask = row.subtaskName; }
+                if (mappings.taskSubtext) { updateData.task_subtext = row.taskSubtext || ''; }
+                if (mappings.subtaskSubtext) { updateData.subtask_subtext = row.subtaskSubtext || ''; }
+                if (mappings.category) { updateData.category = finalCatId; }
+                if (mappings.press) { updateData.pers = finalPressId; }
+                if (mappings.maintenanceInterval) { updateData.interval = row.maintenanceInterval || 1; }
+                if (mappings.maintenanceIntervalUnit) { updateData.interval_unit = intervalUnit; }
+                if (mappings.lastMaintenance) { updateData.last_date = row.lastMaintenance || null; }
+                if (mappings.nextMaintenance) { updateData.next_date = row.nextMaintenance || new Date(); }
+                if (mappings.assignedTo) { updateData.assigned_operator = assignedOperatorIds; }
+                if (mappings.comment) { updateData.opmerkingen = row.comment || ''; }
+                if (mappings.tagIds) {
+                    updateData.tags = resolvedTags;
+                    updateData.is_external = row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false;
+                }
+
+                // Recalculate next_date if lastMaintenance is being updated
+                if (mappings.lastMaintenance && row.lastMaintenance) {
+                    const matchedRecord = existingRecordsMap.get(row.matchedRecordId);
+                    const interval = row.maintenanceInterval || matchedRecord?.interval || 1;
+                    const unitRaw = row.maintenanceIntervalUnit || matchedRecord?.interval_unit || 'Maanden';
+                    const lastDate = new Date(row.lastMaintenance);
+                    const nextDate = new Date(lastDate);
+
+                    const unitLower = unitRaw.toLowerCase();
+                    if (unitLower.includes('jaar') || unitLower.includes('year') || unitLower === 'jaren') {
+                        nextDate.setFullYear(nextDate.getFullYear() + interval);
+                    } else if (unitLower.includes('week') || unitLower === 'weken') {
+                        nextDate.setDate(nextDate.getDate() + (interval * 7));
+                    } else if (unitLower.includes('dag') || unitLower.includes('day') || unitLower === 'dagen') {
+                        nextDate.setDate(nextDate.getDate() + interval);
+                    } else {
+                        // Default: months
+                        nextDate.setMonth(nextDate.getMonth() + interval);
+                    }
+                    updateData.next_date = nextDate;
+                }
+
+                try {
+                    await pb.collection('onderhoud').update(row.matchedRecordId, updateData);
+                    updateCount++;
+                } catch (err) {
+                    console.error(`Failed to update record ${row.matchedRecordId}:`, err);
+                }
+            }
+
+            // 9. Create new records
+            for (const row of rowsToCreate) {
+                const { finalCatId, finalPressId, assignedOperatorIds, intervalUnit, resolvedTags } = resolveRow(row);
+
+                const groupKey = `${row.task?.toLowerCase()}|${row.pressId}|${row.categoryId}`;
+                const isSingleTask = groupCounts[groupKey] === 1;
 
                 await pb.collection('onderhoud').create({
                     task: row.task,
@@ -789,10 +1061,14 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                     opmerkingen: row.comment || '',
                     sort_order: 0,
                     is_external: row.rawTags?.toLowerCase().includes(EXTERNAL_TAG_NAME.toLowerCase()) || false,
-                    tags: (row.rawTags?.split(',').map((s: string) => s.trim()).filter(Boolean).map((n: string) => finalTagMap[n]).filter(Boolean)) || []
+                    tags: resolvedTags
                 });
                 successCount++;
             }
+
+            const summaryParts: string[] = [];
+            if (successCount > 0) summaryParts.push(`${successCount} nieuw aangemaakt`);
+            if (updateCount > 0) summaryParts.push(`${updateCount} bijgewerkt`);
 
             addActivityLog({
                 user: user?.username || 'Import Tool',
@@ -800,13 +1076,15 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                 entity: 'MaintenanceTask',
                 entityId: 'multiple',
                 entityName: `Import from CSV`,
-                details: `${successCount} taken succesvol geïmporteerd`,
-                newValue: `Aantal: ${successCount}`
+                details: `${summaryParts.join(', ')}`,
+                newValue: `Nieuw: ${successCount}, Bijgewerkt: ${updateCount}`
             });
 
-            toast.success(`${successCount} taken succesvol geïmporteerd`);
+            toast.success(`Import voltooid: ${summaryParts.join(', ')}`);
             setStep('upload');
             setCsvData([]);
+            setManualMatches({});
+            setExistingRecords([]);
             if (onComplete) onComplete();
         } catch (error) {
             console.error('Import error:', error);
@@ -880,6 +1158,33 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                         </div>
                     </CardHeader>
                     <CardContent className="p-0">
+                        {/* Import Mode Toggle */}
+                        <div className="px-6 py-4 border-b bg-blue-50/30">
+                            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Importmodus</Label>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant={importMode === 'create' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setImportMode('create')}
+                                    className={`gap-2 ${importMode === 'create' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                                >
+                                    <Upload className="w-3.5 h-3.5" /> Nieuw importeren
+                                </Button>
+                                <Button
+                                    variant={importMode === 'update' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setImportMode('update')}
+                                    className={`gap-2 ${importMode === 'update' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" /> Bestaande bijwerken
+                                </Button>
+                            </div>
+                            {importMode === 'update' && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Rijen worden automatisch gekoppeld aan bestaande taken. U kunt ook handmatig koppelen.
+                                </p>
+                            )}
+                        </div>
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -1146,12 +1451,345 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                     </CardContent>
                     <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
                         <Button variant="outline" onClick={() => setStep('analysis')} className="h-11 px-8">Vorige</Button>
-                        <Button onClick={() => setStep('preview')} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 px-8">
+                        <Button onClick={() => setStep(importMode === 'update' ? 'matching' : 'preview')} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 px-8">
                             Gekozen Opties Bevestigen <ArrowRight className="w-4 h-4" />
                         </Button>
                     </div>
                 </Card>
             )}
+
+            {step === 'matching' && (
+                <Card>
+                    <CardHeader className="border-b bg-gray-50/50">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <CardTitle className="text-lg">Stap 3: Koppeling aan Bestaande Taken</CardTitle>
+                                <CardDescription>
+                                    Controleer welke rijen automatisch zijn gekoppeld. Rijen met dezelfde of oudere datum worden overgeslagen.
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <Input
+                                        value={matchSearchFilter}
+                                        onChange={(e) => setMatchSearchFilter(e.target.value)}
+                                        placeholder="Zoeken..."
+                                        className="pl-9 w-[200px] h-9"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0 max-h-[60vh] overflow-y-auto">
+                        {isLoadingExisting ? (
+                            <div className="py-16 text-center">
+                                <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
+                                <p className="text-gray-500">Bestaande taken ophalen...</p>
+                            </div>
+                        ) : (
+                            <>
+                            <Table>
+                                <TableHeader className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                                    <TableRow>
+                                        <TableHead className="w-[100px]">Status</TableHead>
+                                        <TableHead className="min-w-[350px]">Taak & Koppeling</TableHead>
+                                        <TableHead className="min-w-[150px]">Huidige data</TableHead>
+                                        <TableHead className="w-[40px] text-center">→</TableHead>
+                                        <TableHead className="min-w-[150px]">Nieuwe data</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {matchingDisplayData
+                                        .filter(row => !skippedRows.has(row.originalIndex))
+                                        .filter(row => {
+                                            if (!matchSearchFilter) return true;
+                                            const q = matchSearchFilter.toLowerCase();
+                                            return (row.task?.toLowerCase().includes(q) || row.subtaskName?.toLowerCase().includes(q) || row.pressName?.toLowerCase().includes(q));
+                                        })
+                                        .map((row) => {
+                                        const isAutoMatched = !!autoMatches[row.originalIndex] && !manualMatches[row.originalIndex];
+                                        const isManuallyMatched = !!manualMatches[row.originalIndex] && manualMatches[row.originalIndex] !== '_new';
+                                        const isMatched = isAutoMatched || isManuallyMatched;
+                                        const matchedRecId = combinedMatches[row.originalIndex];
+                                        const matchedRec = matchedRecId ? existingRecordsMap.get(matchedRecId) : null;
+                                        const existingDate = matchedRec?.last_date ? new Date(matchedRec.last_date).toLocaleDateString('nl-BE') : '—';
+                                        const parsedImportDate = parseImportDate(row.importedLastDate);
+                                        const importDate = parsedImportDate ? parsedImportDate.toLocaleDateString('nl-BE') : '—';
+
+                                        const existingOpsList = matchedRec?.expand?.assigned_operator?.map((o: any) => o.naam) || [];
+                                        const existingOps = existingOpsList.length > 0 ? existingOpsList.join(', ') : '—';
+                                        const importOps = row.importedOperatorNames || '—';
+
+                                        const dataChanged = (isMatched && existingDate !== importDate) || (isMatched && existingOps !== importOps);
+
+                                        return (
+                                            <TableRow key={row.originalIndex} className={isMatched ? 'bg-blue-50/30' : ''}>
+                                                <TableCell>
+                                                    {matchedRecId === undefined ? (
+                                                        <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-200 gap-1 font-medium">
+                                                            <AlertCircle className="w-3 h-3" /> Ontbreekt
+                                                        </Badge>
+                                                    ) : isMatched ? (
+                                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 gap-1 font-medium">
+                                                            <Link className="w-3 h-3" /> {isAutoMatched ? 'Auto' : 'Handmatig'}
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 gap-1 font-medium">
+                                                            <AlertCircle className="w-3 h-3" /> Nieuw
+                                                        </Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="text-sm mb-2">
+                                                        <span className="font-medium text-gray-900">{row.task}</span>
+                                                        {row.subtaskName && row.subtaskName !== row.task && (
+                                                            <span className="text-gray-500"> → {row.subtaskName}</span>
+                                                        )}
+                                                        <div className="text-xs text-gray-400 mt-0.5">{row.pressName} · {row.categoryName}</div>
+                                                    </div>
+                                                    {matchedRecId === undefined ? (
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="flex-1 h-9 text-xs border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setManualMatches(prev => ({ ...prev, [row.originalIndex]: '_new' }));
+                                                                }}
+                                                            >
+                                                                ⊕ Nieuw
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="flex-1 h-9 text-xs border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                                                onClick={() => {
+                                                                    setMatchDialogRowIndex(row.originalIndex);
+                                                                    setMatchDialogSearch('');
+                                                                }}
+                                                            >
+                                                                Koppelen
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className={`w-full justify-start text-sm h-9 ${isMatched ? 'border-blue-200 text-blue-700' : 'border-yellow-200 text-yellow-700'}`}
+                                                            onClick={() => {
+                                                                setMatchDialogRowIndex(row.originalIndex);
+                                                                setMatchDialogSearch('');
+                                                            }}
+                                                        >
+                                                            {matchedRec ? (
+                                                                <span className="truncate">
+                                                                    {matchedRec.task}{matchedRec.subtask && matchedRec.subtask !== matchedRec.task ? ` → ${matchedRec.subtask}` : ''}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-yellow-600">⊕ Nieuw (Klik om te wijzigen)</span>
+                                                            )}
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="align-top pt-4">
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <span className="text-sm text-gray-500">{existingDate}</span>
+                                                        <span className="text-xs text-gray-400 truncate max-w-[140px]" title={existingOps !== '—' ? existingOps : undefined}>
+                                                            {existingOps}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-center align-top pt-4">
+                                                    {dataChanged ? (
+                                                        <ArrowRight className="w-4 h-4 mx-auto text-green-500" />
+                                                    ) : (
+                                                        <ArrowRight className="w-4 h-4 mx-auto text-gray-300" />
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="align-top pt-4">
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <span className={`text-sm font-medium ${isMatched && existingDate !== importDate ? 'text-green-700' : 'text-gray-500'}`}>
+                                                            {importDate}
+                                                        </span>
+                                                        <span className={`text-xs truncate max-w-[140px] ${isMatched && existingOps !== importOps ? 'text-green-600 font-medium' : 'text-gray-400'}`} title={importOps !== '—' ? importOps : undefined}>
+                                                            {importOps}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+
+                            {/* Collapsed skipped section */}
+                            {skippedRows.size > 0 && (
+                                <div className="border-t">
+                                    <button
+                                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                                        onClick={() => setShowSkipped(!showSkipped)}
+                                    >
+                                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                                            <AlertCircle className="w-4 h-4 text-gray-400" />
+                                            <span className="font-medium">Overgeslagen ({skippedRows.size})</span>
+                                            <span className="text-xs text-gray-400">— datum in import is gelijk of ouder</span>
+                                        </div>
+                                        <div className={`transform transition-transform duration-200 ${showSkipped ? 'rotate-180' : ''}`}>
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                        </div>
+                                    </button>
+                                    {showSkipped && (
+                                        <Table>
+                                            <TableBody>
+                                                {matchingDisplayData
+                                                    .filter(row => skippedRows.has(row.originalIndex))
+                                                    .map(row => {
+                                                        const matchedRecId = combinedMatches[row.originalIndex];
+                                                        const matchedRec = matchedRecId ? existingRecordsMap.get(matchedRecId) : null;
+                                                        const existingDate = matchedRec?.last_date ? new Date(matchedRec.last_date).toLocaleDateString('nl-BE') : '—';
+                                                        const parsedImportDate = parseImportDate(row.importedLastDate);
+                                                        const importDate = parsedImportDate ? parsedImportDate.toLocaleDateString('nl-BE') : '—';
+
+                                                        return (
+                                                            <TableRow key={row.originalIndex} className="bg-gray-50/50 opacity-60">
+                                                                <TableCell className="w-[100px]">
+                                                                    <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-200 gap-1 font-medium text-xs">
+                                                                        Overgeslagen
+                                                                    </Badge>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <div className="text-sm text-gray-500">
+                                                                        {row.task}
+                                                                        <div className="text-xs text-gray-400 mt-0.5">{row.pressName} · {row.categoryName}</div>
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <span className="text-xs text-gray-500">Huidig: <strong>{existingDate}</strong></span>
+                                                                </TableCell>
+                                                                <TableCell className="text-center text-gray-300">≥</TableCell>
+                                                                <TableCell>
+                                                                    <span className="text-xs text-gray-400">Import: {importDate}</span>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                            </TableBody>
+                                        </Table>
+                                    )}
+                                </div>
+                            )}
+                            </>
+                        )}
+                    </CardContent>
+                    <div className="p-4 border-t bg-gray-50 flex items-center justify-between gap-3">
+                        <div className="text-sm text-gray-500 flex items-center gap-3">
+                            <span><strong className="text-green-700">{Object.entries(combinedMatches).filter(([idx, v]) => v !== null && v !== undefined && !skippedRows.has(Number(idx))).length}</strong> bijwerken</span>
+                            <span><strong className="text-yellow-700">{Object.entries(combinedMatches).filter(([idx, v]) => v === null && !skippedRows.has(Number(idx))).length}</strong> nieuw</span>
+                            <span><strong className="text-gray-400">{skippedRows.size}</strong> overgeslagen</span>
+                            <span className="text-red-600 border-l pl-3 ml-2"><strong className="text-red-700">{Object.entries(combinedMatches).filter(([idx, v]) => v === undefined && !skippedRows.has(Number(idx))).length}</strong> ontbreekt (worden genegeerd)</span>
+                        </div>
+                        <div className="flex gap-3">
+                            <Button variant="outline" onClick={() => setStep('resolve')} className="h-11 px-8">Vorige</Button>
+                            <Button onClick={() => setStep('preview')} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 px-8">
+                                Verder naar Voorbeeld <ArrowRight className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
+            {/* Shared dialog for manual matching */}
+            <Dialog open={matchDialogRowIndex !== null} onOpenChange={(open) => { if (!open) setMatchDialogRowIndex(null); }}>
+                <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Koppel aan bestaande taak</DialogTitle>
+                        <DialogDescription>
+                            {matchDialogRowIndex !== null && matchingDisplayData[matchDialogRowIndex] && (
+                                <>
+                                    Importrij: <strong>{matchingDisplayData[matchDialogRowIndex]?.task}</strong>
+                                    {matchingDisplayData[matchDialogRowIndex]?.subtaskName !== matchingDisplayData[matchDialogRowIndex]?.task && (
+                                        <> → {matchingDisplayData[matchDialogRowIndex]?.subtaskName}</>                                    )}
+                                </>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="relative mb-2">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Input
+                            value={matchDialogSearch}
+                            onChange={(e) => setMatchDialogSearch(e.target.value)}
+                            placeholder="Zoek bestaande taak..."
+                            className="pl-9"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex-1 overflow-y-auto border rounded-lg divide-y max-h-[50vh]">
+                        <button
+                            className={`w-full text-left px-4 py-3 text-sm hover:bg-yellow-50 transition-colors flex items-center gap-2 ${
+                                matchDialogRowIndex !== null && !combinedMatches[matchDialogRowIndex] ? 'bg-yellow-50 font-medium' : ''
+                            }`}
+                            onClick={() => {
+                                if (matchDialogRowIndex !== null) {
+                                    setManualMatches(prev => ({ ...prev, [matchDialogRowIndex]: '_new' }));
+                                    setMatchDialogRowIndex(null);
+                                }
+                            }}
+                        >
+                            <span className="text-yellow-600">⊕</span> Nieuw aanmaken
+                        </button>
+                        {(() => {
+                            // Pre-filter by press+category of the selected row
+                            const selectedRow = matchDialogRowIndex !== null ? matchingDisplayData[matchDialogRowIndex] : null;
+                            const filterPressId = selectedRow?.pressId || '';
+                            const filterCategoryId = selectedRow?.categoryId || '';
+
+                            return groupedExistingRecords.map(([pressName, records]) => {
+                                const filtered = records.filter((r: any) => {
+                                    // Must match press and category of the import row
+                                    if (filterPressId && r.pers !== filterPressId) return false;
+                                    if (filterCategoryId && r.category !== filterCategoryId) return false;
+                                    // Apply text search
+                                    if (matchDialogSearch) {
+                                        const q = matchDialogSearch.toLowerCase();
+                                        return (r.task?.toLowerCase().includes(q) || r.subtask?.toLowerCase().includes(q));
+                                    }
+                                    return true;
+                                });
+                                if (filtered.length === 0) return null;
+                                return (
+                                    <React.Fragment key={pressName}>
+                                    <div className="px-4 py-2 bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wide sticky top-0">
+                                        {pressName}
+                                    </div>
+                                    {filtered.map((r: any) => {
+                                        const isSelected = matchDialogRowIndex !== null && combinedMatches[matchDialogRowIndex] === r.id;
+                                        return (
+                                            <button
+                                                key={r.id}
+                                                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors ${
+                                                    isSelected ? 'bg-blue-50 font-medium text-blue-700' : ''
+                                                }`}
+                                                onClick={() => {
+                                                    if (matchDialogRowIndex !== null) {
+                                                        setManualMatches(prev => ({ ...prev, [matchDialogRowIndex]: r.id }));
+                                                        setMatchDialogRowIndex(null);
+                                                    }
+                                                }}
+                                            >
+                                                <div>{r.task}{r.subtask && r.subtask !== r.task ? ` → ${r.subtask}` : ''}</div>
+                                                <div className="text-xs text-gray-400">{r.expand?.category?.naam || ''}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </React.Fragment>
+                            );
+                        });
+                        })()}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {step === 'preview' && (
                 <div className="space-y-4">
@@ -1159,10 +1797,14 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                         <CardHeader className="border-b bg-gray-50/50">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
-                                    <CardTitle className="text-lg">Stap 3: Voorbeeld & Controle</CardTitle>
+                                    <CardTitle className="text-lg">{importMode === 'update' ? 'Stap 4' : 'Stap 3'}: Voorbeeld & Controle</CardTitle>
                                     <CardDescription>
                                         Controleer de data voordat u deze definitief importeert.
-                                        ({processedData.filter(d => d.isValid).length} geldig, {processedData.filter(d => !d.isValid).length} ongeldig)
+                                        {importMode === 'update' ? (
+                                            <> ({processedData.filter(d => d.isValid && d.matchedRecordId).length} bijwerken, {processedData.filter(d => d.isValid && !d.matchedRecordId).length} nieuw, {processedData.filter(d => !d.isValid).length} ongeldig)</>
+                                        ) : (
+                                            <> ({processedData.filter(d => d.isValid).length} geldig, {processedData.filter(d => !d.isValid).length} ongeldig)</>
+                                        )}
                                     </CardDescription>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1220,9 +1862,15 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                             </TableCell>
                                             <TableCell>
                                                 {row.isValid ? (
-                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-medium">
-                                                        <Check className="w-3 h-3" /> Gereed
-                                                    </Badge>
+                                                    importMode === 'update' && row.matchedRecordId ? (
+                                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 gap-1 font-medium">
+                                                            <Link className="w-3 h-3" /> Bijwerken
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-medium">
+                                                            <Check className="w-3 h-3" /> {importMode === 'update' ? 'Nieuw' : 'Gereed'}
+                                                        </Badge>
+                                                    )
                                                 ) : (
                                                     <TooltipProvider>
                                                         <Tooltip>
@@ -1268,15 +1916,22 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                         </CardContent>
                         <div className="p-6 border-t bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <div className="text-sm text-gray-500">
-                                <span className="font-bold text-gray-900">{processedData.filter(d => d.isValid).length}</span> taken worden toegevoegd.
+                                {importMode === 'update' ? (
+                                    <>
+                                        <span className="font-bold text-blue-700">{processedData.filter(d => d.isValid && d.matchedRecordId).length}</span> worden bijgewerkt,{' '}
+                                        <span className="font-bold text-green-700">{processedData.filter(d => d.isValid && !d.matchedRecordId).length}</span> worden nieuw aangemaakt.
+                                    </>
+                                ) : (
+                                    <><span className="font-bold text-gray-900">{processedData.filter(d => d.isValid).length}</span> taken worden toegevoegd.</>
+                                )}
                             </div>
                             <div className="flex flex-row items-center justify-end gap-3 w-auto ml-auto">
                                 <Button
                                     variant="outline"
-                                    onClick={() => setStep('resolve')}
+                                    onClick={() => setStep(importMode === 'update' ? 'matching' : 'resolve')}
                                     className="text-blue-700 hover:bg-blue-100/50 font-semibold h-12 px-6 shrink-0 order-1"
                                 >
-                                    Koppelingen Aanpassen
+                                    {importMode === 'update' ? 'Koppeling Aanpassen' : 'Koppelingen Aanpassen'}
                                 </Button>
                                 <Button
                                     onClick={handleImport}

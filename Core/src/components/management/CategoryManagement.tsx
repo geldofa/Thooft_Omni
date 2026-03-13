@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pb, useAuth, Category, Press } from './AuthContext';
+import { pb, useAuth, Category, Press } from '../AuthContext';
 import {
     DndContext,
     closestCenter,
@@ -24,18 +24,18 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-} from './ui/table';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Edit, Trash2, Plus, Check, Settings2, GripVertical, Save, Tags } from 'lucide-react';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from '../layout/PageHeader';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "./ui/select";
+} from '../ui/select';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -46,7 +46,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
     AlertDialogTrigger,
-} from './ui/alert-dialog';
+} from '../ui/alert-dialog';
 import {
     Dialog,
     DialogContent,
@@ -55,11 +55,11 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from './ui/dialog';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Switch } from './ui/switch';
-import { Checkbox } from './ui/checkbox';
+} from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
+import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
 
 function SortableItem(props: { id: string, name: string }) {

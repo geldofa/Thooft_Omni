@@ -1,28 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pb } from './AuthContext';
+import { pb } from '../AuthContext';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-} from './ui/dialog';
+} from '../ui/dialog';
 import {
     Table,
     TableHeader,
     TableBody,
     TableRow,
     TableHead,
-} from './ui/table';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Badge } from './ui/badge';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
 import { FileText, Clock, Download, Eye, Search, Calendar as CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
-import { Calendar } from './ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { cn } from './ui/utils';
+import { Calendar } from '../ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { cn } from '../ui/utils';
 
 interface GeneratedReport {
     id: string;

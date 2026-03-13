@@ -68,7 +68,7 @@ interface ReportFile {
     updated: string;
 }
 
-export interface MaintenanceReportManagerV2Props {
+export interface MaintenanceReportManagerProps {
     configId: string | null; // 'new' means creating a new report, actual ID means edit, null means hide
     tasks?: MaintenanceTask[];
     presses?: Press[];
@@ -79,7 +79,7 @@ export interface MaintenanceReportManagerV2Props {
     onPreviewReady?: (url: string) => void;
 }
 
-export function MaintenanceReportManagerV2({ configId, tasks = [], presses = [], initialName, onSave, onCancel, onDelete, onPreviewReady }: MaintenanceReportManagerV2Props) {
+export function MaintenanceReportManager({ configId, tasks = [], presses = [], initialName, onSave, onCancel, onDelete, onPreviewReady }: MaintenanceReportManagerProps) {
     const [report, setReport] = useState<MaintenanceReport | null>(null);
     const [isLoadingInit, setIsLoadingInit] = useState(false);
 

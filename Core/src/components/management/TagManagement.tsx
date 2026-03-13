@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pb, useAuth, Tag } from './AuthContext';
+import { pb, useAuth, Tag } from '../AuthContext';
 import {
     Table,
     TableBody,
@@ -7,11 +7,11 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-} from './ui/table';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Edit, Trash2, Plus, Lock, Tag as TagIcon, Clock } from 'lucide-react';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from '../layout/PageHeader';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -22,7 +22,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
     AlertDialogTrigger,
-} from './ui/alert-dialog';
+} from '../ui/alert-dialog';
 import {
     Dialog,
     DialogContent,
@@ -30,17 +30,17 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from './ui/dialog';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Switch } from './ui/switch';
+} from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from './ui/select';
+} from '../ui/select';
 import { toast } from 'sonner';
 
 export function TagManagement() {

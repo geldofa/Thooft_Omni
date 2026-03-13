@@ -1,42 +1,37 @@
-import { useEffect, useState, Profiler, lazy, Suspense, startTransition, useCallback, useMemo } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Category, Tag } from './components/AuthContext';
+import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press } from './components/AuthContext';
 import { ThemeProvider } from './components/ThemeProvider';
 import { LoginForm } from './components/LoginForm';
-import { Header } from './components/Header';
-import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
-import { ForceRefreshDialog } from './components/ForceRefreshDialog';
-import { UpdateDialog } from './components/UpdateDialog';
+import { Header } from './components/layout/Header';
+import { AddMaintenanceDialog } from './components/dialogs/AddMaintenanceDialog';
+import { ForceRefreshDialog } from './components/dialogs/ForceRefreshDialog';
+import { UpdateDialog } from './components/dialogs/UpdateDialog';
 import { ScrollToTop } from './components/ScrollToTop';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Button } from './components/ui/button';
 import { Badge } from './components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
-import { PageHeader } from './components/PageHeader';
-import { ListChecks, Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { getStatusInfo } from './utils/StatusUtils';
 import { APP_TITLE } from './config';
+import { useAutoReports } from './hooks/useAutoReports';
 
 // Lazy Imports
 const MaintenanceTable = lazy(() => import('./components/MaintenanceTable').then(m => ({ default: m.MaintenanceTable })));
 const ActivityLog = lazy(() => import('./components/ActivityLog').then(m => ({ default: m.ActivityLog })));
-const Reports = lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
-const MaintenanceChecklist = lazy(() => import('./components/MaintenanceChecklist').then(m => ({ default: m.MaintenanceChecklist })));
 const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ default: m.Drukwerken })));
-const Toolbox = lazy(() => import('./components/Toolbox').then(m => ({ default: m.Toolbox })));
-const ManagementLayout = lazy(() => import('./components/ManagementLayout').then(m => ({ default: m.ManagementLayout })));
-const ExternalSummary = lazy(() => import('./components/ExternalSummary').then(m => ({ default: m.ExternalSummary })));
-const RoadmapV2 = lazy(() => import('./components/RoadmapV2').then(m => ({ default: m.RoadmapV2 })));
-import { Home } from './components/Home';
+const UnifiedSettingsLayout = lazy(() => import('./components/layout/UnifiedSettingsLayout').then(m => ({ default: m.UnifiedSettingsLayout })));
+const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
+const ExternalTasks = lazy(() => import('./components/ExternalTasks').then(m => ({ default: m.ExternalTasks })));
+import { Homepage } from './components/Homepage';
 
 function MainApp() {
   const navigate = useNavigate();
   const [groupedTasks, setGroupedTasks] = useState<GroupedTask[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
   const [presses, setPresses] = useState<Press[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoadingTasks, setIsLoadingTasks] = useState(false); // Restore for UI compatibility
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
 
   const {
     user,
@@ -44,45 +39,45 @@ function MainApp() {
     isFirstRun,
     checkFirstRun,
     hasPermission,
-    fetchActivityLogs, // Restore missing functions
-    fetchUserAccounts,
+    fetchActivityLogs,
     isLoading: authLoading
   } = useAuth();
+
+  // Auto-generate pending reports in the background
+  useAutoReports(!!user && hasPermission('reports_view'));
 
   const isHighlightRuleActive = useCallback((rule: any) => {
     if (!rule || !rule.enabled) return false;
     const now = new Date();
-    const currentDay = now.getDay(); // 0-6
+    const currentDay = now.getDay();
     if (!rule.days || !Array.isArray(rule.days) || !rule.days.includes(currentDay)) return false;
-
     if (rule.allDay) return true;
-
     if (!rule.startTime || !rule.endTime) return false;
-
     const [startH, startM] = rule.startTime.split(':').map(Number);
     const [endH, endM] = rule.endTime.split(':').map(Number);
     const currentH = now.getHours();
     const currentM = now.getMinutes();
-
     const startMinutes = (isNaN(startH) ? 0 : startH) * 60 + (isNaN(startM) ? 0 : startM);
     const endMinutes = (isNaN(endH) ? 23 : endH) * 60 + (isNaN(endM) ? 59 : endM);
     const currentMinutes = currentH * 60 + currentM;
-
     return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
   }, []);
 
   const fetchData = useCallback(async () => {
+    console.log("[App] fetchData starting...");
     try {
       setIsLoadingTasks(true);
-      const [records, tagRecords, pressRecords, catRecords] = await Promise.all([
+      console.log("[App] Fetching onderhoud, tags, persen...");
+      const [records, tagRecords, pressRecords] = await Promise.all([
         pb.collection('onderhoud').getFullList({
           sort: 'sort_order,created',
           expand: 'category,pers,assigned_operator,assigned_team,tags',
         }),
         pb.collection('tags').getFullList(),
-        pb.collection('persen').getFullList(),
-        pb.collection('categorieen').getFullList()
+        pb.collection('persen').getFullList()
       ]);
+
+      console.log(`[App] Data fetched: ${records.length} records, ${tagRecords.length} tags, ${pressRecords.length} presses`);
 
       const mappedTags = tagRecords.map((t: any) => ({
         id: t.id,
@@ -92,7 +87,6 @@ function MainApp() {
         system_managed: t.system_managed === true,
         highlights: t.highlights || []
       }));
-      setTags(mappedTags);
 
       const mappedPresses = pressRecords.map((r: any) => ({
         id: r.id,
@@ -102,15 +96,6 @@ function MainApp() {
         category_order: r.category_order
       }));
       setPresses(mappedPresses);
-
-      const mappedCategories = catRecords.map((r: any) => ({
-        id: r.id,
-        name: r.naam,
-        pressIds: Array.isArray(r.pers_ids) ? r.pers_ids : [],
-        active: r.active !== false,
-        subtexts: typeof r.subtexts === 'object' ? r.subtexts : {}
-      }));
-      setCategories(mappedCategories);
 
       const grouped: GroupedTask[] = [];
       records.forEach((record: any) => {
@@ -154,8 +139,8 @@ function MainApp() {
                 record.interval_unit === 'Jaren' ? 'years' : 'days',
           assignedTo: [
             ...(Array.isArray(record.expand?.assigned_operator)
-              ? record.expand.assigned_operator.map((o: any) => o.naam || o.name || o.username || 'Onbekend')
-              : (record.expand?.assigned_operator ? [record.expand.assigned_operator.naam || record.expand.assigned_operator.name || record.expand.assigned_operator.username || 'Onbekend'] : [])),
+              ? record.expand.assigned_operator.map((o: any) => o.naam || o.name || 'Onbekend')
+              : (record.expand?.assigned_operator ? [record.expand.assigned_operator.naam || record.expand.assigned_operator.name || 'Onbekend'] : [])),
             ...(Array.isArray(record.expand?.assigned_team)
               ? record.expand.assigned_team.map((t: any) => t.naam || t.name || 'Onbekend')
               : (record.expand?.assigned_team ? [record.expand.assigned_team.naam || record.expand.assigned_team.name || 'Onbekend'] : []))
@@ -174,33 +159,27 @@ function MainApp() {
           sort_order: record.sort_order || 0,
           isExternal: record.is_external || false,
           tagIds: Array.isArray(record.tags) ? record.tags : (record.tags ? [record.tags] : []),
-          pressId: pressId, // Added
-          press: pressName   // Added
+          pressId: pressId,
+          press: pressName
         } as any);
       });
 
-      // Handle Highlights: Virtual Categories
       const highlightCategories: GroupedTask[] = [];
-
       mappedTags.forEach(tag => {
         if (!tag.highlights || tag.highlights.length === 0) return;
-
         const activeRule = tag.highlights?.find((r: any) => r.enabled && r.method === 'category' && isHighlightRuleActive(r));
-
         if (activeRule) {
-          // For each original group, if it has subtasks with this tag, create a virtual group in this tag's category
           grouped.forEach((origGroup: any) => {
             const tagMatchingSubtasks = origGroup.subtasks.filter((st: any) => {
               const tagIds = Array.isArray(st.tagIds) ? st.tagIds : (st.tagIds ? [st.tagIds] : []);
               return tagIds.includes(tag.id);
             });
-
             if (tagMatchingSubtasks.length > 0) {
               highlightCategories.push({
                 ...origGroup,
                 id: `highlight-${tag.id}-${origGroup.id}`,
                 categoryId: `highlight-${tag.id}`,
-                category: tag.naam, // Category name = Tag name
+                category: tag.naam,
                 isHighlightGroup: true,
                 highlightColor: tag.kleur,
                 subtasks: tagMatchingSubtasks.map((s: any) => ({
@@ -215,18 +194,20 @@ function MainApp() {
         }
       });
 
+      console.log(`[App] Grouping complete. Total groups: ${grouped.length + highlightCategories.length}`);
       setGroupedTasks([...highlightCategories, ...grouped]);
-    } catch (e) {
-      console.error("Failed to fetch data in App", e);
-      toast.error("Fout bij het laden van gegevens");
+    } catch (e: any) {
+      console.error("[App] Failed to fetch data in App", e);
+      if (e.status === 403) console.warn("[App] Permission denied during fetchData");
+      toast.error(`Fout bij het laden van gegevens: ${e.message}`);
     } finally {
       setIsLoadingTasks(false);
+      console.log("[App] fetchData finished.");
     }
-  }, []);
+  }, [isHighlightRuleActive]);
 
   useEffect(() => {
     fetchData();
-
     const subscribe = async () => {
       try {
         await Promise.all([
@@ -237,30 +218,22 @@ function MainApp() {
         console.error("Subscriptions failed:", err);
       }
     };
-
-    if (user?.id) {
-      subscribe();
-    }
-
+    if (user?.id) subscribe();
     return () => {
       pb.collection('onderhoud').unsubscribe('*').catch(() => { });
       pb.collection('tags').unsubscribe('*').catch(() => { });
     };
   }, [user?.id, fetchData]);
 
-  // Handle Post-Login Redirect
   useEffect(() => {
     if (user && sessionStorage.getItem('redirect_login') === 'true') {
       sessionStorage.removeItem('redirect_login');
-      // Navigate to first available page (Tasks view)
-      // This will trigger the appropriate route redirects based on role
-      navigate('/Taken');
+      navigate('/');
     }
   }, [user, navigate]);
 
   const addTask = async (task: Omit<MaintenanceTask, 'id' | 'created' | 'updated'>, refresh: boolean = true, silent: boolean = false) => {
     try {
-      console.log(`[AddTask] Adding task: ${task.subtaskName || task.task}`, task);
       const baseData = {
         task: task.task,
         task_subtext: task.taskSubtext,
@@ -301,13 +274,12 @@ function MainApp() {
           subtask_subtext: task.subtaskSubtext || task.taskSubtext,
         });
       }
-
       if (refresh) await fetchData();
       if (!silent) toast.success('Taak succesvol toegevoegd');
     } catch (e) {
       console.error("Add task failed:", e);
       if (!silent) toast.error('Toevoegen mislukt');
-      throw e; // Re-throw to allow handler to catch it
+      throw e;
     }
   };
 
@@ -315,7 +287,6 @@ function MainApp() {
     try {
       const operatorIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'operator' || task.assignedToTypes?.[i] === 'external') || [];
       const teamIds = task.assignedToIds?.filter((_, i) => task.assignedToTypes?.[i] === 'ploeg') || [];
-
       await pb.collection('onderhoud').update(task.id, {
         task: task.task,
         subtask: task.subtaskName || task.task,
@@ -340,12 +311,9 @@ function MainApp() {
         tags: task.tagIds || []
       });
       if (refresh) fetchData();
-      if (!silent) {
-        toast.success('Taak succesvol bijgewerkt');
-      }
+      if (!silent) toast.success('Taak succesvol bijgewerkt');
     } catch (e: any) {
       console.error("Update task failed:", e);
-      if (e.response) console.error("Response data:", e.response);
       toast.error(`Bijwerken mislukt: ${e.message}`);
     }
   };
@@ -361,31 +329,24 @@ function MainApp() {
     }
   };
 
-  // --- Router Hooks ---
-  // const navigate = useNavigate(); // Duplicate declaration removed
   const location = useLocation();
 
   useEffect(() => {
     document.title = APP_TITLE;
   }, []);
 
-  const activePresses = presses
-    .filter(p => p.active && !p.archived)
-    .filter(p => {
-      if (user?.role === 'press' && user.press) {
-        return p.name === user.press;
-      }
-      return true;
-    });
+  const activePresses = presses.filter(p => p.active && !p.archived).filter(p => {
+    if (user?.role === 'press' && user.press) return p.name === user.press;
+    return true;
+  });
 
-  // Flatten grouped tasks for specific views (like Reports)
   const tasks: MaintenanceTask[] = groupedTasks.flatMap(group =>
     group.subtasks.map(subtask => ({
       ...subtask,
-      task: group.taskName, // Group Name
-      taskSubtext: group.taskSubtext, // Parent Subtext
-      subtaskName: subtask.subtaskName, // Specific item name
-      subtaskSubtext: subtask.subtext, // Specific item subtext
+      task: group.taskName,
+      taskSubtext: group.taskSubtext,
+      subtaskName: subtask.subtaskName,
+      subtaskSubtext: subtask.subtext,
       category: group.category,
       categoryId: group.categoryId,
       press: group.press,
@@ -423,31 +384,15 @@ function MainApp() {
 
   const currentPressTasks = useMemo(() => {
     if (!pressNameFromUrl || pressNameFromUrl === 'Taken') return [];
-
     return groupedTasks.map(group => {
       if (group.isHighlightGroup) {
-        // Filter subtasks to only those belonging to the current press
-        const pressSubtasks = group.subtasks.filter((st: any) =>
-          st.pressId === currentPressId
-        );
-        if (pressSubtasks.length > 0) {
-          return { ...group, subtasks: pressSubtasks };
-        }
+        const pressSubtasks = group.subtasks.filter((st: any) => st.pressId === currentPressId);
+        if (pressSubtasks.length > 0) return { ...group, subtasks: pressSubtasks };
         return null;
       }
-      // Regular groups are filtered by press
       return (group.pressId === currentPressId) ? group : null;
     }).filter((g): g is GroupedTask => g !== null);
   }, [groupedTasks, pressNameFromUrl, currentPressId]);
-  const allSubtasks = currentPressTasks.flatMap((group: any) => group.subtasks);
-
-  const statusCounts = allSubtasks.reduce((acc: any, subtask: any) => {
-    const status = getStatusInfo(subtask.nextMaintenance).key;
-    if (status !== 'Gepland') {
-      acc[status] = (acc[status] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
 
   useEffect(() => {
     if (typeof sessionStorage !== 'undefined') {
@@ -455,17 +400,57 @@ function MainApp() {
     }
   }, [selectedPress]);
 
-  // --- Router Hooks ---
+  const getEarliestStatusColor = useCallback((subtasks: any[]) => {
+    if (!subtasks || subtasks.length === 0) return null;
+    const sorted = [...subtasks].sort((a, b) => {
+      const dateA = a.nextMaintenance ? new Date(a.nextMaintenance).getTime() : Infinity;
+      const dateB = b.nextMaintenance ? new Date(b.nextMaintenance).getTime() : Infinity;
+      return dateA - dateB;
+    });
+    const earliest = sorted[0];
+    const status = getStatusInfo(earliest.nextMaintenance);
+    if (status.key === 'Gepland') return null;
+
+    // Return a Tailwind color class based on status
+    if (status.key === 'Te laat') return 'bg-red-950';
+    if (status.key === 'Deze Week') return 'bg-orange-950';
+    if (status.key === 'Deze Maand') return 'bg-yellow-950';
+    return null;
+  }, []);
+
+  const tabStatusCues = useMemo(() => {
+    const cues: Record<string, string | null> = {};
+
+    // Cues for press tabs (Internal only)
+    activePresses.forEach(press => {
+      const pressSubtasks = groupedTasks
+        .filter(g => g.pressId === press.id && !g.isHighlightGroup)
+        .flatMap(g => g.subtasks)
+        .filter((st: any) => !st.isExternal); // DO NOT count external tasks for press dots
+      cues[press.name] = getEarliestStatusColor(pressSubtasks);
+    });
+
+    // Cue for Extern tab (External only)
+    const externalSubtasks = groupedTasks
+      .flatMap(g => g.subtasks)
+      .filter((st: any) => st.isExternal);
+    cues['Extern'] = getEarliestStatusColor(externalSubtasks);
+
+    return cues;
+  }, [activePresses, groupedTasks, getEarliestStatusColor]);
+
+  const allSubtasks = currentPressTasks.flatMap((group: any) => group.subtasks);
+  const statusCounts = allSubtasks.reduce((acc: any, subtask: any) => {
+    const status = getStatusInfo(subtask.nextMaintenance).key;
+    if (status !== 'Gepland') acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   const setActiveTab = (tab: string) => {
-    // This now handles both top-level and sub-tabs if passed as a full path
-    if (tab.startsWith('/')) {
-      navigate(tab);
-    } else {
-      navigate(tab === 'home' ? '/' : `/${tab}`);
-    }
+    if (tab.startsWith('/')) navigate(tab);
+    else navigate(tab === 'home' ? '/' : `/${tab}`);
   };
 
-  // Handle post-onboarding redirect
   useEffect(() => {
     const redirect = localStorage.getItem('onboarding_redirect');
     if (redirect === 'import') {
@@ -477,21 +462,14 @@ function MainApp() {
     }
   }, [navigate]);
 
-  // Data fetching based on tab
   useEffect(() => {
     const path = location.pathname.toLowerCase();
-    if (path.startsWith('/taken')) {
-      fetchData();
-    }
-    else if (path === '/logboek') fetchActivityLogs();
-    else if (path === '/beheer/accounts') fetchUserAccounts();
-  }, [location.pathname, fetchData, fetchActivityLogs, fetchUserAccounts]);
+    if (path === '/logboek') fetchActivityLogs();
+  }, [location.pathname, fetchActivityLogs]);
 
-  // Ensure a valid press is selected when they load or active list changes
   useEffect(() => {
     if (activePresses.length > 0) {
-      const isValid = activePresses.some(p => p.name === selectedPress);
-      if (!isValid) {
+      if (!activePresses.some(p => p.name === selectedPress)) {
         setSelectedPress(activePresses[0].name);
       }
     }
@@ -499,12 +477,15 @@ function MainApp() {
 
   // Scroll position handling
   useEffect(() => {
-    const scrollKey = 'scrollPosition_' + location.pathname; // Per-path scroll
+    // Skip restoration for routes that manage their own scroll (like UnifiedSettingsLayout)
+    const isSettings = ['/Beheer', '/Toolbox', '/Rapport', '/Checklist', '/Extern'].some(p => location.pathname.startsWith(p));
+    if (isSettings) return;
+
+    const scrollKey = 'scrollPosition_' + location.pathname;
     if (typeof sessionStorage !== 'undefined') {
       try {
         const savedPosition = sessionStorage.getItem(scrollKey);
         if (savedPosition) window.scrollTo(0, parseInt(savedPosition));
-
         const handleScroll = () => sessionStorage.setItem(scrollKey, window.scrollY.toString());
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
@@ -513,8 +494,6 @@ function MainApp() {
       }
     }
   }, [location.pathname]);
-
-  // --- Handlers ---
 
   const formatDateForLog = (date: Date | null | undefined): string => {
     if (!date) return '-';
@@ -533,27 +512,20 @@ function MainApp() {
     const newTask = { ...task, created: new Date().toISOString(), updated: new Date().toISOString() };
     addTask(newTask);
     setIsAddDialogOpen(false);
-
-    const subtaskInfo = task.subtasks && task.subtasks.length > 0
-      ? ` (${task.subtasks.length} subtaken)`
-      : task.subtaskName ? ` → ${task.subtaskName}` : '';
-
     addActivityLog({
       user: user?.name || user?.username || 'Onbekend',
       action: 'Created',
       entity: 'Task',
       entityId: 'new',
       entityName: `${task.category} | ${task.task}`,
-      details: `Nieuwe taak aangemaakt in ${task.category}${subtaskInfo}`,
+      details: `Nieuwe taak aangemaakt in ${task.category}`,
       press: task.press,
       newValue: [
         `Taak: ${task.task}${task.subtaskName ? ` → ${task.subtaskName}` : ''}`,
         `Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`,
         `Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`,
-        `Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`,
-        task.assignedTo ? `Toegewezen aan: ${task.assignedTo}` : null,
-        task.opmerkingen ? `Opmerkingen: ${task.opmerkingen}` : null
-      ].filter(Boolean).join('|||')
+        `Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`
+      ].join('|||')
     });
   };
 
@@ -561,92 +533,16 @@ function MainApp() {
     const oldTask = tasks.find(t => t.id === task.id);
     await updateTask(task);
     setEditingTask(null);
-
     if (oldTask) {
-      // Build detailed change entries
-      const changeParts: { field: string; oldVal: string; newVal: string }[] = [];
-
-      // Task name
-      if (oldTask.task !== task.task) {
-        changeParts.push({ field: 'Taak', oldVal: oldTask.task || '-', newVal: task.task || '-' });
-      }
-      // Subtask name
-      if (oldTask.subtaskName !== task.subtaskName) {
-        changeParts.push({ field: 'Subtaak', oldVal: oldTask.subtaskName || '-', newVal: task.subtaskName || '-' });
-      }
-      // Category
-      if (oldTask.category !== task.category) {
-        changeParts.push({ field: 'Categorie', oldVal: oldTask.category || '-', newVal: task.category || '-' });
-      }
-      // Last maintenance date
-      if (oldTask.lastMaintenance?.getTime() !== task.lastMaintenance?.getTime()) {
-        changeParts.push({
-          field: 'Laatste onderhoud',
-          oldVal: formatDateForLog(oldTask.lastMaintenance),
-          newVal: formatDateForLog(task.lastMaintenance)
-        });
-      }
-      // Next maintenance date
-      if (oldTask.nextMaintenance?.getTime() !== task.nextMaintenance?.getTime()) {
-        changeParts.push({
-          field: 'Volgend onderhoud',
-          oldVal: formatDateForLog(oldTask.nextMaintenance),
-          newVal: formatDateForLog(task.nextMaintenance)
-        });
-      }
-      // Interval
-      if (oldTask.maintenanceInterval !== task.maintenanceInterval || oldTask.maintenanceIntervalUnit !== task.maintenanceIntervalUnit) {
-        changeParts.push({
-          field: 'Interval',
-          oldVal: formatIntervalForLog(oldTask.maintenanceInterval, oldTask.maintenanceIntervalUnit),
-          newVal: formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)
-        });
-      }
-      // Assigned to
-      if (oldTask.assignedTo !== task.assignedTo) {
-        changeParts.push({
-          field: 'Toegewezen aan',
-          oldVal: oldTask.assignedTo || '-',
-          newVal: task.assignedTo || '-'
-        });
-      }
-      // Opmerkingen
-      if ((oldTask.opmerkingen || oldTask.comment || '') !== (task.opmerkingen || task.comment || '')) {
-        const oldComment = oldTask.opmerkingen || oldTask.comment || '-';
-        const newComment = task.opmerkingen || task.comment || '-';
-        changeParts.push({
-          field: 'Opmerkingen',
-          oldVal: oldComment,
-          newVal: newComment
-        });
-      }
-      // External
-      if (oldTask.isExternal !== task.isExternal) {
-        changeParts.push({ field: 'Extern', oldVal: oldTask.isExternal ? 'Ja' : 'Nee', newVal: task.isExternal ? 'Ja' : 'Nee' });
-      }
-
-      if (changeParts.length > 0) {
-        // Combine all changes into a single, structured log entry
-        const changeSummary = changeParts.map(c => `${c.field}: ${c.oldVal} → ${c.newVal}`).join(', ');
-
-        const details = changeSummary;
-
-        // Use a special separator ||| for structured parsing in the ActivityLog detail view
-        const oldValues = changeParts.map(c => `${c.field}: ${c.oldVal}`).join('|||');
-        const newValues = changeParts.map(c => `${c.field}: ${c.newVal}`).join('|||');
-
-        addActivityLog({
-          user: user?.name || user?.username || 'Onbekend',
-          action: 'Updated',
-          entity: 'Task',
-          entityId: task.id,
-          entityName: `${task.category} | ${task.task}${task.subtaskName && task.subtaskName !== task.task ? ` → ${task.subtaskName}` : ''}`,
-          details: details,
-          press: task.press,
-          oldValue: oldValues,
-          newValue: newValues
-        });
-      }
+      addActivityLog({
+        user: user?.name || user?.username || 'Onbekend',
+        action: 'Updated',
+        entity: 'Task',
+        entityId: task.id,
+        entityName: `${task.category} | ${task.task}`,
+        details: 'Taak bijgewerkt',
+        press: task.press
+      });
     }
   };
 
@@ -659,63 +555,34 @@ function MainApp() {
         action: 'Deleted',
         entity: 'Task',
         entityId: id,
-        entityName: `${task.category || 'onbekend'} | ${task.task}${task.subtaskName && task.subtaskName !== task.task ? ` → ${task.subtaskName}` : ''}`,
-        details: `Taak verwijderd uit ${task.category || 'onbekende categorie'}`,
-        press: task.press,
-        oldValue: [
-          `Taak: ${task.task}${task.subtaskName ? ` → ${task.subtaskName}` : ''}`,
-          `Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`,
-          `Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`,
-          `Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`,
-          task.assignedTo ? `Toegewezen aan: ${task.assignedTo}` : null,
-          task.opmerkingen ? `Opmerkingen: ${task.opmerkingen}` : null
-        ].filter(Boolean).join('|||')
+        entityName: `${task.category} | ${task.task}`,
+        details: 'Taak verwijderd',
+        press: task.press
       });
     }
   };
 
   const handleUpdateGroup = async (tasks: MaintenanceTask[], originalTasks?: MaintenanceTask[] | null) => {
-    console.log(`[HandleUpdateGroup] Received ${tasks.length} tasks from dialog:`, tasks);
-    console.log(`[HandleUpdateGroup] Original tasks from dialog:`, originalTasks);
-    console.log(`[HandleUpdateGroup] Processing ${tasks.length} tasks. Original tasks: ${originalTasks?.length || 0}`);
     try {
-      // Utility for throttling
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      // 1. Handle Deletions: Find tasks in originalTasks that are NOT in the new tasks list
       if (originalTasks && originalTasks.length > 0) {
         const newTaskIds = new Set(tasks.map(t => t.id).filter(id => id && !id.startsWith('subtask-')));
         const tasksToDelete = originalTasks.filter(ot => ot.id && !newTaskIds.has(ot.id));
-
-        if (tasksToDelete.length > 0) {
-          console.log(`[HandleUpdateGroup] Deleting ${tasksToDelete.length} removed subtasks:`, tasksToDelete.map(t => t.id));
-          for (const taskToDelete of tasksToDelete) {
-            await pb.collection('onderhoud').delete(taskToDelete.id);
-            await delay(100); // Throttle
-          }
+        for (const taskToDelete of tasksToDelete) {
+          await pb.collection('onderhoud').delete(taskToDelete.id);
+          await delay(100);
         }
       }
-
-      // 2. Handle Adds and Updates
       for (const task of tasks) {
-        // Correctly identify if it's an existing record or a new one
-        // New subtasks added in the UI have IDs like 'subtask-1678886400000'
         const isNewSubtask = !task.id || (typeof task.id === 'string' && task.id.startsWith('subtask-'));
-
-        if (!isNewSubtask) {
-          console.log(`[HandleUpdateGroup] Updating existing: ${task.id}`);
-          await updateTask(task, false, true); // Update existing record
-        } else {
-          console.log(`[HandleUpdateGroup] Adding new subtask: ${task.subtaskName || task.task}`);
-          // It's a new subtask, remove fields that don't belong in the create call
+        if (!isNewSubtask) await updateTask(task, false, true);
+        else {
           const { id, created, updated, ...rest } = task;
-          await addTask(rest, false, true); // No refresh, silent
+          await addTask(rest, false, true);
         }
-        await delay(100); // Throttle
+        await delay(100);
       }
-
-      console.log(`[HandleUpdateGroup] Completed all updates, refreshing data...`);
-      await fetchData(); // Final refresh after all updates
+      await fetchData();
       setIsAddDialogOpen(false);
       setEditingTask(null);
       setEditingTaskGroup(null);
@@ -726,15 +593,12 @@ function MainApp() {
     }
   };
 
-
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 shadow-sm overflow-x-clip">
       <Toaster position="top-right" />
       <ForceRefreshDialog />
       <UpdateDialog />
       <ScrollToTop />
-
-
 
       {authLoading ? (
         <div className="min-h-screen flex items-center justify-center">
@@ -747,100 +611,20 @@ function MainApp() {
       ) : (
         <>
           {location.pathname !== '/' && <Header activeTab={location.pathname} setActiveTab={setActiveTab} />}
-          <main className={location.pathname === '/' ? "" : "w-full mx-auto px-4 sm:px-6 lg:px-8 py-4"}>
+          <main className={
+            location.pathname === '/' || location.pathname.toLowerCase().startsWith('/extern')
+              ? ""
+              : `w-full mx-auto px-4 sm:px-6 lg:px-8 ${['/Beheer', '/Toolbox', '/Analyses'].some(p => location.pathname.startsWith(p)) ? 'pb-4 pt-4' : 'py-4'}`
+          }>
             <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
               <Routes>
-                <Route path="/" element={<Home setActiveTab={setActiveTab} activePresses={activePresses} />} />
-
-                {/* --- TAKEN --- */}
-                <Route path="/Taken" element={
-                  activePresses.length > 0
-                    ? <Navigate to={`/Taken/${encodeURIComponent(activePresses[0].name)}`} replace />
-                    : <Navigate to="/" replace />
-                } />
-                <Route path="/Taken/:pressName" element={
-                  hasPermission('tasks_view') ? (
-                    <div className="space-y-6">
-                      <PageHeader
-                        title={
-                          <div className="flex items-center gap-4">
-                            <span>Onderhoudstaken</span>
-                            {isLoadingTasks && (
-                              <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                                <span>Laden...</span>
-                              </div>
-                            )}
-                          </div>
-                        }
-                        description="Beheer en plan onderhoudstaken"
-                        icon={ListChecks}
-                        actions={
-                          <div className="flex items-center gap-2">
-                            {/* Status Filter Buttons */}
-                            {statusCounts['Te laat'] > 0 && (
-                              <Button
-                                variant={statusFilter === 'Te laat' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => handleStatusFilter('Te laat')}
-                                className="gap-2"
-                              >
-                                <span className={statusFilter === 'Te laat' ? 'text-white' : 'text-red-600'}>
-                                  Te laat
-                                </span>
-                                <Badge variant={statusFilter === 'Te laat' ? 'secondary' : 'default'} className="bg-red-500">
-                                  {statusCounts['Te laat']}
-                                </Badge>
-                              </Button>
-                            )}
-                            {statusCounts['Deze Week'] > 0 && (
-                              <Button
-                                variant={statusFilter === 'Deze Week' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => handleStatusFilter('Deze Week')}
-                                className="gap-2"
-                              >
-                                <span className={statusFilter === 'Deze Week' ? 'text-white' : 'text-orange-600'}>
-                                  Deze Week
-                                </span>
-                                <Badge variant={statusFilter === 'Deze Week' ? 'secondary' : 'default'} className="bg-orange-500">
-                                  {statusCounts['Deze Week']}
-                                </Badge>
-                              </Button>
-                            )}
-                            {statusCounts['Deze Maand'] > 0 && (
-                              <Button
-                                variant={statusFilter === 'Deze Maand' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => handleStatusFilter('Deze Maand')}
-                                className="gap-2"
-                              >
-                                <span className={statusFilter === 'Deze Maand' ? 'text-white' : 'text-yellow-600'}>
-                                  Deze Maand
-                                </span>
-                                <Badge variant={statusFilter === 'Deze Maand' ? 'secondary' : 'default'} className="bg-yellow-500">
-                                  {statusCounts['Deze Maand']}
-                                </Badge>
-                              </Button>
-                            )}
-
-                            {hasPermission('tasks_edit') && (
-                              <Button onClick={() => {
-                                startTransition(() => {
-                                  setEditingTask(null);
-                                  setEditingTaskGroup(null);
-                                  setIsAddDialogOpen(true);
-                                });
-                              }} className="gap-2 shadow-sm">
-                                <Plus className="w-4 h-4" />
-                                Nieuwe Taak
-                              </Button>
-                            )}
-                          </div>
-                        }
-                      />
-                      {activePresses.length > 1 && (
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                <Route path="/" element={<Homepage setActiveTab={setActiveTab} activePresses={activePresses} />} />
+                <Route path="/Taken" element={activePresses.length > 0 ? <Navigate to={`/Taken/${encodeURIComponent(activePresses[0].name)}`} replace /> : <Navigate to="/" replace />} />
+                <Route path="/Taken/*" element={hasPermission('tasks_view') ? (
+                  <div className="space-y-6">
+                    <div className={`flex flex-col sm:flex-row ${((activePresses.length + (hasPermission('extern_view') ? 1 : 0)) > 1) ? 'justify-between' : 'justify-center'} items-start sm:items-center gap-4 mb-2 mt-2`}>
+                      <div className="flex items-center gap-4">
+                        {(activePresses.length + (hasPermission('extern_view') ? 1 : 0)) > 1 && (
                           <Tabs
                             value={decodeURIComponent(location.pathname.split('/').pop() || '')}
                             onValueChange={(value) => navigate(`/Taken/${encodeURIComponent(value)}`)}
@@ -856,160 +640,171 @@ function MainApp() {
                                   {press.name}
                                 </TabsTrigger>
                               ))}
+                              <div className="w-px h-6 bg-slate-200/50 mx-1 self-center" />
+                              {hasPermission('extern_view') && (() => {
+                                const statusColor = tabStatusCues['Extern'];
+                                const triggerHueClass = statusColor === 'bg-red-950' ? '!bg-red-600 !text-white data-[state=active]:!bg-red-700' :
+                                  statusColor === 'bg-orange-950' ? '!bg-orange-500 !text-white data-[state=active]:!bg-orange-600' :
+                                    statusColor === 'bg-yellow-950' ? '!bg-yellow-400 !text-black data-[state=active]:!bg-yellow-50' : '';
+                                return (
+                                  <TabsTrigger
+                                    value="Extern"
+                                    className={`tab-pill-trigger relative ${triggerHueClass}`}
+                                  >
+                                    Extern
+                                  </TabsTrigger>
+                                );
+                              })()}
                             </TabsList>
                           </Tabs>
-                        </div>
-                      )}
-                      <MaintenanceTable
-                        tasks={currentPressTasks}
-                        pressId={currentPressId}
-                        pressName={pressNameFromUrl}
-                        statusFilter={statusFilter}
-                        onEdit={(task) => {
-                          startTransition(() => {
-                            setEditingTask(task);
-                            setEditingTaskGroup(null);
-                            setIsAddDialogOpen(true);
-                          });
-                        }}
-                        onDelete={handleDeleteTask}
-                        onUpdate={async (task) => await startTransition(() => handleEditTask(task))}
-                        onEditGroup={(groupTasks) => {
-                          startTransition(() => {
+                        )}
+                        {isLoadingTasks && (
+                          <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            <span>Laden...</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {statusCounts['Te laat'] > 0 && (
+                          <Button
+                            variant={statusFilter === 'Te laat' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleStatusFilter('Te laat')}
+                            className="gap-2"
+                          >
+                            <span className={statusFilter === 'Te laat' ? 'text-white' : 'text-red-600'}>Te laat</span>
+                            <Badge variant={statusFilter === 'Te laat' ? 'secondary' : 'default'} className="bg-red-500">{statusCounts['Te laat']}</Badge>
+                          </Button>
+                        )}
+                        {statusCounts['Deze Week'] > 0 && (
+                          <Button
+                            variant={statusFilter === 'Deze Week' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleStatusFilter('Deze Week')}
+                            className="gap-2"
+                          >
+                            <span className={statusFilter === 'Deze Week' ? 'text-white' : 'text-orange-600'}>Deze Week</span>
+                            <Badge variant={statusFilter === 'Deze Week' ? 'secondary' : 'default'} className="bg-orange-500">{statusCounts['Deze Week']}</Badge>
+                          </Button>
+                        )}
+                        {statusCounts['Deze Maand'] > 0 && (
+                          <Button
+                            variant={statusFilter === 'Deze Maand' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleStatusFilter('Deze Maand')}
+                            className="gap-2"
+                          >
+                            <span className={statusFilter === 'Deze Maand' ? 'text-white' : 'text-yellow-600'}>Deze Maand</span>
+                            <Badge variant={statusFilter === 'Deze Maand' ? 'secondary' : 'default'} className="bg-yellow-500">{statusCounts['Deze Maand']}</Badge>
+                          </Button>
+                        )}
+                        {hasPermission('tasks_edit') && location.pathname.toLowerCase() !== '/taken/extern' && (
+                          <Button
+                            onClick={() => { setEditingTask(null); setEditingTaskGroup(null); setIsAddDialogOpen(true); }}
+                            className="gap-2 shadow-sm"
+                          >
+                            <Plus className="w-4 h-4" />Nieuwe Taak
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <Routes>
+                      {hasPermission('extern_view') && <Route path="Extern" element={<ExternalTasks tasks={groupedTasks} presses={presses} isEmbedded={true} />} />}
+                      <Route path=":pressName" element={
+                        <MaintenanceTable
+                          tasks={currentPressTasks}
+                          pressId={currentPressId}
+                          pressName={pressNameFromUrl}
+                          statusFilter={statusFilter}
+                          onEdit={(task) => { setEditingTask(task); setEditingTaskGroup(null); setIsAddDialogOpen(true); }}
+                          onDelete={handleDeleteTask}
+                          onUpdate={handleEditTask}
+                          onEditGroup={(groupTasks) => {
                             setEditingTaskGroup(groupTasks.subtasks.map(subtask => ({
-                              id: subtask.id,
+                              ...subtask,
                               task: groupTasks.taskName,
-                              subtaskName: subtask.subtaskName,
                               taskSubtext: groupTasks.taskSubtext,
-                              subtaskSubtext: subtask.subtext,
                               category: groupTasks.category,
                               categoryId: groupTasks.categoryId,
                               press: groupTasks.press,
                               pressId: groupTasks.pressId,
-                              lastMaintenance: subtask.lastMaintenance,
-                              nextMaintenance: subtask.nextMaintenance,
-                              maintenanceInterval: subtask.maintenanceInterval,
-                              maintenanceIntervalUnit: subtask.maintenanceIntervalUnit,
-                              assignedTo: subtask.assignedTo,
-                              opmerkingen: subtask.opmerkingen || subtask.comment || '',
-                              comment: subtask.comment || '',
-                              commentDate: subtask.commentDate,
-                              sort_order: subtask.sort_order || 0,
-                              isExternal: subtask.isExternal || false,
+                              opmerkingen: subtask.opmerkingen || '',
+                              comment: subtask.opmerkingen || '',
                               created: new Date().toISOString(),
                               updated: new Date().toISOString()
-                            })));
+                            } as MaintenanceTask)));
                             setEditingTask(null);
                             setIsAddDialogOpen(true);
-                          });
-                        }}
-                      />
-                    </div>
-                  ) : <Navigate to="/" replace />
-                } />
+                          }}
+                        />
+                      } />
+                    </Routes>
+                  </div>
+                ) : <Navigate to="/" replace />} />
 
-                {/* --- DRUKWERKEN --- */}
-                <Route path="/Drukwerken" element={
-                  user?.role === 'press'
-                    ? <Navigate to="/Drukwerken/Nieuw" replace />
-                    : <Navigate to="/Drukwerken/Gedrukt" replace />
-                } />
-                <Route path="/Drukwerken/:subtab" element={
-                  hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />
-                } />
+                <Route path="/Drukwerken" element={user?.role === 'press' ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
+                <Route path="/Drukwerken/:subtab" element={hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />} />
 
-                {/* --- EXTERN --- */}
-                <Route path="/Extern" element={
-                  hasPermission('extern_view') ? <ExternalSummary tasks={groupedTasks} tags={tags} /> : <Navigate to="/" replace />
-                } />
-
-                {/* --- BEHEER (MANAGEMENT) --- */}
                 <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
-                <Route path="/Beheer/:subtab" element={
-                  hasPermission('management_access') ? <ManagementLayout tasks={groupedTasks} tags={tags} /> : <Navigate to="/" replace />
-                } />
+                <Route path="/Beheer/:subtab" element={hasPermission('management_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
-                {/* --- ANALYSIS & LOGS --- */}
-                <Route path="/Rapport" element={hasPermission('reports_view') ? <Reports tasks={tasks} presses={presses} /> : <Navigate to="/" replace />} />
-                <Route path="/Checklist" element={hasPermission('checklist_view') ? <MaintenanceChecklist tasks={tasks} presses={presses} categories={categories} /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses" element={<Navigate to="/Analyses/Rapport" replace />} />
+                <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+
+                <Route path="/Rapport" element={<Navigate to="/Analyses/Rapport" replace />} />
+                <Route path="/Checklist" element={<Navigate to="/Analyses/Checklist" replace />} />
+                <Route path="/Extern" element={<Navigate to="/Taken/Extern" replace />} />
                 <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
-                <Route path="/Feedback" element={<Navigate to="/Roadmap" replace />} />
-                <Route path="/Roadmap" element={<RoadmapV2 />} />
-                <Route path="/RoadmapV2" element={<Navigate to="/Roadmap" replace />} />
+                <Route path="/Feedback" element={<Roadmap />} />
+                <Route path="/Roadmap" element={<Navigate to="/Feedback" replace />} />
 
-                {/* --- TOOLBOX --- */}
                 <Route path="/Toolbox" element={<Navigate to="/Toolbox/Tools" replace />} />
-                <Route path="/Toolbox/:subtab" element={
-                  hasPermission('toolbox_access') ? <Toolbox onNavigateHome={() => navigate('/')} /> : <Navigate to="/" replace />
-                } />
+                <Route path="/Toolbox/:subtab" element={hasPermission('toolbox_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
-                {/* Redirects for old paths */}
+                {/* Redirects */}
                 <Route path="/tasks" element={<Navigate to="/Taken" replace />} />
-                <Route path="/drukwerken" element={<Navigate to="/Drukwerken" replace />} />
                 <Route path="/management" element={<Navigate to="/Beheer" replace />} />
                 <Route path="/toolbox" element={<Navigate to="/Toolbox" replace />} />
                 <Route path="/reports" element={<Navigate to="/Rapport" replace />} />
                 <Route path="/checklist" element={<Navigate to="/Checklist" replace />} />
                 <Route path="/logs" element={<Navigate to="/Logboek" replace />} />
-                <Route path="/feedback-list" element={<Navigate to="/Feedback" replace />} />
                 <Route path="/operators" element={<Navigate to="/Beheer/Personeel" replace />} />
                 <Route path="/categories" element={<Navigate to="/Beheer/Categorie" replace />} />
                 <Route path="/tags" element={<Navigate to="/Beheer/Tags" replace />} />
                 <Route path="/presses" element={<Navigate to="/Beheer/Persen" replace />} />
                 <Route path="/passwords" element={<Navigate to="/Beheer/Accounts" replace />} />
-                <Route path="/parameters" element={<Navigate to="/Beheer/Parameters" replace />} />
-                <Route path="/permissions" element={<Navigate to="/Beheer/Rechten" replace />} />
-
-                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
-            <AddMaintenanceDialog
-              open={isAddDialogOpen}
-              onOpenChange={(open) => startTransition(() => setIsAddDialogOpen(open))}
-              onSubmit={async (task) => {
-                await startTransition(async () => {
-                  if (editingTask) await handleEditTask({ ...editingTask, ...task } as MaintenanceTask);
-                  else await handleAddTask(task);
-                });
-              }}
-              editTask={editingTask}
-              initialGroup={editingGroup || undefined}
-              onUpdateGroup={handleUpdateGroup}
-              activePress={selectedPress}
-            />
-            <ForceRefreshDialog />
           </main>
+          <AddMaintenanceDialog
+            open={isAddDialogOpen}
+            onOpenChange={setIsAddDialogOpen}
+            onSubmit={(task) => {
+              if (editingTask) {
+                handleEditTask({ ...task, id: editingTask.id } as MaintenanceTask);
+              } else {
+                handleAddTask(task);
+              }
+            }}
+            onUpdateGroup={handleUpdateGroup}
+            editTask={editingTask}
+            initialGroup={editingGroup}
+          />
         </>
       )}
     </div>
   );
 }
 
-// Performance Profiler Callback
-function onRenderCallback(
-  _id: string,
-  _phase: 'mount' | 'update' | 'nested-update',
-  actualDuration: number,
-  _baseDuration: number,
-  _startTime: number,
-  _commitTime: number,
-  _interactions?: Set<any>
-) {
-  if (actualDuration > 16) {
-    // console.warn(`[Profiler] ${id} ${phase} took ${actualDuration.toFixed(2)} ms`);
-  }
-}
-
-function App() {
+export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Profiler id="MainApp" onRender={onRenderCallback}>
-          <MainApp />
-        </Profiler>
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <MainApp />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
-
-export default App;

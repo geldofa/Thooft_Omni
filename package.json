@@ -1,5 +1,5 @@
 {
   "dependencies": {
-    "pocketbase": "^0.26.6"
+    "pocketbase": "^0.23.0"
   }
 }

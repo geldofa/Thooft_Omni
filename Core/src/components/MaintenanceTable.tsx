@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { GroupedTask, Subtask, MaintenanceTask, pb, Category, Tag } from './AuthContext';
 import { useAuth } from './AuthContext';
-import { QuickEditDialog } from './QuickEditDialog';
+import { QuickEditDialog } from './dialogs/QuickEditDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Edit, Trash2, Calendar, User, ChevronDown, ChevronRight, CornerDownRight, Zap } from 'lucide-react';

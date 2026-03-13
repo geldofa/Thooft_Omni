@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pb } from './AuthContext';
-import { pdf } from '@react-pdf/renderer';
-import { PageHeader } from './PageHeader';
+import { pb, useAuth } from './AuthContext';
+import { PageHeader } from './layout/PageHeader';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -12,13 +11,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from './ui/utils';
-import { MaintenanceReportPDF } from './pdf/MaintenanceReportPDF';
-import type { ColumnDef } from './pdf/MaintenanceReportPDF';
-import { getStatusInfo } from '../utils/StatusUtils';
-import {
-    format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-    startOfYear, endOfYear, subDays, subWeeks, subMonths, subYears, addDays,
-} from 'date-fns';
+import { generatePresetReport } from '../utils/generateReport';
+import { format } from 'date-fns';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,71 +29,6 @@ interface ScheduledTask {
     preset?: any;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const ALL_COLUMN_DEFS: ColumnDef[] = [
-    { id: 'taskName', label: 'Taak', field: 'taskName' },
-    { id: 'interval', label: 'Interval', field: 'interval' },
-    { id: 'completedOn', label: 'Laatste onderhoud', field: 'completedOn' },
-    { id: 'executedBy', label: 'Uitvoerder', field: 'executedBy' },
-    { id: 'note', label: 'Opmerking', field: 'note' },
-    { id: 'daysDiff', label: 'Dagen Over', field: 'daysDiff' },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function buildPeriodFilter(period: string, status: string): string {
-    const fmt = (d: Date) => format(d, 'yyyy-MM-dd HH:mm:ss');
-    const todayStart = fmt(startOfDay(new Date()));
-    if (status === 'Nu Nodig') {
-        if (period === 'Alles overtijd') return `next_date < "${todayStart}"`;
-        if (period === '> 6 maanden') return `next_date < "${fmt(subMonths(startOfDay(new Date()), 6))}"`;
-        if (period === '> 1 jaar') return `next_date < "${fmt(subYears(startOfDay(new Date()), 1))}"`;
-    }
-    if (status === 'Binnenkort') {
-        if (period === 'Deze Week') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfWeek(new Date(), { weekStartsOn: 1 }))}"`;
-        if (period === '14 Dagen') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfDay(addDays(new Date(), 14)))}"`;
-        if (period === 'Deze Maand') return `next_date >= "${todayStart}" && next_date <= "${fmt(endOfMonth(new Date()))}"`;
-    }
-    if (status === 'Voltooid') {
-        const ref = new Date();
-        let start: Date, end: Date;
-        switch (period) {
-            case 'Vandaag': start = startOfDay(ref); end = endOfDay(ref); break;
-            case 'Gisteren': start = startOfDay(subDays(ref, 1)); end = endOfDay(subDays(ref, 1)); break;
-            case 'Deze Week': start = startOfWeek(ref, { weekStartsOn: 1 }); end = endOfWeek(ref, { weekStartsOn: 1 }); break;
-            case 'Vorige Week': { const p = subWeeks(ref, 1); start = startOfWeek(p, { weekStartsOn: 1 }); end = endOfWeek(p, { weekStartsOn: 1 }); break; }
-            case 'Deze Maand': start = startOfMonth(ref); end = endOfMonth(ref); break;
-            case 'Vorige Maand': { const p = subMonths(ref, 1); start = startOfMonth(p); end = endOfMonth(p); break; }
-            case 'Dit Jaar': start = startOfYear(ref); end = endOfYear(ref); break;
-            case 'Vorig Jaar': { const p = subYears(ref, 1); start = startOfYear(p); end = endOfYear(p); break; }
-            default: return '';
-        }
-        return `last_date >= "${fmt(start)}" && last_date <= "${fmt(end)}"`;
-    }
-    return '';
-}
-
-function matchesStatus(nextDate: Date | null, status: string): boolean {
-    const todayStart = startOfDay(new Date());
-    if (status === 'Nu Nodig') return !!nextDate && nextDate < todayStart;
-    if (status === 'Binnenkort') return !!nextDate && nextDate >= todayStart;
-    return true;
-}
-
-function formatInterval(val: number, unit: string) {
-    if (!val) return '-';
-    return `${val} ${unit}`;
-}
-
-function formatDateNL(dateStr: string | null) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-}
 
 function getNextRunDate(preset: any): Date | null {
     if (!preset.auto_generate) return null;
@@ -158,10 +87,14 @@ function intervalLabel(preset: any): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function SystemTasks() {
+    const { hasPermission } = useAuth();
     const [tasks, setTasks] = useState<ScheduledTask[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    if (!hasPermission('manage_system_tasks')) {
+        return <div className="p-8 text-center text-gray-500 text-sm italic">Geen toegang tot systeem taken.</div>;
+    }
     const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-    const [autoRanIds, setAutoRanIds] = useState<Set<string>>(new Set());
 
     const fetchTasks = useCallback(async () => {
         setIsLoading(true);
@@ -224,16 +157,7 @@ export function SystemTasks() {
 
     useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-    // Auto-run pending tasks once on mount
-    useEffect(() => {
-        if (isLoading) return;
-        tasks.forEach(t => {
-            if (t.status === 'pending' && !autoRanIds.has(t.id) && !runningIds.has(t.id)) {
-                setAutoRanIds(prev => new Set(prev).add(t.id));
-                runTask(t, 'auto');
-            }
-        });
-    }, [isLoading]);  // eslint-disable-line react-hooks/exhaustive-deps
+    // Auto-run is now handled globally by useAutoReports in App.tsx
 
     const runTask = useCallback(async (task: ScheduledTask, trigger: 'manual' | 'auto' = 'manual') => {
         setRunningIds(prev => new Set(prev).add(task.id));
@@ -258,87 +182,11 @@ export function SystemTasks() {
                 // Give it a moment then refresh
                 setTimeout(fetchTasks, 2000);
             } else {
-                // Trigger Report Generation (Original logic)
+                // Trigger Report Generation via shared utility
                 if (!task.preset) return;
-                const preset = task.preset;
-                const s = preset.settings || { selectedPress: 'Alle persen', selectedPeriod: 'Alles overtijd', selectedStatus: 'Nu Nodig' };
-
-                const filters: string[] = [];
-                if (s.selectedPress && s.selectedPress !== 'Alle persen') {
-                    filters.push(`pers.naam = "${s.selectedPress}"`);
-                }
-                const periodFilter = buildPeriodFilter(s.selectedPeriod, s.selectedStatus);
-                if (periodFilter) filters.push(periodFilter);
-
-                const records = await pb.collection('onderhoud').getFullList({
-                    filter: filters.join(' && ') || undefined,
-                    expand: 'category,pers,assigned_operator,assigned_team',
-                });
-
-                const mapped = [];
-                for (const r of records as any[]) {
-                    const nDate = r.next_date ? new Date(r.next_date) : null;
-                    if (!matchesStatus(nDate, s.selectedStatus)) continue;
-
-                    let dDiff = 0;
-                    if (nDate) {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        dDiff = Math.ceil((nDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                    }
-
-                    const ops = Array.isArray(r.expand?.assigned_operator) ? r.expand.assigned_operator : r.expand?.assigned_operator ? [r.expand.assigned_operator] : [];
-                    const tms = Array.isArray(r.expand?.assigned_team) ? r.expand.assigned_team : r.expand?.assigned_team ? [r.expand.assigned_team] : [];
-                    const exBy = [...ops, ...tms].map((o: any) => o.naam || o.name || 'Onbekend').join(', ') || '-';
-
-                    mapped.push({
-                        id: r.id,
-                        category: r.expand?.category?.naam || 'Overig',
-                        press: r.expand?.pers?.naam || 'Onbekend',
-                        parentTask: r.task || '-',
-                        taskName: r.subtask || r.task || '-',
-                        interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'),
-                        completedOn: formatDateNL(r.last_date),
-                        executedBy: exBy,
-                        note: r.opmerkingen || '',
-                        statusKey: getStatusInfo(nDate).key,
-                        daysDiff: dDiff,
-                    });
-                }
-
-                const selectedColumnIds: string[] = s.selectedColumns || ALL_COLUMN_DEFS.map(c => c.id);
-                const visibleColumns = ALL_COLUMN_DEFS.filter(c => selectedColumnIds.includes(c.id));
-                const dateStr = format(new Date(), 'yyyy-MM-dd_HH-mm');
-                const filename = `${preset.name.replace(/\s+/g, '_')}_${dateStr}.pdf`;
-
-                const blob = await pdf(
-                    <MaintenanceReportPDF
-                        tasks={mapped as any}
-                        reportTitle={preset.name}
-                        selectedPress={s.selectedPress || 'Alle persen'}
-                        selectedPeriod={s.selectedPeriod || '-'}
-                        selectedStatus={s.selectedStatus || '-'}
-                        generatedAt={new Date().toLocaleDateString('nl-NL')}
-                        columns={visibleColumns}
-                        fontSize={s.fontSize || 9}
-                        marginH={s.marginH || 30}
-                        marginV={s.marginV || 10}
-                        columnWidths={s.columnWidths || {}}
-                    />
-                ).toBlob();
-
-                const fd = new FormData();
-                fd.append('file', blob, filename);
-                fd.append('maintenance_report', preset.id);
-                fd.append('generated_at', new Date().toISOString());
-                fd.append('trigger', trigger);
-                fd.append('created_by', trigger === 'manual' ? (pb.authStore.model?.username || 'Admin') : 'Systeem');
-
-                await pb.collection('report_files').create(fd);
-                await pb.collection('maintenance_reports').update(preset.id, { last_run: new Date().toISOString() });
-
-                if (trigger === 'manual') toast.success(`Rapport "${preset.name}" gegenereerd`);
-                else toast.success(`[Auto] "${preset.name}" aangemaakt`);
+                await generatePresetReport(task.preset, trigger, trigger === 'manual' ? (pb.authStore.model?.username || 'Admin') : 'Systeem');
+                if (trigger === 'manual') toast.success(`Rapport "${task.preset.name}" gegenereerd`);
+                else toast.success(`[Auto] "${task.preset.name}" aangemaakt`);
             }
 
             setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'done', lastRun: new Date() } : t));

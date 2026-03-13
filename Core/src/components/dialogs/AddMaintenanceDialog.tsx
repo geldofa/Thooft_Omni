@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MaintenanceTask, useAuth, PressType, pb, Press, Category, Tag } from './AuthContext';
+import { MaintenanceTask, useAuth, PressType, pb, Press, Category, Tag } from '../AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -7,13 +7,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Calendar } from './ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Calendar } from '../ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { CalendarIcon, Trash2, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import {

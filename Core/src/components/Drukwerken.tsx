@@ -11,9 +11,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Edit, Trash2, Check, Search, ArrowUp, ArrowDown, Printer, RefreshCw, Database, Wrench, X } from 'lucide-react';
+import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { TableVirtuoso } from 'react-virtuoso';
-import { PageHeader } from './PageHeader';
 import { formatNumber } from '../utils/formatNumber';
 import { format, differenceInDays } from 'date-fns';
 import { Checkbox } from './ui/checkbox';
@@ -22,7 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/t
 import { Switch } from './ui/switch';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
 
-import { AddFinishedJobDialog } from './AddFinishedJobDialog';
+import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import {
     evaluateFormula,
@@ -769,12 +768,40 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 let record;
                 if (processedKatern.originalId) {
                     record = await pb.collection('drukwerken').update(processedKatern.originalId, pbData);
+                    
+                    // Fetch old record for diffing
+                    const oldRecord = await pb.collection('drukwerken').getOne(processedKatern.originalId);
+
                     await addActivityLog({
                         action: 'Updated',
                         entity: 'FinishedJob',
                         entityId: record.id,
                         entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
                         details: `Drukwerk hervat en bijgewerkt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
+                        oldValue: [
+                            `Order: ${oldRecord.order_nummer}`,
+                            `Naam: ${oldRecord.klant_order_beschrijving}`,
+                            `Versie: ${oldRecord.versie || '-'}`,
+                            `Blz: ${oldRecord.blz}`,
+                            `Ex/Omw: ${oldRecord.ex_omw}`,
+                            `Netto: ${oldRecord.netto_oplage}`,
+                            `Groen: ${oldRecord.groen}`,
+                            `Rood: ${oldRecord.rood}`,
+                            `Delta: ${oldRecord.delta}`,
+                            `Delta %: ${oldRecord.delta_percent}%`
+                        ].join('|||'),
+                        newValue: [
+                            `Order: ${pbData.order_nummer}`,
+                            `Naam: ${pbData.klant_order_beschrijving}`,
+                            `Versie: ${pbData.versie || '-'}`,
+                            `Blz: ${pbData.blz}`,
+                            `Ex/Omw: ${pbData.ex_omw}`,
+                            `Netto: ${pbData.netto_oplage}`,
+                            `Groen: ${pbData.groen}`,
+                            `Rood: ${pbData.rood}`,
+                            `Delta: ${pbData.delta}`,
+                            `Delta %: ${pbData.delta_percent}%`
+                        ].join('|||'),
                         user: user?.username || 'System',
                         press: user?.press
                     });
@@ -787,10 +814,16 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         entityName: `${werkorder.orderNr} - ${werkorder.orderName}`,
                         details: `Drukwerk afgepunt: ${werkorder.orderNr} (Versie: ${processedKatern.version || '-'})`,
                         newValue: [
-                            `Order: ${werkorder.orderNr}`,
-                            `Blz: ${processedKatern.pages}`,
-                            `Netto: ${processedKatern.netRun}`,
-                            `Versie: ${processedKatern.version || '-'}`
+                            `Order: ${pbData.order_nummer}`,
+                            `Naam: ${pbData.klant_order_beschrijving}`,
+                            `Versie: ${pbData.versie || '-'}`,
+                            `Blz: ${pbData.blz}`,
+                            `Ex/Omw: ${pbData.ex_omw}`,
+                            `Netto: ${pbData.netto_oplage}`,
+                            `Groen: ${pbData.groen}`,
+                            `Rood: ${pbData.rood}`,
+                            `Delta: ${pbData.delta}`,
+                            `Delta %: ${pbData.delta_percent}%`
                         ].join('|||'),
                         user: user?.username || 'System',
                         press: user?.press
@@ -1137,15 +1170,27 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             // 1. Delete removed jobs
             if (deletedIds.length > 0) {
                 await Promise.all(deletedIds.map(async (id) => {
+                    const oldRecord = await pb.collection('drukwerken').getOne(id);
                     await pb.collection('drukwerken').delete(id);
                     // Log deletion
                     await addActivityLog({
                         action: 'Deleted',
                         entity: 'FinishedJob',
                         entityId: id,
-                        entityName: id,
-                        details: `Bulk bewerking: Drukwerk verwijderd (${id})`,
-                        oldValue: `ID: ${id}`,
+                        entityName: `${oldRecord.order_nummer} - ${oldRecord.klant_order_beschrijving}`,
+                        details: `Bulk bewerking: Drukwerk verwijderd (${oldRecord.order_nummer})`,
+                        oldValue: [
+                            `Order: ${oldRecord.order_nummer}`,
+                            `Naam: ${oldRecord.klant_order_beschrijving}`,
+                            `Versie: ${oldRecord.versie || '-'}`,
+                            `Blz: ${oldRecord.blz}`,
+                            `Ex/Omw: ${oldRecord.ex_omw}`,
+                            `Netto: ${oldRecord.netto_oplage}`,
+                            `Groen: ${oldRecord.groen}`,
+                            `Rood: ${oldRecord.rood}`,
+                            `Delta: ${oldRecord.delta}`,
+                            `Delta %: ${oldRecord.delta_percent}%`
+                        ].join('|||'),
                         user: user?.username || 'System',
                         press: user?.press
                     });
@@ -1184,23 +1229,31 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 };
 
                 if (isNew) {
-                    await pb.collection('drukwerken').create(pbData);
+                    const record = await pb.collection('drukwerken').create(pbData);
                     // Log creation
                     await addActivityLog({
                         action: 'Created',
                         entity: 'FinishedJob',
-                        entityId: 'new',
+                        entityId: record.id,
                         entityName: `${job.orderNr} - ${job.orderName}`,
                         details: `Bulk bewerking: Drukwerk aangemaakt (${job.orderNr})`,
                         newValue: [
-                            `Order: ${job.orderNr}`,
-                            `Blz: ${job.pages}`,
-                            `Netto: ${job.netRun}`
+                            `Order: ${pbData.order_nummer}`,
+                            `Naam: ${pbData.klant_order_beschrijving}`,
+                            `Versie: ${pbData.versie || '-'}`,
+                            `Blz: ${pbData.blz}`,
+                            `Ex/Omw: ${pbData.ex_omw}`,
+                            `Netto: ${pbData.netto_oplage}`,
+                            `Groen: ${pbData.groen}`,
+                            `Rood: ${pbData.rood}`,
+                            `Delta: ${pbData.delta}`,
+                            `Delta %: ${pbData.delta_percent}%`
                         ].join('|||'),
                         user: user?.username || 'System',
                         press: user?.press
                     });
                 } else {
+                    const oldRecord = await pb.collection('drukwerken').getOne(job.id);
                     await pb.collection('drukwerken').update(job.id, pbData);
                     // Log update
                     await addActivityLog({
@@ -1209,10 +1262,29 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         entityId: job.id,
                         entityName: `${job.orderNr} - ${job.orderName}`,
                         details: `Bulk bewerking: Drukwerk bijgewerkt (${job.orderNr})`,
+                        oldValue: [
+                            `Order: ${oldRecord.order_nummer}`,
+                            `Naam: ${oldRecord.klant_order_beschrijving}`,
+                            `Versie: ${oldRecord.versie || '-'}`,
+                            `Blz: ${oldRecord.blz}`,
+                            `Ex/Omw: ${oldRecord.ex_omw}`,
+                            `Netto: ${oldRecord.netto_oplage}`,
+                            `Groen: ${oldRecord.groen}`,
+                            `Rood: ${oldRecord.rood}`,
+                            `Delta: ${oldRecord.delta}`,
+                            `Delta %: ${oldRecord.delta_percent}%`
+                        ].join('|||'),
                         newValue: [
-                            `Order: ${job.orderNr}`,
-                            `Blz: ${job.pages}`,
-                            `Netto: ${job.netRun}`
+                            `Order: ${pbData.order_nummer}`,
+                            `Naam: ${pbData.klant_order_beschrijving}`,
+                            `Versie: ${pbData.versie || '-'}`,
+                            `Blz: ${pbData.blz}`,
+                            `Ex/Omw: ${pbData.ex_omw}`,
+                            `Netto: ${pbData.netto_oplage}`,
+                            `Groen: ${pbData.groen}`,
+                            `Rood: ${pbData.rood}`,
+                            `Delta: ${pbData.delta}`,
+                            `Delta %: ${pbData.delta_percent}%`
                         ].join('|||'),
                         user: user?.username || 'System',
                         press: user?.press
@@ -1362,15 +1434,27 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             }
         } else if (deleteAction.type === 'job') {
             try {
+                const oldRecord = await pb.collection('drukwerken').getOne(deleteAction.id);
                 await pb.collection('drukwerken').delete(deleteAction.id);
                 // Log deletion
                 await addActivityLog({
                     action: 'Deleted',
                     entity: 'FinishedJob',
                     entityId: deleteAction.id,
-                    entityName: deleteAction.id,
+                    entityName: `${oldRecord.order_nummer} - ${oldRecord.klant_order_beschrijving}`,
                     details: `Drukwerk verwijderd via lijst`,
-                    oldValue: `ID: ${deleteAction.id}`,
+                    oldValue: [
+                        `Order: ${oldRecord.order_nummer}`,
+                        `Naam: ${oldRecord.klant_order_beschrijving}`,
+                        `Versie: ${oldRecord.versie || '-'}`,
+                        `Blz: ${oldRecord.blz}`,
+                        `Ex/Omw: ${oldRecord.ex_omw}`,
+                        `Netto: ${oldRecord.netto_oplage}`,
+                        `Groen: ${oldRecord.groen}`,
+                        `Rood: ${oldRecord.rood}`,
+                        `Delta: ${oldRecord.delta}`,
+                        `Delta %: ${oldRecord.delta_percent}%`
+                    ].join('|||'),
                     user: user?.username || 'System',
                     press: user?.press
                 });
@@ -1424,414 +1508,410 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     return (
         <TooltipProvider delayDuration={300}>
-            <div className="space-y-4">
-                {isLoadingPresses && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-                        <div className="flex flex-col items-center gap-2">
-                            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-                            <p className="font-medium text-blue-900 text-lg">Persen Laden...</p>
+            <Tabs value={activeTab} onValueChange={(value) => navigate(`/Drukwerken/${value}`)} className="w-full">
+                <div className="space-y-4">
+                    {isLoadingPresses && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                            <div className="flex flex-col items-center gap-2">
+                                <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                                <p className="font-medium text-blue-900 text-lg">Persen Laden...</p>
+                            </div>
                         </div>
-                    </div>
-                )}
-                <PageHeader
-                    title={
-                        <div className="flex items-center gap-4">
-                            <span>Drukwerken Registratie</span>
-                            {(cacheStatus.loading || cacheStatus.newUpdates > 0) && (
-                                <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
-                                    {cacheStatus.loading ? (
-                                        <>
-                                            <RefreshCw className="w-3 h-3 animate-spin" />
-                                            <span>{cacheStatus.statusText}</span>
-                                            {cacheStatus.totalDocs > 0 && (
-                                                <span className="text-xs text-gray-400">({cacheStatus.cachedDocs}/{cacheStatus.totalDocs})</span>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Database className="w-3 h-3 text-blue-500" />
-                                            <span className="text-blue-600">{cacheStatus.newUpdates} updates found</span>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                            {!cacheStatus.loading && cacheStatus.newUpdates === 0 && (
-                                <div className="flex items-center gap-2 text-xs text-gray-400 font-normal">
-                                    <Check className="w-3 h-3" />
-                                    <span>Up to date</span>
-                                </div>
-                            )}
-                        </div>
-                    }
-                    description="Beheer en registreer printopdrachten"
-                    icon={Printer}
-                    className="mb-2"
-                    actions={
-                        <div className="flex gap-2 items-center flex-wrap justify-end">
-                            {activeTab === 'Nieuw' && hasPermission('drukwerken_create') && (
-                                <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}>
-                                    <Plus className="w-4 h-4 mr-2" /> Werkorder
-                                </Button>
-                            )}
-                            {activeTab === 'Gedrukt' && (
-                                <Tabs value={yearFilter} onValueChange={setYearFilter} className="w-auto">
-                                    <TabsList className="tab-pill-list h-9">
-                                        {yearOptions.map((opt: any) => (
-                                            <TabsTrigger
-                                                key={opt.value}
-                                                value={opt.value}
-                                                className="tab-pill-trigger text-xs px-3 py-1"
-                                            >
-                                                {opt.label}
-                                            </TabsTrigger>
-                                        ))}
-                                    </TabsList>
-                                </Tabs>
-                            )}
+                    )}
 
-                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                                <div className="flex items-center space-x-2 bg-white px-3 h-9 rounded-md border text-xs shadow-sm">
-                                    <Switch
-                                        id="compare-mode"
-                                        checked={showComparison}
-                                        onCheckedChange={setShowComparison}
-                                        className="scale-75 origin-left"
-                                    />
-                                    <Label htmlFor="compare-mode" className="cursor-pointer font-medium text-gray-600">Vergelijk</Label>
-                                </div>
-                            )}
-
-                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                                <Select value={pressFilter} onValueChange={setPressFilter}>
-                                    <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
-                                        <SelectValue placeholder="Alle Persen" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all" className="text-xs">Alle Persen</SelectItem>
-                                        {activePresses.filter(press => press && press.trim() !== '').map(press => (
-                                            <SelectItem key={press} value={press} className="text-xs">{press}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-
-                            {activeTab === 'Gedrukt' && (
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        placeholder="Zoeken..."
-                                        className="pl-10 pr-8 w-[200px] h-9 bg-white border-gray-200 focus:border-blue-500 transition-colors text-xs"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
-                                    {searchQuery && (
-                                        <button
-                                            onClick={() => setSearchQuery('')}
-                                            className="absolute right-2 top-2.5 h-4 w-4 text-gray-400 hover:text-gray-600 transition-colors"
-                                        >
-                                            <X className="h-3 w-3" />
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    }
-                />
-                <Tabs value={activeTab} onValueChange={(value) => navigate(`/Drukwerken/${value}`)} className="w-full">
                     {(() => {
                         const showWerkorders = user?.role === 'press';
                         const showFinished = (user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast' || (user?.role === 'press' && hasPermission('drukwerken_view')));
-
-                        if (Number(showWerkorders) + Number(showFinished) <= 1) return null;
+                        const hasTabs = Number(showWerkorders) + Number(showFinished) > 1;
 
                         return (
-                            <TabsList className="tab-pill-list">
-                                {showWerkorders && (
-                                    <TabsTrigger value="Nieuw" className="tab-pill-trigger">Nieuw Order</TabsTrigger>
-                                )}
-                                {showFinished && (
-                                    <TabsTrigger value="Gedrukt" className="tab-pill-trigger">Gedrukt</TabsTrigger>
-                                )}
-                            </TabsList>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2 mt-2">
+                                <div className="flex items-center gap-4">
+                                    {hasTabs && (
+                                        <TabsList className="tab-pill-list">
+                                            {showWerkorders && (
+                                                <TabsTrigger value="Nieuw" className="tab-pill-trigger">Nieuw Order</TabsTrigger>
+                                            )}
+                                            {showFinished && (
+                                                <TabsTrigger value="Gedrukt" className="tab-pill-trigger">Gedrukt</TabsTrigger>
+                                            )}
+                                        </TabsList>
+                                    )}
+
+                                    {/* Cache Status Indicators */}
+                                    {(cacheStatus.loading || cacheStatus.newUpdates > 0) && (
+                                        <div className="flex items-center gap-2 text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full animate-pulse">
+                                            {cacheStatus.loading ? (
+                                                <>
+                                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                                    <span>{cacheStatus.statusText}</span>
+                                                    {cacheStatus.totalDocs > 0 && (
+                                                        <span className="text-xs text-gray-400">({cacheStatus.cachedDocs}/{cacheStatus.totalDocs})</span>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Database className="w-3 h-3 text-blue-500" />
+                                                    <span className="text-blue-600">{cacheStatus.newUpdates} updates found</span>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!cacheStatus.loading && cacheStatus.newUpdates === 0 && (
+                                        <div className="flex items-center gap-2 text-xs text-gray-400 font-normal opacity-50">
+                                            <Check className="w-3 h-3" />
+                                            <span>Up to date</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Action Controls */}
+                                <div className="flex gap-2 items-center flex-wrap justify-end">
+                                    {activeTab === 'Nieuw' && hasPermission('drukwerken_create') && (
+                                        <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}>
+                                            <Plus className="w-4 h-4 mr-2" /> Werkorder
+                                        </Button>
+                                    )}
+                                    {activeTab === 'Gedrukt' && (
+                                        <Tabs value={yearFilter} onValueChange={setYearFilter} className="w-auto">
+                                            <TabsList className="tab-pill-list h-9">
+                                                {yearOptions.map((opt: any) => (
+                                                    <TabsTrigger
+                                                        key={opt.value}
+                                                        value={opt.value}
+                                                        className="tab-pill-trigger text-xs px-3 py-1"
+                                                    >
+                                                        {opt.label}
+                                                    </TabsTrigger>
+                                                ))}
+                                            </TabsList>
+                                        </Tabs>
+                                    )}
+
+                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                        <div className="flex items-center space-x-2 bg-white px-3 h-9 rounded-md border text-xs shadow-sm">
+                                            <Switch
+                                                id="compare-mode"
+                                                checked={showComparison}
+                                                onCheckedChange={setShowComparison}
+                                                className="scale-75 origin-left"
+                                            />
+                                            <Label htmlFor="compare-mode" className="cursor-pointer font-medium text-gray-600">Vergelijk</Label>
+                                        </div>
+                                    )}
+
+                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                        <Select value={pressFilter} onValueChange={setPressFilter}>
+                                            <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
+                                                <SelectValue placeholder="Alle Persen" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all" className="text-xs">Alle Persen</SelectItem>
+                                                {activePresses.filter(press => press && press.trim() !== '').map(press => (
+                                                    <SelectItem key={press} value={press} className="text-xs">{press}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+
+                                    {activeTab === 'Gedrukt' && (
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                            <Input
+                                                placeholder="Zoeken..."
+                                                className="pl-10 pr-8 w-[200px] h-9 bg-white border-gray-200 focus:border-blue-500 transition-colors text-xs"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                            />
+                                            {searchQuery && (
+                                                <button
+                                                    onClick={() => setSearchQuery('')}
+                                                    className="absolute right-2 top-2.5 h-4 w-4 text-gray-400 hover:text-gray-600 transition-colors"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         );
                     })()}
 
                     {user?.role === 'press' && (
                         <TabsContent value="Nieuw">
-                            <Card>
-                                <CardContent className="space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto relative">
-                                    {werkorders.map((wo) => (
-                                        <div key={wo.id} className="border p-4 rounded-lg">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <div className="flex gap-4 w-full items-end">
-                                                    <div className="flex flex-col items-center">
-                                                        <Label>Order Nr</Label>
-                                                        <div className={`flex items-center border rounded-md px-2 bg-white h-9 transition-all ${validationErrors[wo.id]?.orderNr ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`} style={{ width: '85px' }}>
-                                                            <span className="text-sm font-medium text-muted-foreground mr-1">DT </span>
-                                                            <Input
-                                                                value={wo.orderNr}
-                                                                onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)}
-                                                                className="text-right p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-full w-full bg-transparent"
-                                                            />
-                                                        </div>
+                            <div className="space-y-4 max-h-[calc(100vh-150px)] overflow-y-auto relative pb-6 px-1">
+                                {werkorders.map((wo) => (
+                                    <Card key={wo.id} className="p-4 shadow-sm">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex gap-4 w-full items-end">
+                                                <div className="flex flex-col items-center">
+                                                    <Label>Order Nr</Label>
+                                                    <div className={`flex items-center border rounded-md px-2 bg-white h-9 transition-all ${validationErrors[wo.id]?.orderNr ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`} style={{ width: '85px' }}>
+                                                        <span className="text-sm font-medium text-muted-foreground mr-1">DT </span>
+                                                        <Input
+                                                            value={wo.orderNr}
+                                                            onChange={(e) => handleWerkorderChange(wo.id, 'orderNr', e.target.value)}
+                                                            className="text-right p-0 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-full w-full bg-transparent"
+                                                        />
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <Label className="pl-3">Order</Label>
-                                                        <div className="flex gap-2 items-center">
-                                                            <Input
-                                                                value={wo.orderName}
-                                                                onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)}
-                                                                className={`w-full bg-white transition-all ${validationErrors[wo.id]?.orderName ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`}
-                                                            />
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-9 w-9 p-0 hover:bg-red-100 text-red-500"
-                                                                onClick={() => {
-                                                                    requestDeleteWerkorder(wo.id);
-                                                                }}
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </Button>
-                                                        </div>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <Label className="pl-3">Order</Label>
+                                                    <div className="flex gap-2 items-center">
+                                                        <Input
+                                                            value={wo.orderName}
+                                                            onChange={(e) => handleWerkorderChange(wo.id, 'orderName', e.target.value)}
+                                                            className={`w-full bg-white transition-all ${validationErrors[wo.id]?.orderName ? 'border-red-500 ring-1 ring-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]' : 'border-gray-200'}`}
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-9 w-9 p-0 hover:bg-red-100 text-red-500"
+                                                            onClick={() => {
+                                                                requestDeleteWerkorder(wo.id);
+                                                            }}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <Table className={`table-fixed w-full ${FONT_SIZES.body}`} style={{ minWidth: '1200px' }}>
-                                                <colgroup>
-                                                    <col style={{ width: COL_WIDTHS.version }} />
-                                                    <col style={{ width: COL_WIDTHS.pages }} />
-                                                    <col style={{ width: COL_WIDTHS.exOmw }} />
-                                                    <col style={{ width: COL_WIDTHS.netRun }} />
-                                                    <col style={{ width: COL_WIDTHS.startup }} />
-                                                    <col style={{ width: COL_WIDTHS.c4_4 }} />
-                                                    <col style={{ width: COL_WIDTHS.c4_0 }} />
-                                                    <col style={{ width: COL_WIDTHS.c1_0 }} />
-                                                    <col style={{ width: COL_WIDTHS.c1_1 }} />
-                                                    <col style={{ width: COL_WIDTHS.c4_1 }} />
-                                                    <col style={{ width: COL_WIDTHS.maxGross }} />
-                                                    <col style={{ width: COL_WIDTHS.green }} />
-                                                    <col style={{ width: COL_WIDTHS.red }} />
-                                                    <col style={{ width: COL_WIDTHS.delta }} />
-                                                    <col style={{ width: COL_WIDTHS.deltaPercent }} />
-                                                    <col style={{ width: COL_WIDTHS.actions }} />
-                                                </colgroup>
-                                                <TableHeader>
-                                                    <TableRow className="border-b-0 sticky top-0 z-40 bg-white h-10">
-                                                        <TableHead colSpan={4} className="text-center bg-blue-100 border-r border-black sticky top-0 z-40">Data</TableHead>
-                                                        <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black sticky top-0 z-40">Wissels</TableHead>
-                                                        <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black sticky top-0 z-40">Berekening</TableHead>
-                                                        <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black sticky top-0 z-40">Prestatie</TableHead>
-                                                        <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
-                                                    </TableRow>
-                                                    <TableRow className="border-b border-black sticky top-[40px] z-40 bg-white shadow-sm h-10">
-                                                        <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">Version</TableHead>
-                                                        <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Pagina's</TableHead>
-                                                        <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
-                                                        <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
-                                                        <TableHead className="text-center sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.startup }}>Opstart</TableHead>
-                                                        <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_4 }}>4/4</TableHead>
-                                                        <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_0 }}>4/0</TableHead>
-                                                        <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_0 }}>1/0</TableHead>
-                                                        <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_1 }}>1/1</TableHead>
-                                                        <TableHead className="text-center px-0 text-[10px] border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_1 }}>4/1</TableHead>
-                                                        <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.maxGross }}>Max Bruto</TableHead>
-                                                        <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.green }}>Groen</TableHead>
-                                                        <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.red }}>Rood</TableHead>
-                                                        <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.delta }}>Delta</TableHead>
-                                                        <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.deltaPercent }}>Delta %</TableHead>
-                                                        <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-[40px] z-40 bg-white"></TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {wo.katernen.map((katern) => {
-                                                        const jobWithOrderInfo = {
-                                                            ...katern,
-                                                            orderNr: wo.orderNr,
-                                                            orderName: wo.orderName,
-                                                            pressName: effectivePress
-                                                        };
-                                                        const maxGrossVal = getFormulaForColumn('maxGross')
-                                                            ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo, parameters, activePresses) as number
-                                                            : katern.maxGross;
+                                        </div>
+                                        <Table className={`table-fixed w-full ${FONT_SIZES.body}`} style={{ minWidth: '1200px' }}>
+                                            <colgroup>
+                                                <col style={{ width: COL_WIDTHS.version }} />
+                                                <col style={{ width: COL_WIDTHS.pages }} />
+                                                <col style={{ width: COL_WIDTHS.exOmw }} />
+                                                <col style={{ width: COL_WIDTHS.netRun }} />
+                                                <col style={{ width: COL_WIDTHS.startup }} />
+                                                <col style={{ width: COL_WIDTHS.c4_4 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_0 }} />
+                                                <col style={{ width: COL_WIDTHS.c1_1 }} />
+                                                <col style={{ width: COL_WIDTHS.c4_1 }} />
+                                                <col style={{ width: COL_WIDTHS.maxGross }} />
+                                                <col style={{ width: COL_WIDTHS.green }} />
+                                                <col style={{ width: COL_WIDTHS.red }} />
+                                                <col style={{ width: COL_WIDTHS.delta }} />
+                                                <col style={{ width: COL_WIDTHS.deltaPercent }} />
+                                                <col style={{ width: COL_WIDTHS.actions }} />
+                                            </colgroup>
+                                            <TableHeader>
+                                                <TableRow className="border-b-0 sticky top-0 z-40 bg-white h-10">
+                                                    <TableHead colSpan={4} className="text-center bg-blue-100 border-r border-black sticky top-0 z-40">Data</TableHead>
+                                                    <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black sticky top-0 z-40">Wissels</TableHead>
+                                                    <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black sticky top-0 z-40">Berekening</TableHead>
+                                                    <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black sticky top-0 z-40">Prestatie</TableHead>
+                                                    <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
+                                                </TableRow>
+                                                <TableRow className="border-b border-black sticky top-[40px] z-40 bg-white shadow-sm h-10">
+                                                    <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">Version</TableHead>
+                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Pagina's</TableHead>
+                                                    <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
+                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
+                                                    <TableHead className="text-center sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.startup }}>Opstart</TableHead>
+                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_4 }}>4/4</TableHead>
+                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_0 }}>4/0</TableHead>
+                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_0 }}>1/0</TableHead>
+                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_1 }}>1/1</TableHead>
+                                                    <TableHead className="text-center px-0 text-[10px] border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_1 }}>4/1</TableHead>
+                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.maxGross }}>Max Bruto</TableHead>
+                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.green }}>Groen</TableHead>
+                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.red }}>Rood</TableHead>
+                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.delta }}>Delta</TableHead>
+                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.deltaPercent }}>Delta %</TableHead>
+                                                    <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-[40px] z-40 bg-white"></TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {wo.katernen.map((katern) => {
+                                                    const jobWithOrderInfo = {
+                                                        ...katern,
+                                                        orderNr: wo.orderNr,
+                                                        orderName: wo.orderName,
+                                                        pressName: effectivePress
+                                                    };
+                                                    const maxGrossVal = getFormulaForColumn('maxGross')
+                                                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo, parameters, activePresses) as number
+                                                        : katern.maxGross;
 
-                                                        const divider = outputConversions[effectivePressId]?.[String(katern.exOmw)] || 1;
-                                                        const jobWithCalculatedMaxGross = {
-                                                            ...jobWithOrderInfo,
-                                                            maxGross: maxGrossVal,
-                                                            green: Number(katern.green) || 0,
-                                                            red: Number(katern.red) || 0
-                                                        };
-                                                        const jobForEvaluation = {
-                                                            ...jobWithCalculatedMaxGross,
-                                                            green: (Number(katern.green) || 0) * divider,
-                                                            red: (Number(katern.red) || 0) * divider
-                                                        };
-                                                        return (
-                                                            <TableRow key={katern.id} className="hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group">
-                                                                <TableCell>
-                                                                    <Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} className="h-9 px-2 bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="text-right">
-                                                                    <FormattedNumberInput value={katern.pages} onChange={(val) => handleKaternChange(wo.id, katern.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                </TableCell>
-                                                                <TableCell>
-                                                                    <Select
-                                                                        value={String(katern.exOmw || '1')}
-                                                                        onValueChange={(val) => handleKaternChange(wo.id, katern.id, 'exOmw', val)}
-                                                                    >
-                                                                        <SelectTrigger className="h-9 px-2 bg-white border-gray-200 text-center">
-                                                                            <SelectValue placeholder="Deler" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            {(() => {
-                                                                                const pressId = effectivePressId;
-                                                                                const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
-                                                                                // Fallback to 1,2,4 only when no conversions configured at all
-                                                                                const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
-                                                                                return options.map(val => (
-                                                                                    <SelectItem key={val} value={val}>{val}</SelectItem>
-                                                                                ));
-                                                                            })()}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                </TableCell>
-                                                                <TableCell className="text-right border-r border-black">
-                                                                    <FormattedNumberInput value={katern.netRun} onChange={(val) => handleKaternChange(wo.id, katern.id, 'netRun', val || 0)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                </TableCell>
-                                                                <TableCell className="text-center">
-                                                                    <Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} />
-                                                                </TableCell>
-                                                                <TableCell className="px-0">
-                                                                    <FormattedNumberInput value={katern.c4_4} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_4', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="px-0">
-                                                                    <FormattedNumberInput value={katern.c4_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="px-0">
-                                                                    <FormattedNumberInput value={katern.c1_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="px-0">
-                                                                    <FormattedNumberInput value={katern.c1_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="px-0 border-r border-black">
-                                                                    <FormattedNumberInput value={katern.c4_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                                </TableCell>
-                                                                <TableCell className="text-right border-r border-black">
-                                                                    <div className="flex flex-col items-center">
+                                                    const divider = outputConversions[effectivePressId]?.[String(katern.exOmw)] || 1;
+                                                    const jobWithCalculatedMaxGross = {
+                                                        ...jobWithOrderInfo,
+                                                        maxGross: maxGrossVal,
+                                                        green: Number(katern.green) || 0,
+                                                        red: Number(katern.red) || 0
+                                                    };
+                                                    const jobForEvaluation = {
+                                                        ...jobWithCalculatedMaxGross,
+                                                        green: (Number(katern.green) || 0) * divider,
+                                                        red: (Number(katern.red) || 0) * divider
+                                                    };
+                                                    return (
+                                                        <TableRow key={katern.id} className="hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group">
+                                                            <TableCell>
+                                                                <Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} className="h-9 px-2 bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <FormattedNumberInput value={katern.pages} onChange={(val) => handleKaternChange(wo.id, katern.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Select
+                                                                    value={String(katern.exOmw || '1')}
+                                                                    onValueChange={(val) => handleKaternChange(wo.id, katern.id, 'exOmw', val)}
+                                                                >
+                                                                    <SelectTrigger className="h-9 px-2 bg-white border-gray-200 text-center">
+                                                                        <SelectValue placeholder="Deler" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {(() => {
+                                                                            const pressId = effectivePressId;
+                                                                            const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
+                                                                            // Fallback to 1,2,4 only when no conversions configured at all
+                                                                            const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
+                                                                            return options.map(val => (
+                                                                                <SelectItem key={val} value={val}>{val}</SelectItem>
+                                                                            ));
+                                                                        })()}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </TableCell>
+                                                            <TableCell className="text-right border-r border-black">
+                                                                <FormattedNumberInput value={katern.netRun} onChange={(val) => handleKaternChange(wo.id, katern.id, 'netRun', val || 0)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                            </TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} />
+                                                            </TableCell>
+                                                            <TableCell className="px-0">
+                                                                <FormattedNumberInput value={katern.c4_4} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_4', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="px-0">
+                                                                <FormattedNumberInput value={katern.c4_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="px-0">
+                                                                <FormattedNumberInput value={katern.c1_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="px-0">
+                                                                <FormattedNumberInput value={katern.c1_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="px-0 border-r border-black">
+                                                                <FormattedNumberInput value={katern.c4_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
+                                                            </TableCell>
+                                                            <TableCell className="text-right border-r border-black">
+                                                                <div className="flex flex-col items-center">
+                                                                    <FormulaResultWithTooltip
+                                                                        formula={getFormulaForColumn('maxGross')?.formula || ''}
+                                                                        job={jobWithOrderInfo}
+                                                                        variant="maxGross"
+                                                                        parameters={parameters}
+                                                                        activePresses={activePresses}
+                                                                        result={maxGrossVal}
+                                                                        outputConversions={outputConversions}
+                                                                        pressMap={pressMap}
+                                                                    />
+                                                                    {showComparison && (
+                                                                        <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
+                                                                            Rec: {formatNumber(katern.maxGross)}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <div className="flex flex-col items-end">
+                                                                    <FormattedNumberInput value={katern.green} onChange={(val) => handleKaternChange(wo.id, katern.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                    {divider > 1 && (
+                                                                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                            <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                                {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-right border-r border-black">
+                                                                <div className="flex flex-col items-end">
+                                                                    <FormattedNumberInput value={katern.red} onChange={(val) => handleKaternChange(wo.id, katern.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
+                                                                    {divider > 1 && (
+                                                                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                                                            <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                                                                {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-medium">
+                                                                {(() => {
+                                                                    const f = getFormulaForColumn('delta_number');
+                                                                    const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
+                                                                    const res = Number(resRaw) || 0;
+                                                                    return (
                                                                         <FormulaResultWithTooltip
-                                                                            formula={getFormulaForColumn('maxGross')?.formula || ''}
-                                                                            job={jobWithOrderInfo}
-                                                                            variant="maxGross"
+                                                                            formula={f?.formula || ''}
+                                                                            job={jobWithCalculatedMaxGross}
                                                                             parameters={parameters}
                                                                             activePresses={activePresses}
-                                                                            result={maxGrossVal}
+                                                                            variant="delta"
+                                                                            result={res}
                                                                             outputConversions={outputConversions}
                                                                             pressMap={pressMap}
                                                                         />
-                                                                        {showComparison && (
-                                                                            <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
-                                                                                Rec: {formatNumber(katern.maxGross)}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="text-right">
-                                                                    <div className="flex flex-col items-end">
-                                                                        <FormattedNumberInput value={katern.green} onChange={(val) => handleKaternChange(wo.id, katern.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                        {divider > 1 && (
-                                                                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                                                                                <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                                    {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
-                                                                                </span>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="text-right border-r border-black">
-                                                                    <div className="flex flex-col items-end">
-                                                                        <FormattedNumberInput value={katern.red} onChange={(val) => handleKaternChange(wo.id, katern.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                        {divider > 1 && (
-                                                                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                                                                                <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                                    {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
-                                                                                </span>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="text-right font-medium">
-                                                                    {(() => {
-                                                                        const f = getFormulaForColumn('delta_number');
-                                                                        const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
-                                                                        const res = Number(resRaw) || 0;
+                                                                    );
+                                                                })()}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-medium border-r border-black">
+                                                                {(() => {
+                                                                    const f = getFormulaForColumn('delta_percentage');
+                                                                    if (f) {
+                                                                        const result = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
+                                                                        const numericValue = typeof result === 'number'
+                                                                            ? result
+                                                                            : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
                                                                         return (
                                                                             <FormulaResultWithTooltip
-                                                                                formula={f?.formula || ''}
+                                                                                formula={f.formula}
                                                                                 job={jobWithCalculatedMaxGross}
                                                                                 parameters={parameters}
                                                                                 activePresses={activePresses}
-                                                                                variant="delta"
-                                                                                result={res}
+                                                                                decimals={2}
+                                                                                result={numericValue * 100}
                                                                                 outputConversions={outputConversions}
                                                                                 pressMap={pressMap}
+                                                                                suffix="%"
+                                                                                hideTooltip={true}
                                                                             />
                                                                         );
-                                                                    })()}
-                                                                </TableCell>
-                                                                <TableCell className="text-right font-medium border-r border-black">
-                                                                    {(() => {
-                                                                        const f = getFormulaForColumn('delta_percentage');
-                                                                        if (f) {
-                                                                            const result = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
-                                                                            const numericValue = typeof result === 'number'
-                                                                                ? result
-                                                                                : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-                                                                            return (
-                                                                                <FormulaResultWithTooltip
-                                                                                    formula={f.formula}
-                                                                                    job={jobWithCalculatedMaxGross}
-                                                                                    parameters={parameters}
-                                                                                    activePresses={activePresses}
-                                                                                    decimals={2}
-                                                                                    result={numericValue * 100}
-                                                                                    outputConversions={outputConversions}
-                                                                                    pressMap={pressMap}
-                                                                                    suffix="%"
-                                                                                    hideTooltip={true}
-                                                                                />
-                                                                            );
-                                                                        }
-                                                                        return `${formatNumber(katern.deltaPercentage * 100, 2)}% `;
-                                                                    })()}
-                                                                </TableCell>
-                                                                <TableCell className="border-r border-black">
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="ghost"
-                                                                        className="hover:bg-red-100 text-red-500"
-                                                                        onClick={() => requestDeleteKatern(wo.id, katern.id)}
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </Button>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        )
-                                                    })}
-                                                </TableBody>
-                                            </Table>
-                                            <div className="flex justify-between items-center mt-2">
-                                                <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
-                                                    <Plus className="w-4 h-4 mr-1" /> Katern/Versie toevoegen
-                                                </Button>
-                                                <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
-                                                    Order Opslaan
-                                                </Button>
-                                            </div>
+                                                                    }
+                                                                    return `${formatNumber(katern.deltaPercentage * 100, 2)}% `;
+                                                                })()}
+                                                            </TableCell>
+                                                            <TableCell className="border-r border-black">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="hover:bg-red-100 text-red-500"
+                                                                    onClick={() => requestDeleteKatern(wo.id, katern.id)}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                        <div className="flex justify-between items-center mt-2">
+                                            <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
+                                                <Plus className="w-4 h-4 mr-1" /> Katern/Versie toevoegen
+                                            </Button>
+                                            <Button onClick={() => handleSaveOrderToFinished(wo)} size="sm" className="w-48">
+                                                Order Opslaan
+                                            </Button>
                                         </div>
-                                    ))}
-                                </CardContent>
-                            </Card>
+                                    </Card>
+                                ))}
+                            </div>
                         </TabsContent>
                     )}
 
@@ -2118,22 +2198,24 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             </CardContent>
                         </Card>
                     </TabsContent>
-                </Tabs>
-            </div>
+                </div>
+            </Tabs>
 
-            {isAddJobDialogOpen && (
-                <AddFinishedJobDialog
-                    open={isAddJobDialogOpen}
-                    onOpenChange={setIsAddJobDialogOpen}
-                    onSubmit={handleBulkJobSubmit}
-                    initialJobs={editingJobs}
-                    onCalculate={(job) => processJobFormulas(job) as FinishedPrintJob}
-                    outputConversions={outputConversions}
-                    pressMap={pressMap}
-                    currentPressName={effectivePress}
-                    onMoveToNew={handleMoveBackToNew}
-                />
-            )}
+            {
+                isAddJobDialogOpen && (
+                    <AddFinishedJobDialog
+                        open={isAddJobDialogOpen}
+                        onOpenChange={setIsAddJobDialogOpen}
+                        onSubmit={handleBulkJobSubmit}
+                        initialJobs={editingJobs}
+                        onCalculate={(job) => processJobFormulas(job) as FinishedPrintJob}
+                        outputConversions={outputConversions}
+                        pressMap={pressMap}
+                        currentPressName={effectivePress}
+                        onMoveToNew={handleMoveBackToNew}
+                    />
+                )
+            }
 
             <ConfirmationModal
                 open={deleteModalOpen}
@@ -2144,7 +2226,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 confirmText="Verwijderen"
                 variant="destructive"
             />
-        </TooltipProvider>
+        </TooltipProvider >
     );
 }
 

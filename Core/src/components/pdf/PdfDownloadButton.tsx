@@ -63,7 +63,6 @@ const PdfDownloadButton = ({
                 selectedPress={selectedPress}
                 selectedPeriod={selectedPeriod}
                 selectedStatus={selectedStatus}
-                generatedAt={new Date().toLocaleString("nl-NL")}
                 columns={columns}
                 fontSize={fontSize}
                 marginH={marginH}

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
-import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
+import { Button } from '../ui/button';
 import { Download, Rocket, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
-import { useAuth } from './AuthContext';
-import { APP_VERSION } from '../config';
+import { useAuth } from '../AuthContext';
+import { APP_VERSION } from '../../config';
 import { toast } from 'sonner';
 
 export function UpdateDialog() {

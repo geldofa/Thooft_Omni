@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pb } from './AuthContext';
-import { useTheme } from './ThemeProvider';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
-import { PageHeader } from './PageHeader';
+import { pb, useAuth } from '../AuthContext';
+import { useTheme } from '../ThemeProvider';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
+import { Separator } from '../ui/separator';
+import { PageHeader } from '../layout/PageHeader';
 import { toast } from 'sonner';
 import { Check, Palette, Save } from 'lucide-react';
 
@@ -75,7 +75,12 @@ function ColorInputField({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ThemeManagement() {
+    const { hasPermission } = useAuth();
     const { refreshTheme } = useTheme();
+
+    if (!hasPermission('manage_themes')) {
+        return <div className="p-8 text-center text-gray-500 text-sm italic">Geen toegang tot thema beheer.</div>;
+    }
 
     const [themes, setThemes] = useState<AppThemeRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);

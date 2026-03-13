@@ -275,7 +275,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     tasks,
     columns,
     fontSize = 9,
-    marginH = 30,
+    marginH = 10,
     marginV = 10,
     columnWidths,
 }) => {
@@ -289,7 +289,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         smallText: { fontSize: fontSize - 2 },
         headerWrapper: {
             paddingHorizontal: marginH,
-            paddingTop: marginV + 15, // Increase base padding for header
+            paddingTop: marginV + 15,
             paddingBottom: 20,
         },
         pageContent: {

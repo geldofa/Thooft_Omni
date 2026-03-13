@@ -18,7 +18,6 @@ import {
   isBefore,
   getISOWeek
 } from 'date-fns';
-import { PageHeader } from './PageHeader';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import {
@@ -32,16 +31,14 @@ import {
 import { cn } from './ui/utils';
 import {
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
   CardFooter,
 } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+
 import {
-  Settings2, Loader2, FileText, Download, Save, History, ArrowLeft,
+  Loader2, FileText, Download, Save, History, ArrowLeft,
   RefreshCw, Edit2, PlayCircle, Trash2, ChevronRight, PlusCircle,
   Check, Eye, Mail, AlertCircle
 } from 'lucide-react';
@@ -49,6 +46,7 @@ import { Switch } from './ui/switch';
 import { MaintenanceReportPDF, type MaintenanceTask } from './pdf/MaintenanceReportPDF';
 import { pb, useAuth } from './AuthContext';
 import { getStatusInfo } from '../utils/StatusUtils';
+import { generatePresetReport, type ReportPreset as SharedReportPreset } from '../utils/generateReport';
 import { toast } from 'sonner';
 
 // ─── Column configuration ───────────────────────────────────
@@ -200,7 +198,12 @@ function matchesStatus(nextDate: Date | null, status: string): boolean {
 }
 
 function formatInterval(val: number, unit: string) {
-  if (!val) return '-';
+  if (val === 1) {
+    if (unit === 'Dagen') return '1 Dag';
+    if (unit === 'Weken') return '1 Week';
+    if (unit === 'Maanden') return '1 Maand';
+    if (unit === 'Jaren') return '1 Jaar';
+  }
   return `${val} ${unit}`;
 }
 
@@ -358,7 +361,6 @@ export function Reports(_props: ReportsProps) {
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [activePreset, setActivePreset] = useState<ReportPreset | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAutoProcessing, setIsAutoProcessing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
 
   useEffect(() => {
@@ -410,7 +412,7 @@ export function Reports(_props: ReportsProps) {
   const [marginV, setMarginV] = useState(10);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  const reportTitle = activeConfig.name;
+  const reportTitle = activeConfig.name || "Onderhoudsrapport";
   const selectedPress = activeConfig.settings.selectedPress;
   const selectedPeriod = activeConfig.settings.selectedPeriod;
   const selectedStatus = activeConfig.settings.selectedStatus;
@@ -444,42 +446,7 @@ export function Reports(_props: ReportsProps) {
 
   useEffect(() => { if (currentView === 'dashboard') fetchData(); }, [currentView]);
 
-  // --- Automated Catch-up Logic ---
-  useEffect(() => {
-    if (currentView !== 'dashboard' || isAutoProcessing || isDataLoading) return;
-
-    const checkForMissedRuns = async () => {
-      // Find a preset that has auto_generate=true and last_run is significantly newer than its latest archive file
-      for (const preset of presets) {
-        if (!preset.auto_generate || !preset.last_run) continue;
-
-        const lastRunDate = new Date(preset.last_run);
-
-        // Find latest file in archive for this preset
-        const archiveFiles = archive.filter(f => f.expand?.maintenance_report?.name === preset.name);
-        if (archiveFiles.length > 0) {
-          const latestFileDate = new Date(archiveFiles[0].generated_at);
-          // If last_run is at least 5 minutes newer than latest file, it's a candidate for catch-up
-          if (lastRunDate.getTime() > latestFileDate.getTime() + 300000) {
-            console.log(`[Reports] Catch-up triggered for: ${preset.name}`);
-            setIsAutoProcessing(true);
-            await generatePresetNow(preset, 'auto');
-            setIsAutoProcessing(false);
-            return; // Only process one at a time per check
-          }
-        } else {
-          // No files in archive yet, but it was triggered
-          console.log(`[Reports] Initial auto-generation catch-up for: ${preset.name}`);
-          setIsAutoProcessing(true);
-          await generatePresetNow(preset, 'auto');
-          setIsAutoProcessing(false);
-          return;
-        }
-      }
-    };
-
-    checkForMissedRuns();
-  }, [presets, archive, currentView, isAutoProcessing, isDataLoading]);
+  // Auto catch-up is now handled globally by useAutoReports in App.tsx
 
   useEffect(() => {
     (async () => {
@@ -542,10 +509,7 @@ export function Reports(_props: ReportsProps) {
 
   const updateSetting = (k: string, v: any) => setActiveConfig(p => ({ ...p, settings: { ...p.settings, [k]: v } }));
 
-  const handleTypeChange = (t: string) => {
-    let s = t === 'taken' ? { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' } : {};
-    setActiveConfig(p => ({ ...p, report_type: t, settings: s }));
-  };
+
 
   const visibleColumns = useMemo(() => {
     return ALL_COLUMNS
@@ -657,74 +621,9 @@ export function Reports(_props: ReportsProps) {
 
   const generatePresetNow = async (preset: ReportPreset, trigger: 'manual' | 'auto' = 'manual') => {
     if (trigger === 'manual') toast.info(`Genereren: ${preset.name}...`);
-    else console.log(`[Reports] Processing automated run: ${preset.name}`);
-
     try {
-      const s = preset.settings || { selectedPress: 'Alle persen', selectedPeriod: 'Laatste 7 dagen', selectedStatus: 'Nu Nodig' };
-      const f: string[] = [];
-      if (s.selectedPress && s.selectedPress !== 'Alle persen') f.push(`pers.naam = "${s.selectedPress}"`);
-      const pC = buildPeriodFilter(s.selectedPeriod, s.selectedStatus);
-      if (pC) f.push(pC);
-      const records = await pb.collection('onderhoud').getFullList({
-        filter: f.join(' && ') || undefined,
-        expand: 'category,pers,assigned_operator,assigned_team'
-      });
-      const mapped: MaintenanceTask[] = [];
-      for (const r of records as any[]) {
-        const nDate = r.next_date ? new Date(r.next_date) : null;
-        if (!matchesStatus(nDate, s.selectedStatus)) continue;
-
-        let dDiff = 0;
-        if (nDate) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          dDiff = Math.ceil((nDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        }
-
-        const ops = Array.isArray(r.expand?.assigned_operator) ? r.expand.assigned_operator : r.expand?.assigned_operator ? [r.expand.assigned_operator] : [];
-        const tms = Array.isArray(r.expand?.assigned_team) ? r.expand.assigned_team : r.expand?.assigned_team ? [r.expand.assigned_team] : [];
-        const exBy = [...ops, ...tms].map((o: any) => o.naam || o.name || 'Onbekend').join(', ') || '-';
-        const pressName = r.expand?.pers?.naam || 'Onbekend';
-
-        mapped.push({
-          id: r.id,
-          category: r.expand?.category?.naam || 'Overig',
-          press: pressName,
-          parentTask: r.task || '-',
-          taskName: r.subtask || r.task || '-',
-          interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'),
-          completedOn: formatDateNL(r.last_date),
-          executedBy: exBy,
-          note: r.opmerkingen || '',
-          statusKey: getStatusInfo(nDate).key,
-          daysDiff: dDiff
-        });
-      }
-
-      const periodType = (preset.period as 'day' | 'week' | 'month' | 'year') || detectPeriodType(s.selectedPeriod);
-      const filename = buildReportFilename(s.selectedPress || 'AllePersen', 'Taken', periodType, preset.name);
-      const b = await pdf(<MaintenanceReportPDF
-        tasks={mapped as any}
-        reportTitle={preset.name}
-        selectedPress={s.selectedPress}
-        selectedPeriod={s.selectedPeriod}
-        selectedStatus={s.selectedStatus}
-        generatedAt={new Date().toLocaleDateString('nl-NL')}
-        columns={ALL_COLUMNS.filter(c => (s.selectedColumns || ALL_COLUMNS.map(ac => ac.id)).includes(c.id))}
-        fontSize={s.fontSize || 9}
-        marginH={s.marginH || 30}
-        marginV={s.marginV || 10}
-        columnWidths={s.columnWidths || {}}
-      />).toBlob();
-      const fd = new FormData();
-      fd.append('file', b, filename);
-      fd.append('maintenance_report', preset.id);
-      fd.append('generated_at', new Date().toISOString());
-      fd.append('trigger', trigger);
-      fd.append('created_by', trigger === 'manual' ? (user?.name || user?.username || 'Onbekend') : 'Systeem');
-      await pb.collection('report_files').create(fd);
+      await generatePresetReport(preset as SharedReportPreset, trigger, user?.name || user?.username || 'Onbekend');
       if (trigger === 'manual') toast.success(`Rapport "${preset.name}" opgeslagen`);
-      else console.log(`[Reports] Automated run completed: ${preset.name}`);
       fetchData();
     } catch (e) {
       console.error(e);
@@ -734,9 +633,11 @@ export function Reports(_props: ReportsProps) {
 
   if (currentView === 'dashboard') {
     return (
-      <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-auto pb-4">
+      <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto h-[calc(100vh-8rem)] flex flex-col">
         <div className="flex items-center justify-between shrink-0">
-          <PageHeader title="Rapporten & Automatisatie" description="Beheer sjablonen en bekijk het archief." icon={FileText} iconColor="text-indigo-600" iconBgColor="bg-indigo-50" className="mb-0" />
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <FileText className="w-6 h-6 text-indigo-600" /> Rapporten & Automatisatie
+          </h1>
           <Button onClick={() => openEditor(null)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
             <PlusCircle className="w-4 h-4" /> Nieuw Sjabloon
           </Button>
@@ -951,35 +852,21 @@ export function Reports(_props: ReportsProps) {
   return (
     <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-auto pb-4">
       <div className="flex items-center justify-between shrink-0">
-        <PageHeader title={activePreset ? "Sjabloon Bewerken" : "Nieuw Sjabloon"} description="Pas filters aan en configureer automatisatie." icon={Settings2} iconColor="text-indigo-600" iconBgColor="bg-indigo-50" className="mb-0" />
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <FileText className="w-6 h-6 text-indigo-600" /> Configuratie
+        </h1>
         <Button variant="ghost" onClick={() => setCurrentView('dashboard')} className="text-slate-500 gap-2"><ArrowLeft className="w-4 h-4" /> Terug</Button>
       </div>
 
-      <div className="flex flex-row gap-6 items-start w-full h-[calc(100vh-210px)]">
+      <div className="flex flex-row gap-6 items-start w-full h-[calc(100vh-170px)]">
         <div className="flex-1 min-w-[400px] h-full">
           <Card className="flex flex-col h-full border-indigo-100 shadow-sm overflow-auto">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base">Configuratie</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6 flex-1">
-              <div className="space-y-4">
+            <CardContent className="space-y-6 flex-1 pt-6">
+              <div className="space-y-4 pt-4 ">
                 <div className="space-y-1.5">
                   <Label className="text-xs uppercase text-muted-foreground font-bold">Naam</Label>
                   <Input value={activeConfig.name} onChange={e => setActiveConfig(prev => ({ ...prev, name: e.target.value }))} placeholder="Bijv. Wekelijks Onderhoud" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs uppercase text-muted-foreground font-bold">Type Export</Label>
-                  <Select value={activeConfig.report_type} onValueChange={handleTypeChange}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="taken">Onderhoudstaken</SelectItem>
-                      <SelectItem value="drukwerken">Drukwerken</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {activeConfig.report_type === 'taken' && (
                 <div className="space-y-6 pt-4 border-t">
                   <div className="space-y-3">
                     <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Pers Selectie</Label>
@@ -1098,7 +985,7 @@ export function Reports(_props: ReportsProps) {
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
 
               <div className="space-y-4 pt-4 border-t">
                 <div className="flex items-center justify-between">
@@ -1279,8 +1166,9 @@ export function Reports(_props: ReportsProps) {
           </Card>
         </div>
 
-        <div className="w-[810px] h-full relative group">
-          <div className="absolute inset-0 bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-inner flex items-center justify-center">
+        {/* Right Panel - Live Preview */}
+        <div className="h-full shrink-0 flex justify-center bg-transparent">
+          <div className="relative h-full bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-sm flex items-center justify-center" style={{ aspectRatio: '1 / 1.414' }}>
             {isLoading ? (
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
             ) : activeConfig.report_type === 'taken' ? (

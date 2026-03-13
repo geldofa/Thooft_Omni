@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
 import { Calendar, User, Factory } from 'lucide-react';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from './layout/PageHeader';
 
 interface ExternalSummaryProps {
     tasks?: GroupedTask[];

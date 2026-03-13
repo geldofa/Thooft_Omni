@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth, pb } from './AuthContext';
+import { drukwerkenCache } from '../services/DrukwerkenCache';
 import {
     Table,
     TableBody,
@@ -69,7 +70,7 @@ interface MappingTarget {
 
 const TARGET_FIELDS: MappingTarget[] = [
     { id: 'press', label: 'Pers', required: true, systemField: 'pers', aliases: ['machine', 'press', 'persnaam'] },
-    { id: 'date', label: 'Datum (ISO)', required: false, systemField: 'date', aliases: ['date', 'tijd', 'datum_tijd'] },
+    { id: 'date', label: 'Datum (ISO)', required: false, systemField: 'date', aliases: ['date', 'datum', 'tijd', 'datum_tijd'] },
     { id: 'datum', label: 'Datum', required: false, systemField: 'datum', aliases: ['datum'] },
     { id: 'orderNr', label: 'Order nr', required: true, systemField: 'order_nummer', aliases: ['ordernr', 'order_nr', 'order_nummer'] },
     { id: 'orderName', label: 'Order Naam', required: true, systemField: 'klant_order_beschrijving', aliases: ['ordernaam', 'order_naam', 'beschrijving', 'klant_order'] },
@@ -116,7 +117,7 @@ const parseImportDate = (val: any): string | null => {
 };
 
 export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile, onStepChange }: { onComplete?: () => void, minimal?: boolean, initialFile?: File, onStepChange?: (step: 'upload' | 'analysis' | 'resolve' | 'preview') => void }) {
-    const { presses } = useAuth();
+    const { presses, user, hasPermission } = useAuth();
 
     const [csvData, setCsvData] = useState<any[]>([]);
     const [headers, setHeaders] = useState<string[]>([]);
@@ -124,12 +125,30 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
     const [step, setStep] = useState<'upload' | 'analysis' | 'resolve' | 'preview'>('upload');
     const [isImporting, setIsImporting] = useState(false);
     const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+    const [showSkipped, setShowSkipped] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [renamedHeaders, setRenamedHeaders] = useState<string[]>([]);
+    const [existingRecords, setExistingRecords] = useState<any[]>([]);
 
     useEffect(() => {
         if (onStepChange) onStepChange(step);
     }, [step, onStepChange]);
+
+    // Fetch existing records when entering preview step
+    useEffect(() => {
+        if (step === 'preview' && existingRecords.length === 0) {
+            const fetchExisting = async () => {
+                try {
+                    const records = await pb.collection('drukwerken').getFullList();
+                    setExistingRecords(records);
+                } catch (err) {
+                    console.error('Failed to fetch existing records for validation', err);
+                    toast.error('Kon bestaande drukwerken niet ophalen.');
+                }
+            };
+            fetchExisting();
+        }
+    }, [step]);
 
     // Persistence for field labels
     const [fieldLabels, setFieldLabels] = useState<Record<string, string>>(() => {
@@ -405,6 +424,48 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
             if (!item.klant_order_beschrijving) errors.push('Klant/Order Naam ontbreekt');
             if (rawPressName && !resolvedPress && resPress?.type !== 'new') errors.push(`Machine '${rawPressName}' niet herkend`);
             if (!rawPressName && !resolvedPress) errors.push('Machine ontbreekt');
+            
+            // Classification Logic
+            let matchStatus: 'toadd' | 'skip' | 'warn' = 'toadd';
+            let warningReason = '';
+            let skipReason = '';
+            let matchedRecord: any = null;
+
+            if (!item.order_nummer) {
+                matchStatus = 'skip';
+                skipReason = 'Order Nummer ontbreekt';
+            } else {
+                // Find all existing records with matching ordernr
+                const matchingByOrderNr = existingRecords.filter(r => parseInt(r.order_nummer) === parseInt(item.order_nummer));
+                
+                if (matchingByOrderNr.length > 0) {
+                    // Try to find an exact match on ordernr + ordernaam + versie
+                    const importName = (item.klant_order_beschrijving || '').toLowerCase().trim();
+                    const importVersie = (item.versie || '').toLowerCase().trim();
+                    
+                    const exactMatch = matchingByOrderNr.find(r => {
+                        const existingName = (r.klant_order_beschrijving || '').toLowerCase().trim();
+                        const existingVersie = (r.versie || '').toLowerCase().trim();
+                        return existingName === importName && existingVersie === importVersie;
+                    });
+                    
+                    if (exactMatch) {
+                        matchedRecord = exactMatch;
+                        matchStatus = 'skip';
+                        skipReason = 'Bestaat al (exacte match op ordernr + naam + versie)';
+                    } else {
+                        // Ordernr exists but name or version differs -> warn
+                        matchedRecord = matchingByOrderNr[0]; // Use first match for comparison display
+                        matchStatus = 'warn';
+                        const diffs = [];
+                        const existingName = (matchedRecord.klant_order_beschrijving || '').trim();
+                        const existingVersie = (matchedRecord.versie || '').trim();
+                        if (existingName.toLowerCase() !== importName) diffs.push(`Naam: "${existingName}" → "${item.klant_order_beschrijving}"`);
+                        if (existingVersie.toLowerCase() !== importVersie) diffs.push(`Versie: "${existingVersie || '(leeg)'}" → "${item.versie || '(leeg)'}"`);
+                        warningReason = `Ordernr ${item.order_nummer} bestaat al (${matchingByOrderNr.length}x) met verschillen:\n${diffs.join('\n')}`;
+                    }
+                }
+            }
 
             return {
                 ...item,
@@ -412,13 +473,17 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                 pressId: resolvedPress?.id || (resPress?.type === 'new' ? `__NEW_PRESS__${rawPressName}` : ''),
                 pressName: resolvedPress?.name || (resPress?.type === 'new' ? resPress.value : (item.pers || 'Onbekend')),
                 isValid: errors.length === 0,
-                errors
+                errors,
+                matchStatus,
+                warningReason,
+                skipReason,
+                matchedRecord
             };
         });
-    }, [csvData, mappings, step, presses, resolutions]);
+    }, [csvData, mappings, step, presses, resolutions, existingRecords]);
 
     const handleImport = async () => {
-        const validRows = processedData.filter(d => d.isValid);
+        const validRows = processedData.filter(d => d.isValid && d.matchStatus !== 'skip');
         if (validRows.length === 0) {
             toast.error("Geen geldige rijen gevonden om te importeren.");
             return;
@@ -477,6 +542,14 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
             }
 
             toast.success(`${successCount} drukwerken succesvol geïmporteerd`);
+
+            // Trigger cache refresh so Drukwerken page picks up new records
+            await drukwerkenCache.purge();
+            if (user) {
+                drukwerkenCache.sync(user, hasPermission);
+            }
+            window.dispatchEvent(new CustomEvent('pb-drukwerken-changed'));
+
             setStep('upload');
             setCsvData([]);
             if (onComplete) onComplete();
@@ -731,6 +804,7 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                         <col style={{ width: COL_WIDTHS.date }} />
                                         <col style={{ width: COL_WIDTHS.orderNr }} />
                                         <col style={{ width: COL_WIDTHS.orderName }} />
+                                        <col style={{ width: '100px' }} />
                                         <col style={{ width: COL_WIDTHS.pages }} />
                                         <col style={{ width: COL_WIDTHS.exOmw }} />
                                         <col style={{ width: COL_WIDTHS.netRun }} />
@@ -751,7 +825,7 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                         <TableRow className="bg-white">
                                             <TableHead className="sticky top-0 bg-gray-100 border-r border-b z-30 h-10"></TableHead>
                                             <TableHead rowSpan={2} className="sticky top-0 text-center bg-gray-100 border-r border-b z-30 h-20">Pers</TableHead>
-                                            <TableHead colSpan={6} className="sticky top-0 text-center bg-blue-100 z-30 h-10" style={{ borderRight: '1px solid black' }}>Data</TableHead>
+                                            <TableHead colSpan={7} className="sticky top-0 text-center bg-blue-100 z-30 h-10" style={{ borderRight: '1px solid black' }}>Data</TableHead>
                                             <TableHead colSpan={6} className="sticky top-0 text-center bg-green-100 z-30 h-10" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Wissels</TableHead>
                                             <TableHead colSpan={3} className="sticky top-0 text-center bg-yellow-100 z-30 h-10" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Berekening</TableHead>
                                             <TableHead colSpan={2} className="sticky top-0 text-center bg-purple-100 z-30 h-10" style={{ borderTop: '1px solid black', borderRight: '1px solid black' }}>Prestatie</TableHead>
@@ -762,6 +836,7 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                             <TableHead className="sticky top-10 bg-gray-100 border-r border-b z-30 h-10">Datum</TableHead>
                                             <TableHead className="sticky top-10 bg-gray-100 border-r border-b z-30 h-10">Order</TableHead>
                                             <TableHead className="sticky top-10 bg-gray-100 border-r border-b z-30 h-10">Naam</TableHead>
+                                            <TableHead className="sticky top-10 bg-gray-100 border-r border-b z-30 h-10">Versie</TableHead>
                                             <TableHead className="sticky top-10 bg-gray-100 text-center border-r border-b z-30 h-10">Blz</TableHead>
                                             <TableHead className="sticky top-10 bg-gray-100 text-center border-r border-b z-30 h-10">Ex/Omw</TableHead>
                                             <TableHead className="sticky top-10 bg-gray-100 text-center border-r border-b z-30 h-10">Netto</TableHead>
@@ -778,15 +853,18 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                             <TableHead className="sticky top-10 bg-gray-100 text-center border-r border-b z-30 h-10">Delta %</TableHead>
                                         </TableRow>
                                     </TableHeader>
-                                    <TableBody>
+                                     <TableBody>
                                         {processedData
+                                            .filter(row => row.matchStatus !== 'skip') // Hide skipped by default from main table
                                             .filter(row => !showOnlyErrors || !row.isValid)
                                             .map((row, i) => (
-                                                <TableRow key={i} className={`bg-white h-8 hover:bg-gray-100 transition-colors ${!row.isValid ? 'bg-red-50' : ''}`}>
+                                                <TableRow key={i} className={`bg-white h-8 transition-colors ${!row.isValid ? 'bg-red-50' : row.matchStatus === 'warn' ? 'bg-amber-50/50' : 'hover:bg-gray-100'}`}>
                                                     <TableCell className="p-1 text-center border-r">
-                                                        {row.isValid ? (
-                                                            <Check className="w-3 h-3 text-green-500 mx-auto" />
-                                                        ) : (
+                                                        {row.isValid && row.matchStatus === 'toadd' ? (
+                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-medium px-1.5 py-0 h-5">
+                                                                Nieuw
+                                                            </Badge>
+                                                        ) : !row.isValid ? (
                                                             <TooltipProvider>
                                                                 <Tooltip>
                                                                     <TooltipTrigger>
@@ -799,6 +877,25 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                                                     </TooltipContent>
                                                                 </Tooltip>
                                                             </TooltipProvider>
+                                                        ) : row.matchStatus === 'warn' ? (
+                                                            <TooltipProvider>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger>
+                                                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 font-medium px-1.5 py-0 h-5">
+                                                                            <AlertCircle className="w-3 h-3" /> Let op
+                                                                        </Badge>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent className="bg-amber-100 text-amber-900 border-amber-200 p-3 text-xs shadow-lg max-w-sm whitespace-pre-wrap">
+                                                                        <p className="font-bold mb-1">Bestaat al, maar data verschilt:</p>
+                                                                        {row.warningReason}
+                                                                        <p className="mt-2 text-amber-700 font-medium">Wordt toegevoegd als extra/dubbel record.</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        ) : (
+                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-medium px-1.5 py-0 h-5">
+                                                                Nieuw
+                                                            </Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r text-center truncate" title={row.pressName}>
@@ -809,6 +906,7 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                                     <TableCell className="py-1 px-2 border-r truncate" title={row.klant_order_beschrijving}>
                                                         {row.klant_order_beschrijving || '-'}
                                                     </TableCell>
+                                                    <TableCell className="py-1 px-2 border-r truncate" title={row.versie}>{row.versie || '-'}</TableCell>
                                                     <TableCell className="text-center py-1 px-1 border-r">{row.blz || 0} blz</TableCell>
                                                     <TableCell className="text-center py-1 px-1 border-r">{row.ex_omw || 0}</TableCell>
                                                     <TableCell className="text-center py-1 px-1 border-r">{row.netto_oplage || 0}</TableCell>
@@ -833,19 +931,80 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
                                     </TableBody>
                                 </Table>
                             </div>
+
+                            {/* Collapsed skipped section */}
+                            {processedData.some(d => d.matchStatus === 'skip') && (
+                                <div className="border-t">
+                                    <button
+                                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                                        onClick={() => setShowSkipped(!showSkipped)}
+                                    >
+                                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                                            <AlertCircle className="w-4 h-4 text-gray-400" />
+                                            <span className="font-medium">Overgeslagen ({processedData.filter(d => d.matchStatus === 'skip').length})</span>
+                                            <span className="text-xs text-gray-400">— Reeds aanwezig of geen ordernummer</span>
+                                        </div>
+                                        <div className={`transform transition-transform duration-200 ${showSkipped ? 'rotate-180' : ''}`}>
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                        </div>
+                                    </button>
+                                    {showSkipped && (
+                                        <Table className="table-fixed w-full text-xs">
+                                            <colgroup>
+                                                <col style={{ width: '130px' }} />
+                                                <col style={{ width: '100px' }} />
+                                                <col style={{ width: COL_WIDTHS.orderNr }} />
+                                                <col style={{ width: 'auto' }} />
+                                                <col style={{ width: '100px' }} />
+                                                <col style={{ width: 'auto' }} />
+                                            </colgroup>
+                                            <TableBody>
+                                                {processedData
+                                                    .filter(row => row.matchStatus === 'skip')
+                                                    .map((row, i) => (
+                                                        <TableRow key={i} className="bg-gray-50/50 opacity-60">
+                                                            <TableCell className="p-2 border-r">
+                                                                <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-200 text-xs">
+                                                                    Overgeslagen
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="p-2 border-r text-gray-500">{row.date || '-'}</TableCell>
+                                                            <TableCell className="p-2 border-r text-gray-500">DT{row.order_nummer || '-'}</TableCell>
+                                                            <TableCell className="p-2 border-r truncate text-gray-500" title={row.klant_order_beschrijving}>
+                                                                {row.klant_order_beschrijving || '-'}
+                                                            </TableCell>
+                                                            <TableCell className="p-2 border-r text-gray-500">{row.versie || '-'}</TableCell>
+                                                            <TableCell className="p-2 text-gray-400 italic">
+                                                                {row.skipReason}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                            </TableBody>
+                                        </Table>
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
                     <div className="flex justify-between items-center p-4 bg-gray-900 rounded-xl text-white">
                         <Button variant="ghost" onClick={() => setStep('resolve')} className="text-white hover:bg-white/10">Terug</Button>
                         <div className="flex items-center gap-6">
-                            <div className="text-right">
-                                <div className="text-xs text-gray-400 uppercase font-bold">Totaal te importeren</div>
-                                <div className="text-xl font-bold">{processedData.filter(d => d.isValid).length} records</div>
+                            <div className="text-right flex items-center gap-6">
+                                <div className="text-sm text-gray-500 text-right">
+                                    <div><strong className="text-green-500">{processedData.filter(d => d.isValid && d.matchStatus === 'toadd').length}</strong> nieuwe orders</div>
+                                    {processedData.some(d => d.isValid && d.matchStatus === 'warn') && (
+                                        <div><strong className="text-amber-500">{processedData.filter(d => d.isValid && d.matchStatus === 'warn').length}</strong> dubbele met verschillen</div>
+                                    )}
+                                </div>
+                                <div className="pl-6 border-l border-gray-700">
+                                    <div className="text-xs text-gray-400 uppercase font-bold">Totaal Toevoegen</div>
+                                    <div className="text-xl font-bold">{processedData.filter(d => d.isValid && d.matchStatus !== 'skip').length} records</div>
+                                </div>
                             </div>
                             <Button
                                 onClick={handleImport}
-                                disabled={isImporting || processedData.filter(d => d.isValid).length === 0}
+                                disabled={isImporting || processedData.filter(d => d.isValid && d.matchStatus !== 'skip').length === 0}
                                 className="bg-blue-600 hover:bg-blue-700 h-10 px-8"
                             >
                                 {isImporting ? 'Bezig met importeren...' : 'Nu Importeren'}

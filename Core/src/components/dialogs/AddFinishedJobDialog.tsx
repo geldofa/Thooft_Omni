@@ -7,18 +7,18 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from './ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { FormattedNumberInput } from './ui/FormattedNumberInput';
-import { Checkbox } from './ui/checkbox';
+} from '../ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { FormattedNumberInput } from '../ui/FormattedNumberInput';
+import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
-import { FinishedPrintJob } from '../utils/drukwerken-utils';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { FinishedPrintJob } from '../../utils/drukwerken-utils';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Trash2, Plus, ArrowUpLeft } from 'lucide-react';
-import { ConfirmationModal } from './ui/ConfirmationModal';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 interface AddFinishedJobDialogProps {
     open: boolean;

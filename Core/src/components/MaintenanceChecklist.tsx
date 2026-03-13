@@ -1,40 +1,24 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { MaintenanceTask, pb, Category, Press } from './AuthContext';
 import { useAuth, PressType } from './AuthContext';
 import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Label } from './ui/label';
-import { Printer, Clock, ListChecks } from 'lucide-react';
+import { Clock, FileText, ChevronRight, Download, Loader2, ClipboardCheck } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { Textarea } from './ui/textarea';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 import { formatNumber } from '../utils/formatNumber';
-import { PageHeader } from './PageHeader';
+import { PDFViewer, PDFDownloadLink } from '@react-pdf/renderer';
+import { ChecklistPDF, ChecklistTask } from './pdf/ChecklistPDF';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card';
+import { Input } from './ui/input';
+import { cn } from './ui/utils';
 
 interface MaintenanceChecklistProps {
   tasks?: MaintenanceTask[];
   presses?: Press[];
   categories?: Category[];
 }
-
-
-// --- CONFIGURATION CONSTANTS ---
-// EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
-const COL_WIDTHS = {
-  check: '5%',
-  task: '35%',
-  planned: '15%',
-  last: '10%',
-  remarks: '15%',
-  notes: '20%'
-};
-
-const FONT_SIZES = {
-  title: 'text-2xl',      // Main report titles
-  section: 'text-lg',    // Category headers in print
-  body: 'text-sm',       // Table rows and general text
-  label: 'text-xs',      // Small subtext
-};
 
 export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPresses, categories: initialCategories }: MaintenanceChecklistProps) {
   const { } = useAuth();
@@ -131,10 +115,14 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
       fetchData();
     }
   }, [fetchData, initialTasks, initialPresses, initialCategories]);
+
   const [selectedPress, setSelectedPress] = useState<PressType | ''>('');
-  const printRef = useRef<HTMLDivElement>(null);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]); // State for task IDs to print
   const [supervisorGuidance, setSupervisorGuidance] = useState(''); // New state for supervisor guidance
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [fontSize, setFontSize] = useState(9);
+  const [marginH, setMarginH] = useState(30);
+  const [marginV, setMarginV] = useState(10);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -149,13 +137,6 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}/${month}/${day}`;
-  };
-
-  const handlePrint = () => {
-    if (!selectedPress || selectedTasks.length === 0) {
-      return;
-    }
-    window.print();
   };
 
   const activePresses = presses.filter(p => p.active && !p.archived);
@@ -197,6 +178,17 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
     );
   };
 
+  const handleToggleCategory = (category: string, isChecked: boolean) => {
+    const categoryTaskIds = allTasksGrouped[category].map(t => t.id);
+    setSelectedTasks(prev => {
+      if (isChecked) {
+        return [...new Set([...prev, ...categoryTaskIds])];
+      } else {
+        return prev.filter(id => !categoryTaskIds.includes(id));
+      }
+    });
+  };
+
   // Group ALL tasks for the UI list
   const allTasksGrouped = allPressTasks.reduce((acc, task) => {
     if (!acc[task.category]) {
@@ -208,307 +200,252 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
 
   const allCategories = Object.keys(allTasksGrouped).sort();
 
-  // Group SELECTED tasks for printing
-  const selectedTasksForPrint = allPressTasks
+  // Selected tasks mapped for PDF
+  const checklistPdfTasks: ChecklistTask[] = allPressTasks
     .filter(task => selectedTasks.includes(task.id))
-    .reduce((acc, task) => {
-      if (!acc[task.category]) {
-        acc[task.category] = [];
-      }
-      acc[task.category].push(task);
-      return acc;
-    }, {} as Record<string, MaintenanceTask[]>);
+    .map(task => ({
+      id: task.id,
+      task: task.task,
+      subtaskName: task.subtaskName,
+      taskSubtext: task.taskSubtext,
+      subtaskSubtext: task.subtaskSubtext,
+      category: task.category,
+      nextMaintenance: task.nextMaintenance,
+      lastMaintenance: task.lastMaintenance,
+      opmerkingen: task.opmerkingen,
+      isOverdue: isTaskOverdue(task)
+    }));
 
-  const categoriesForPrint = Object.keys(selectedTasksForPrint).sort();
+  // Subtexts mapped for PDF
+  const pdfCategorySubtexts = Object.fromEntries(
+    allCategories.map(cat => [cat, getCategorySubtext(cat)])
+  );
+
 
   return (
-    <div className="w-full mx-auto">
+    <div className="w-full h-full mx-auto flex flex-col gap-6 overflow-hidden">
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-2">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            <p className="font-medium text-blue-900 text-lg">Laden...</p>
+            <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+            <p className="font-medium text-indigo-900 text-lg">Laden...</p>
           </div>
         </div>
       )}
-      <div className="no-print">
-        <PageHeader
-          title="Checklist Genereren"
-          description="Maak een lijst van uit te voeren taken om af te vinken"
-          icon={ListChecks}
-          className="mb-2"
-          actions={
-            <Button
-              onClick={handlePrint}
-              className="gap-2"
-              disabled={!selectedPress || selectedTasks.length === 0}
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Checklist Printen ({formatNumber(selectedTasks.length)})
-            </Button>
-          }
-        />
 
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 no-print">
-          <div className="grid gap-4 max-w-lg">
-            <div className="grid gap-2 max-w-xs">
-              <Label>Pers Selecteren</Label>
-              <Select value={selectedPress} onValueChange={(value) => {
-                setSelectedPress(value as PressType);
-                setSelectedTasks([]); // Clear selection when press changes
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecteer een pers" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activePresses.filter(p => p.name && p.name.trim() !== '').map((press) => (
-                    <SelectItem key={press.id} value={press.name}>
-                      {press.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="supervisor-guidance">Instructies/Opmerkingen voor Operator</Label>
-              <Textarea
-                id="supervisor-guidance"
-                placeholder="Voeg specifieke instructies, waarschuwingen of begeleiding toe voor de operator..."
-                value={supervisorGuidance}
-                onChange={(e) => setSupervisorGuidance(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Task Selection UI */}
-        {selectedPress && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mt-6 no-print">
-            <div className="flex justify-between items-center mb-4 border-b pb-3">
-              <h3 className="text-lg font-semibold">Selecteer Taken voor Checklist</h3>
-              <Button
-                variant="outline"
-                onClick={handleAddAllOverdue}
-                className="gap-2 text-sm"
-                title="Voeg alle taken toe waarvan de volgende datum in het verleden ligt."
-              >
-                <Clock className="w-4 h-4" />
-                Alle Achterstallige Toevoegen
-              </Button>
-            </div>
-
-            <Accordion type="multiple" className="w-full">
-              {allCategories.map((category) => {
-                const categoryTasks = allTasksGrouped[category];
-                const overdueCount = categoryTasks.filter(isTaskOverdue).length;
-                const subtext = getCategorySubtext(category);
-
-                return (
-                  <AccordionItem key={category} value={category} className="border-b">
-                    <AccordionTrigger className="font-bold py-3 hover:no-underline">
-                      <div className="flex justify-between w-full pr-4">
-                        <div className="flex items-center gap-2">
-                          <span>{category}</span>
-                          {subtext && <span className="text-gray-500 font-normal text-sm">({subtext})</span>}
-                          <span className="text-gray-400 font-normal text-sm ml-2">({formatNumber(categoryTasks.length)} taken)</span>
-                        </div>
-                        {overdueCount > 0 && (
-                          <span className="text-red-500 font-normal text-sm ml-4">({formatNumber(overdueCount)} Te laat)</span>
-                        )}
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-2 py-2">
-                        {categoryTasks.map((task) => (
-                          <div key={task.id} className="flex items-start justify-between p-2 border rounded-md hover:bg-gray-50 transition-colors">
-                            <div className="flex items-start gap-3">
-                              <Checkbox
-                                id={`task-${task.id}`}
-                                checked={selectedTasks.includes(task.id)}
-                                onCheckedChange={(checked) => handleToggleTask(task.id, Boolean(checked))}
-                                className="mt-1"
-                              />
-                              <Label htmlFor={`task-${task.id}`} className="cursor-pointer space-y-0.5 font-normal flex flex-col">
-                                <span className="font-medium text-gray-700">
-                                  {task.subtaskName && task.subtaskName !== task.task
-                                    ? `${task.task} -> ${task.subtaskName}`
-                                    : task.task}
-                                </span>
-                                {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
-                                  <span className="text-sm text-gray-500">
-                                    {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
-                                  </span>
-                                )}
-                              </Label>
-                            </div>
-                            <div className={`text-right text-sm font-medium shrink-0 ${isTaskOverdue(task) ? 'text-red-500' : 'text-gray-500'}`}>
-                              {isTaskOverdue(task) && <span className="text-xs font-bold mr-1">TE LAAT</span>}
-                              Gepland: {formatDate(task.nextMaintenance)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                );
-              })}
-            </Accordion>
-
-            <div className="mt-4 text-sm text-gray-600 border-t pt-3">
-              <ListChecks className="w-4 h-4 inline mr-1" /> {formatNumber(selectedTasks.length)} taken geselecteerd voor print.
-            </div>
-          </div>
-        )}
-
-        {/* Empty States */}
-        {!selectedPress && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500 mt-6">
-            Selecteer a.u.b. een pers om de checklist te genereren
-          </div>
-        )}
-
-        {(selectedPress && selectedTasks.length === 0) && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-12 text-center text-gray-500 mt-6">
-            Selecteer ten minste één taak om te printen met de lijst hierboven.
-          </div>
-        )}
+      <div className="flex items-center justify-between shrink-0">
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <ClipboardCheck className="w-6 h-6 text-indigo-600" /> Checklist Genereren
+        </h1>
       </div>
 
-      {/* Printable Content */}
-      {(selectedPress && categoriesForPrint.length > 0) && (
-        <div ref={printRef} className="print-content">
-          <style>{`
-            @media print {
-              body * {
-                visibility: hidden;
-              }
-              .print-content, .print-content * {
-                visibility: visible;
-              }
-              .print-content {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-              }
-              .no-print {
-                display: none !important;
-              }
-              @page {
-                size: A4;
-                margin: 20mm;
-              }
-              .checklist-checkbox {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #000;
-                display: inline-block;
-                margin-right: 8px;
-              }
-            }
-            `}</style>
-
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-            <div className="border-b border-gray-300 pb-4 mb-6">
-              <h1 className={`${FONT_SIZES.title} text-gray-900 mb-2`}>Onderhoud Checklist</h1>
-              {/* Removed Operator and Shift */}
-              <div className="grid grid-cols-2 gap-4 text-gray-600">
-                <div>
-                  <strong>Pers:</strong> {selectedPress}
-                </div>
-                <div>
-                  <strong>Datum:</strong> {formatDate(new Date())}
+      <div className="flex flex-row gap-6 items-start w-full h-[calc(100vh-170px)]">
+        {/* Left Panel - Configuration */}
+        <div className="flex-1 min-w-[400px] h-full">
+          <Card className="flex flex-col h-full border-indigo-100 shadow-sm overflow-hidden flex-1 shrink-0">
+            <CardHeader className="pb-4 shrink-0">
+              <CardTitle className="text-base">Checklist Informatie</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 flex-1 overflow-y-auto min-h-0 custom-scrollbar pb-6 pr-4">
+              <div className="space-y-3">
+                <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Pers Selecteren</Label>
+                <div className="flex flex-wrap gap-2">
+                  {activePresses.filter(p => p.name && p.name.trim() !== '').map((press) => (
+                    <Button
+                      key={press.id}
+                      variant={selectedPress === press.name ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setSelectedPress(press.name as PressType);
+                        setSelectedTasks([]); // Clear selection when press changes
+                      }}
+                      className={cn(
+                        "rounded-full px-4 h-8 text-xs transition-all",
+                        selectedPress === press.name ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      {press.name}
+                    </Button>
+                  ))}
                 </div>
               </div>
-              {supervisorGuidance && (
-                <div className="mt-4 p-3 border border-blue-300 bg-blue-50 text-blue-800 break-inside-avoid">
-                  <strong>Begeleiding/Opmerkingen:</strong>
-                  {/* Use whitespace-pre-wrap to preserve line breaks from Textarea */}
-                  <p className="mt-1 whitespace-pre-wrap">{supervisorGuidance}</p>
-                </div>
-              )}
-            </div>
 
-            {categoriesForPrint.map((category) => {
-              const categoryTasks = selectedTasksForPrint[category];
-              const subtext = getCategorySubtext(category);
+              <div className="space-y-3">
+                <Label htmlFor="supervisor-guidance" className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Instructies / Opmerkingen</Label>
+                <Textarea
+                  id="supervisor-guidance"
+                  placeholder="Voeg specifieke instructies, waarschuwingen of begeleiding toe voor de operator..."
+                  value={supervisorGuidance}
+                  onChange={(e) => setSupervisorGuidance(e.target.value)}
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
 
-              return (
-                <div key={category} className="mb-6 break-inside-avoid">
-                  <h2 className={`bg-gray-100 px-3 py-2 mb-3 border border-gray-300 ${FONT_SIZES.section} flex justify-between items-center`}>
-                    <span>{category}</span>
-                    {subtext && <span className="text-gray-500 text-sm font-normal italic">{subtext}</span>}
-                  </h2>
+              {selectedPress ? (
+                <div className="space-y-3 pt-4 border-t">
+                  <div className="flex justify-between items-center mb-2">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Selecteer Taken</Label>
+                    <Button
+                      variant="outline"
+                      onClick={handleAddAllOverdue}
+                      className="gap-1.5 h-7 text-[10px] px-2"
+                      title="Voeg alle taken toe waarvan de volgende datum in het verleden ligt."
+                    >
+                      <Clock className="w-3 h-3" />
+                      Alle Achterstallige (+{allPressTasks.filter(isTaskOverdue).filter(t => !selectedTasks.includes(t.id)).length})
+                    </Button>
+                  </div>
 
+                  <Accordion type="multiple" className="w-full">
+                    {allCategories.map((category) => {
+                      const categoryTasks = allTasksGrouped[category];
+                      const overdueCount = categoryTasks.filter(isTaskOverdue).length;
+                      const allSelectedInCategory = categoryTasks.every(t => selectedTasks.includes(t.id));
+                      const someSelectedInCategory = categoryTasks.some(t => selectedTasks.includes(t.id)) && !allSelectedInCategory;
 
-                  <table className={`w-full border-collapse table-fixed ${FONT_SIZES.body}`}>
-                    <thead>
-                      <tr className="border-b-2 border-gray-300">
-                        <th className="text-left py-2 px-2" style={{ width: COL_WIDTHS.check }}>☐</th>
-                        <th className="text-left py-2 px-2" style={{ width: COL_WIDTHS.task }}>Taak</th>
-                        <th className="text-center py-2 px-2" style={{ width: COL_WIDTHS.planned }}>Gepland</th>
-                        <th className="text-center py-2 px-2" style={{ width: COL_WIDTHS.last }}>Laatst</th>
-                        <th className="text-left py-2 px-2" style={{ width: COL_WIDTHS.remarks }}>Opmerkingen</th>
-                        <th className="text-left py-2 px-2" style={{ width: COL_WIDTHS.notes }}>Notities Operator</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categoryTasks.map((task) => (
-                        <tr key={task.id} className="border-b border-gray-200">
-                          <td className="py-3 px-2 align-top text-center" style={{ width: COL_WIDTHS.check }}>
-                            <div className="checklist-checkbox"></div>
-                          </td>
-                          <td className="py-3 px-2 align-top" style={{ width: COL_WIDTHS.task }}>
-                            <div>
-                              <div className="mb-1 font-medium">
-                                {task.subtaskName && task.subtaskName !== task.task
-                                  ? `${task.task} -> ${task.subtaskName}`
-                                  : task.task}
+                      return (
+                        <AccordionItem key={category} value={category} className="border border-slate-200 rounded-lg mb-2 overflow-hidden px-1">
+                          <AccordionTrigger className="font-bold py-2 px-3 hover:no-underline hover:bg-slate-50 [&[data-state=open]]:bg-slate-50 rounded-md transition-colors">
+                            <div className="flex justify-between w-full items-center mr-2">
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={allSelectedInCategory ? true : someSelectedInCategory ? "indeterminate" : false}
+                                  onCheckedChange={(c) => handleToggleCategory(category, c === true)}
+                                />
+                                <span className="text-sm">{category}</span>
+                                <span className="text-slate-400 font-normal text-xs">({formatNumber(categoryTasks.length)})</span>
                               </div>
-                              {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
-                                <div className={`text-gray-600 ${FONT_SIZES.label}`}>
-                                  {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
-                                </div>
+                              {overdueCount > 0 && (
+                                <Badge variant="outline" className="bg-red-50 text-red-600 border-transparent text-[9px] px-1.5 h-4 ml-4 font-bold flex gap-1 items-center">
+                                  {formatNumber(overdueCount)} Te laat
+                                </Badge>
                               )}
                             </div>
-                          </td>
-                          <td className="py-3 px-2 text-gray-600 align-top text-center" style={{ width: COL_WIDTHS.planned }}>
-                            {formatDate(task.nextMaintenance)}
-                          </td>
-                          <td className="py-3 px-2 text-gray-600 align-top text-center" style={{ width: COL_WIDTHS.last }}>
-                            {formatDate(task.lastMaintenance)}
-                          </td>
-                          <td className={`py-3 px-2 text-gray-600 align-top italic ${FONT_SIZES.body}`} style={{ width: COL_WIDTHS.remarks }}>
-                            {(task as any).remarks || '-'}
-                          </td>
-                          <td className="py-3 px-2 align-top" style={{ width: COL_WIDTHS.notes }}>
-                            <div className="border-b border-gray-300 h-6"></div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </AccordionTrigger>
+                          <AccordionContent className="pb-2 px-3">
+                            <div className="space-y-1.5 pt-2">
+                              {categoryTasks.map((task) => (
+                                <div key={task.id} className={cn(
+                                  "flex items-start justify-between p-2 border rounded-md transition-colors",
+                                  selectedTasks.includes(task.id) ? "bg-indigo-50/50 border-indigo-100" : "hover:bg-slate-50 border-transparent"
+                                )}>
+                                  <div className="flex items-start gap-2.5">
+                                    <Checkbox
+                                      id={`task-${task.id}`}
+                                      checked={selectedTasks.includes(task.id)}
+                                      onCheckedChange={(checked) => handleToggleTask(task.id, Boolean(checked))}
+                                      className="mt-0.5"
+                                    />
+                                    <Label htmlFor={`task-${task.id}`} className="cursor-pointer space-y-0.5 font-normal flex flex-col pt-0.5">
+                                      <span className="font-medium text-slate-700 text-xs">
+                                        {task.subtaskName && task.subtaskName !== task.task
+                                          ? `${task.task} -> ${task.subtaskName}`
+                                          : task.task}
+                                      </span>
+                                      {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
+                                        <span className="text-[10px] text-slate-500 line-clamp-1 pr-2">
+                                          {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
+                                        </span>
+                                      )}
+                                    </Label>
+                                  </div>
+                                  <div className={`text-right text-[10px] whitespace-nowrap pt-0.5 font-medium shrink-0 ${isTaskOverdue(task) ? 'text-red-500' : 'text-slate-400'}`}>
+                                    {isTaskOverdue(task) && <span className="font-bold mr-1 uppercase tracking-wider">Te Laat</span>}
+                                    {formatDate(task.nextMaintenance)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
                 </div>
-              );
-            })}
+              ) : (
+                <div className="pt-4 flex flex-col items-center justify-center p-8 text-center border-t border-dashed h-40">
+                  <Factory className="w-10 h-10 text-slate-200 mb-2" />
+                  <p className="text-sm text-slate-500">Selecteer eerst een pers om taken te kiezen</p>
+                </div>
+              )}
 
-            <div className="mt-8 pt-4 border-t border-gray-300">
-              {/* Retained signature boxes for manual sign-off */}
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <p className="mb-2"><strong>Handtekening Operator:</strong></p>
-                  <div className="border-b-2 border-gray-400 h-8"></div>
-                </div>
-                <div>
-                  <p className="mb-2"><strong>Handtekening Supervisor:</strong></p>
-                  <div className="border-b-2 border-gray-400 h-8"></div>
-                </div>
+              <div className="pt-4 border-t mt-4">
+                <Button variant="ghost" size="sm" onClick={() => setIsAdvancedOpen(!isAdvancedOpen)} className="w-full justify-between h-8 text-[10px] font-bold uppercase text-slate-400">
+                  <span>Extra PDF Opties</span>
+                  <ChevronRight className={cn("w-3 h-3 transition-transform", isAdvancedOpen && "rotate-90")} />
+                </Button>
+                {isAdvancedOpen && (
+                  <div className="grid grid-cols-3 gap-2 mt-2 p-2 bg-slate-50 rounded border animate-in fade-in duration-200">
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Font</Label><Input type="number" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge H</Label><Input type="number" value={marginH} onChange={e => setMarginH(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                    <div className="space-y-1"><Label className="text-[9px] uppercase">Marge V</Label><Input type="number" value={marginV} onChange={e => setMarginV(Number(e.target.value))} className="h-7 text-[10px]" /></div>
+                  </div>
+                )}
               </div>
-            </div>
+            </CardContent>
+
+            <CardFooter className="flex flex-col gap-2 pt-4 border-t bg-slate-50/50 shrink-0">
+              {selectedPress && checklistPdfTasks.length > 0 ? (
+                <PDFDownloadLink
+                  document={
+                    <ChecklistPDF
+                      pressName={selectedPress}
+                      tasks={checklistPdfTasks}
+                      supervisorGuidance={supervisorGuidance}
+                      categorySubtexts={pdfCategorySubtexts}
+                      fontSize={fontSize}
+                      marginH={marginH}
+                      marginV={marginV}
+                    />
+                  }
+                  fileName={`checklist-${selectedPress.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`}
+                  className="w-full"
+                >
+                  {({ loading }) => (
+                    <Button className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2" disabled={loading}>
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {loading ? 'Document genereren...' : `Download PDF (${checklistPdfTasks.length} taken)`}
+                    </Button>
+                  )}
+                </PDFDownloadLink>
+              ) : (
+                <Button disabled className="w-full h-10 font-bold gap-2">
+                  <Download className="w-4 h-4" /> Download PDF
+                </Button>
+              )}
+            </CardFooter>
+          </Card>
+        </div>
+
+        {/* Right Panel - Live Preview */}
+        <div className="h-full shrink-0 flex justify-center bg-transparent">
+          <div className="relative h-full bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-sm flex items-center justify-center" style={{ aspectRatio: '1 / 1.414' }}>
+            {selectedPress && checklistPdfTasks.length > 0 ? (
+              <PDFViewer width="100%" height="100%" className="border-none">
+                <ChecklistPDF
+                  pressName={selectedPress}
+                  tasks={checklistPdfTasks}
+                  supervisorGuidance={supervisorGuidance}
+                  categorySubtexts={pdfCategorySubtexts}
+                  fontSize={fontSize}
+                  marginH={marginH}
+                  marginV={marginV}
+                />
+              </PDFViewer>
+            ) : (
+              <div className="text-center p-8">
+                <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm text-slate-400 font-medium">Selecteer een pers en ten minste één taak om de preview te bekijken.</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+// Ensure Factory is imported
+import { Factory } from 'lucide-react';
+import { Badge } from './ui/badge';

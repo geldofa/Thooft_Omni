@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MaintenanceTask, Operator, Ploeg, ExternalEntity } from './AuthContext';
-import { useAuth, pb } from './AuthContext';
+import { MaintenanceTask, Operator, Ploeg, ExternalEntity } from '../AuthContext';
+import { useAuth, pb } from '../AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -8,13 +8,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Calendar } from './ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Checkbox } from './ui/checkbox';
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
+import { Calendar } from '../ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Checkbox } from '../ui/checkbox';
 import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 

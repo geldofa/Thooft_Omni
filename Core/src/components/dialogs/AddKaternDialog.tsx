@@ -6,13 +6,13 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Checkbox } from './ui/checkbox';
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
-import { Katern } from '../utils/drukwerken-utils';
+import { Katern } from '../../utils/drukwerken-utils';
 
 interface AddKaternDialogProps {
     open: boolean;

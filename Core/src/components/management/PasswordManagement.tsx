@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAuth, UserAccount, UserRole, PressType, pb, Press } from './AuthContext';
+import { useAuth, UserAccount, UserRole, PressType, pb, Press } from '../AuthContext';
 import {
   Table,
   TableBody,
@@ -7,13 +7,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from './ui/table';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Badge } from './ui/badge';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
 import { Key, Plus, Pencil, Trash2 } from 'lucide-react';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from '../layout/PageHeader';
 import {
   Dialog,
   DialogContent,
@@ -21,14 +21,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
+} from '../ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
+} from '../ui/select';
 import { toast } from 'sonner';
 
 export function PasswordManagement() {

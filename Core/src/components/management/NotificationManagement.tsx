@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
-import { Card } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Separator } from './ui/separator';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { PageHeader } from './PageHeader';
-import { EmailTemplateEditor } from './EmailTemplateEditor';
-import { pb } from './AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Separator } from '../ui/separator';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { PageHeader } from '../layout/PageHeader';
+import { EmailTemplateEditor } from '../EmailTemplateEditor';
+import { pb, useAuth } from '../AuthContext';
 import { toast } from 'sonner';
 import {
     Bell, Mail, Send, Smartphone, Server, Save, Loader2, AtSign, Lock, User, Globe, Hash, ChevronLeft, Settings
@@ -25,7 +25,12 @@ interface SmtpConfig {
 }
 
 export function NotificationManagement() {
+    const { hasPermission } = useAuth();
     // ── Tab State ─────────────────────────────────────────────────────────────
+
+    if (!hasPermission('manage_notifications')) {
+        return <div className="p-8 text-center text-gray-500 text-sm italic">Geen toegang tot notificatie beheer.</div>;
+    }
     const [activeTab, setActiveTab] = useState('email');
 
     // ── SMTP Config State ─────────────────────────────────────────────────────
@@ -38,6 +43,32 @@ export function NotificationManagement() {
         password: '',
     });
     const [isSavingSmtp, setIsSavingSmtp] = useState(false);
+    const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+
+    const fetchConfig = useCallback(async () => {
+        setIsLoadingConfig(true);
+        try {
+            const config = await pb.send('/api/mail/config', { method: 'GET' });
+            if (config) {
+                setSmtpConfig({
+                    senderName: config.senderName || 'Thooft Omni',
+                    senderAddress: config.senderAddress || '',
+                    host: config.host || '',
+                    port: config.port || '587',
+                    username: config.username || '',
+                    password: config.password || '',
+                });
+            }
+        } catch (err) {
+            console.error('Failed to fetch SMTP config:', err);
+        } finally {
+            setIsLoadingConfig(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchConfig();
+    }, [fetchConfig]);
 
     // ── Test Email State ──────────────────────────────────────────────────────
     const [testEmail, setTestEmail] = useState('');
@@ -159,8 +190,11 @@ export function NotificationManagement() {
                                     <div className="space-y-4 pt-2">
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="grid gap-1.5">
-                                                <Label htmlFor="smtp-senderName" className="text-xs font-medium text-gray-600 flex items-center gap-1.5"><User className="w-3 h-3" /> Afzendernaam</Label>
-                                                <Input id="smtp-senderName" value={smtpConfig.senderName} onChange={(e) => updateSmtp('senderName', e.target.value)} placeholder="Thooft Omni" className="h-9" />
+                                                <Label htmlFor="smtp-senderName" className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                                                    <User className="w-3 h-3" /> Afzendernaam
+                                                    {isLoadingConfig && <Loader2 className="w-3 h-3 animate-spin ml-2" />}
+                                                </Label>
+                                                <Input id="smtp-senderName" value={smtpConfig.senderName} onChange={(e) => updateSmtp('senderName', e.target.value)} placeholder="Thooft Omni" className="h-9" disabled={isLoadingConfig} />
                                             </div>
                                             <div className="grid gap-1.5">
                                                 <Label htmlFor="smtp-senderAddress" className="text-xs font-medium text-gray-600 flex items-center gap-1.5"><AtSign className="w-3 h-3" /> Afzenderadres</Label>

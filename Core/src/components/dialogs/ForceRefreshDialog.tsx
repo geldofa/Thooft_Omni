@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
-import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
+import { Button } from '../ui/button';
 import { RefreshCw, AlertTriangle, GitCommit, Rocket } from 'lucide-react';
-import { useAuth } from './AuthContext';
+import { useAuth } from '../AuthContext';
 
 export function ForceRefreshDialog() {
     const { refreshTriggeredAt, recentCommits, fetchRecentCommits, appStartTime } = useAuth();

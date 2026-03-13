@@ -1,21 +1,21 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { pb, useAuth } from './AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Checkbox } from './ui/checkbox';
-import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
+import { pb, useAuth } from '../AuthContext';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Checkbox } from '../ui/checkbox';
+import { Badge } from '../ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Calculator, Plus, Edit, Trash2, Settings2, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { ConfirmationModal } from './ui/ConfirmationModal';
-import { FormattedNumberInput } from './ui/FormattedNumberInput';
-import { PageHeader } from './PageHeader';
-import { formatNumber } from '../utils/formatNumber';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
+import { FormattedNumberInput } from '../ui/FormattedNumberInput';
+import { PageHeader } from '../layout/PageHeader';
+import { formatNumber } from '../../utils/formatNumber';
 import {
     finishedFields,
     parameterFields,
@@ -23,7 +23,7 @@ import {
     evaluateFormula,
     CalculatedField,
     FinishedPrintJob
-} from '../utils/drukwerken-utils';
+} from '../../utils/drukwerken-utils';
 
 interface Press {
     id: string;

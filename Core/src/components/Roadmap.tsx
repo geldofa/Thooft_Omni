@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth, pb, FeedbackItem } from './AuthContext';
-import { PageHeader } from './PageHeader';
+import { PageHeader } from './layout/PageHeader';
 import { Rocket, Loader2, Check, Calendar, Bug, Construction, MessageSquare, Plus, Edit, Archive, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { FeedbackDialog } from './FeedbackDialog';
+import { FeedbackDialog } from './dialogs/FeedbackDialog';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import {
     Table,
@@ -49,7 +49,7 @@ const COL_WIDTHS = {
     user: '140px',
 };
 
-export function RoadmapV2() {
+export function Roadmap() {
     const { user, hasPermission } = useAuth();
     const [items, setItems] = useState<FeedbackItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -73,7 +73,7 @@ export function RoadmapV2() {
                 await pb.collection('feedback').subscribe('*', () => loadData());
                 isSubscribed = true;
             } catch (err) {
-                console.error("RoadmapV2 feedback subscription failed:", err);
+                console.error("Roadmap feedback subscription failed:", err);
             }
         };
         subscribe();
