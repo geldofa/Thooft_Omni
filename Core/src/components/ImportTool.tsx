@@ -31,6 +31,7 @@ import {
 } from './ui/tooltip';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { parseEuropeanDate, formatDisplayDate } from '../utils/dateUtils';
 
 interface MappingTarget {
     id: string;
@@ -270,18 +271,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
     };
 
     const parseImportDate = (val: any): Date | null => {
-        if (!val) return null;
-        const str = val.toString().trim();
-        const ddmmyyyy = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-        if (ddmmyyyy) {
-            return new Date(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]));
-        }
-        const yyyymmdd = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-        if (yyyymmdd) {
-            return new Date(parseInt(yyyymmdd[1]), parseInt(yyyymmdd[2]) - 1, parseInt(yyyymmdd[3]));
-        }
-        const d = new Date(str);
-        return isNaN(d.getTime()) ? null : d;
+        return parseEuropeanDate(val);
     };
 
     const [resolutions, setResolutions] = useState<{
@@ -1591,9 +1581,9 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                         const isMatched = isAutoMatched || isManuallyMatched;
                                         const matchedRecId = combinedMatches[row.originalIndex];
                                         const matchedRec = matchedRecId ? existingRecordsMap.get(matchedRecId) : null;
-                                        const existingDate = matchedRec?.last_date ? new Date(matchedRec.last_date).toLocaleDateString('nl-BE') : '—';
+                                        const existingDate = matchedRec?.last_date ? formatDisplayDate(new Date(matchedRec.last_date)) : '—';
                                         const parsedImportDate = parseImportDate(row.importedLastDate);
-                                        const importDate = parsedImportDate ? parsedImportDate.toLocaleDateString('nl-BE') : '—';
+                                        const importDate = parsedImportDate ? formatDisplayDate(parsedImportDate) : '—';
 
                                         const existingOpsList = matchedRec?.expand?.assigned_operator?.map((o: any) => o.naam) || [];
                                         const existingOps = existingOpsList.length > 0 ? existingOpsList.join(', ') : '—';
@@ -1726,9 +1716,9 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                                     .map(row => {
                                                         const matchedRecId = combinedMatches[row.originalIndex];
                                                         const matchedRec = matchedRecId ? existingRecordsMap.get(matchedRecId) : null;
-                                                        const existingDate = matchedRec?.last_date ? new Date(matchedRec.last_date).toLocaleDateString('nl-BE') : '—';
+                                                        const existingDate = matchedRec?.last_date ? formatDisplayDate(new Date(matchedRec.last_date)) : '—';
                                                         const parsedImportDate = parseImportDate(row.importedLastDate);
-                                                        const importDate = parsedImportDate ? parsedImportDate.toLocaleDateString('nl-BE') : '—';
+                                                        const importDate = parsedImportDate ? formatDisplayDate(parsedImportDate) : '—';
 
                                                         return (
                                                             <TableRow key={row.originalIndex} className="bg-gray-50/50 opacity-60">
@@ -1989,7 +1979,7 @@ export function ImportTool({ onComplete, minimal = false, initialFile, onStepCha
                                             <TableCell className="whitespace-nowrap">{row.categoryName}</TableCell>
                                             <TableCell className="whitespace-nowrap">{row.maintenanceInterval} {row.maintenanceIntervalUnit}</TableCell>
                                             <TableCell className="whitespace-nowrap tabular-nums">
-                                                {row.lastMaintenance ? row.lastMaintenance.toLocaleDateString() : '-'}
+                                                {row.lastMaintenance ? formatDisplayDate(row.lastMaintenance) : '-'}
                                             </TableCell>
                                             <TableCell className="text-sm text-gray-600">
                                                 {row.assignedTo || <span className="text-gray-300 italic">Geen</span>}

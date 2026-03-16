@@ -12,6 +12,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown } from 'lucide-react';
+import { cn } from './ui/utils';
 import { TableVirtuoso } from 'react-virtuoso';
 import { formatNumber } from '../utils/formatNumber';
 import { format, differenceInDays } from 'date-fns';
@@ -29,6 +30,7 @@ import {
     FinishedPrintJob,
     CalculatedField
 } from '../utils/drukwerken-utils';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface Press {
     id: string;
@@ -1705,7 +1707,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black sticky top-0 z-40">Prestatie</TableHead>
                                                     <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
                                                 </TableRow>
-                                                <TableRow className="border-b border-black sticky top-[40px] z-40 bg-white shadow-sm h-10">
+                                                <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm h-10">
                                                     <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">Version</TableHead>
                                                     <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Pagina's</TableHead>
                                                     <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
@@ -1934,14 +1936,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black bg-white"></TableHead>
                                             </TableRow>
                                             <TableRow className="border-b border-black bg-white shadow-sm h-10">
-                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r">Pers</TableHead>}
-                                                <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Pagina's {getSortIcon('pages')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center border-r leading-3 bg-white"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r bg-white"><div className="flex items-center justify-center">Oplage {getSortIcon('netRun')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('startup')} style={{ width: COL_WIDTHS.startup }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border-r"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
+                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-slate-300">Pers</TableHead>}
+                                                <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r border-slate-300 bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Pagina's {getSortIcon('pages')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 leading-3 bg-white"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Oplage {getSortIcon('netRun')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('startup')} style={{ width: COL_WIDTHS.startup }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border-r border-slate-300"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
                                                 <TableHead style={{ width: COL_WIDTHS.c4_4 }} className="px-1 text-center bg-gray-50 border-r">4/4</TableHead>
                                                 <TableHead style={{ width: COL_WIDTHS.c4_0 }} className="px-1 text-center bg-gray-50 border-r">4/0</TableHead>
                                                 <TableHead style={{ width: COL_WIDTHS.c1_0 }} className="px-1 text-center bg-gray-50 border-r">1/0</TableHead>
@@ -2004,163 +2006,168 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             </TableRow>
                                         </>
                                     )}
-                                    itemContent={(_index, job) => (
-                                        <>
-                                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                                                <TableCell className="py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70" title={job.pressName}>
-                                                    {job.pressName || '-'}
+                                    itemContent={(index, job) => {
+                                        const prevJob = index > 0 ? sortedJobs[index - 1] : null;
+                                        const isDateChange = prevJob && job.date !== prevJob.date;
+                                        const borderClass = isDateChange ? "border-t border-t-slate-400" : "border-t border-t-gray-100";
+
+                                        return (
+                                            <>
+                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                                    <TableCell className={cn("py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70", borderClass)} title={job.pressName}>
+                                                        {job.pressName || '-'}
+                                                    </TableCell>
+                                                )}
+                                                <TableCell className={cn("py-1 px-2 text-center", borderClass)}>{formatDisplayDate(job.date)}</TableCell>
+                                                <TableCell className={cn("py-1 px-2 text-center", borderClass)}>DT {job.orderNr}</TableCell>
+                                                <TableCell className={cn("py-1 px-2", borderClass)}>
+                                                    <span className="font-medium mr-2">{job.orderName}</span>
+                                                    <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
                                                 </TableCell>
-                                            )}
-                                            <TableCell className="py-1 px-2 text-center">{job.date}</TableCell>
-                                            <TableCell className="py-1 px-2 text-center">DT {job.orderNr}</TableCell>
-                                            <TableCell className="py-1 px-2">
-                                                <span className="font-medium mr-2">{job.orderName}</span>
-                                                <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1">{formatNumber(job.pages)} blz</TableCell>
-                                            <TableCell className="text-center py-1 px-1">{job.exOmw}</TableCell>
-                                            <TableCell className="text-right py-1 px-1 border-r border-black">{formatNumber(job.netRun)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">
-                                                <div className="flex justify-center">
-                                                    {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_4)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c4_0)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_0)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50">{formatNumber(job.c1_1)}</TableCell>
-                                            <TableCell className="text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70">{formatNumber(job.c4_1)}</TableCell>
-                                            <TableCell className="py-1 px-1 text-right">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('maxGross');
-                                                    return (
-                                                        <FormulaResultWithTooltip
-                                                            formula={formula?.formula || ''}
-                                                            job={job as any}
-                                                            variant="maxGross"
-                                                            parameters={parameters}
-                                                            activePresses={activePresses}
-                                                            result={Number(job.maxGross)}
-                                                            outputConversions={outputConversions}
-                                                            pressMap={pressMap}
-                                                        />
-                                                    );
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 text-right">
-                                                {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
-                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
-                                                    const cycles = Number(job.green) || 0;
-                                                    const units = cycles * divider;
-                                                    return (
-                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
-                                                            {divider > 1 && (
-                                                                <div className="flex items-center mb-0.5">
-                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
-                                                                </div>
-                                                            )}
-                                                            <div className="flex items-center py-1">
-                                                                <span className="font-bold leading-none">{formatNumber(units)}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 text-right border-r border-black">
-                                                {(() => {
-                                                    const pressId = pressMap[job.pressName || ''] || '';
-                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
-                                                    const cycles = Number(job.red) || 0;
-                                                    const units = cycles * divider;
-                                                    return (
-                                                        <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
-                                                            {divider > 1 && (
-                                                                <div className="flex items-center mb-0.5">
-                                                                    <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
-                                                                </div>
-                                                            )}
-                                                            <div className="flex items-center py-1">
-                                                                <span className="font-bold leading-none">{formatNumber(units)}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1">
-                                                {(() => {
-                                                    const formula = getFormulaForColumn('delta_number');
-                                                    const delta = Number(job.delta_number) || 0;
-
-                                                    return formula
-                                                        ? (
-                                                            <FormulaResultWithTooltip
-                                                                formula={formula.formula}
-                                                                job={job}
-                                                                parameters={parameters}
-                                                                activePresses={activePresses}
-                                                                variant="delta"
-                                                                result={delta}
-                                                                outputConversions={outputConversions}
-                                                                pressMap={pressMap}
-                                                            />
-                                                        ) : (
-                                                            <div className={`flex flex-col items-end min-h-[36px] justify-center`}>
-                                                                <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
-                                                            </div>
-                                                        );
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="text-right py-1 px-1 border-r border-black">
-                                                {(() => {
-                                                    const f = getFormulaForColumn('delta_percentage');
-                                                    if (f) {
-                                                        return (
-                                                            <FormulaResultWithTooltip
-                                                                formula={f.formula}
-                                                                job={job}
-                                                                parameters={parameters}
-                                                                activePresses={activePresses}
-                                                                decimals={2}
-                                                                result={(Number(job.delta_percentage) || 0) * 100}
-                                                                outputConversions={outputConversions}
-                                                                pressMap={pressMap}
-                                                                suffix="%"
-                                                                hideTooltip={true}
-                                                            />
-                                                        );
-                                                    }
-                                                    return `${formatNumber((Number(job.delta_percentage) || 0) * 100, 2)}%`;
-                                                })()}
-                                            </TableCell>
-                                            <TableCell className="py-1 px-1 border-r border-black">
-                                                <div className="flex gap-1 justify-center">
+                                                <TableCell className={cn("text-right py-1 px-1", borderClass)}>{formatNumber(job.pages)} blz</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1", borderClass)}>{job.exOmw}</TableCell>
+                                                <TableCell className={cn("text-right py-1 px-1 border-r border-black", borderClass)}>{formatNumber(job.netRun)}</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50", borderClass)}>
+                                                    <div className="flex justify-center">
+                                                        {job.startup ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">-</span>}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50", borderClass)}>{formatNumber(job.c4_4)}</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50", borderClass)}>{formatNumber(job.c4_0)}</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50", borderClass)}>{formatNumber(job.c1_0)}</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50", borderClass)}>{formatNumber(job.c1_1)}</TableCell>
+                                                <TableCell className={cn("text-center py-1 px-1 bg-gray-50 border-r border-black group-hover:bg-blue-50/70", borderClass)}>{formatNumber(job.c4_1)}</TableCell>
+                                                <TableCell className={cn("py-1 px-1 text-right", borderClass)}>
                                                     {(() => {
-                                                        const editLimit = getSystemSetting('drukwerken_edit_limit', 1);
-                                                        const referenceDate = job.date || job.created;
-                                                        const isWithinEditLimit = referenceDate ? differenceInDays(new Date(), new Date(referenceDate)) < Number(editLimit) : true;
-                                                        const canEdit = user?.role === 'admin' || user?.role === 'meestergast' || (user?.role === 'press' && isWithinEditLimit);
-
-                                                        if (!canEdit) return null;
-
+                                                        const formula = getFormulaForColumn('maxGross');
                                                         return (
-                                                            <>
-                                                                <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
-                                                                    <Edit className="w-3 h-3" />
-                                                                </Button>
-                                                                {(user?.role === 'admin' || user?.role === 'meestergast') && (
-                                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-red-100 text-red-500" onClick={() => requestDeleteJob(job.id)}>
-                                                                        <Trash2 className="w-3 h-3" />
-                                                                    </Button>
-                                                                )}
-                                                            </>
+                                                            <FormulaResultWithTooltip
+                                                                formula={formula?.formula || ''}
+                                                                job={job as any}
+                                                                variant="maxGross"
+                                                                parameters={parameters}
+                                                                activePresses={activePresses}
+                                                                result={Number(job.maxGross)}
+                                                                outputConversions={outputConversions}
+                                                                pressMap={pressMap}
+                                                            />
                                                         );
                                                     })()}
-                                                </div>
-                                            </TableCell>
-                                        </>
-                                    )
-                                    }
+                                                </TableCell>
+                                                <TableCell className={cn("py-1 px-1 text-right", borderClass)}>
+                                                    {(() => {
+                                                        const pressId = pressMap[job.pressName || ''] || '';
+                                                        const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                        const cycles = Number(job.green) || 0;
+                                                        const units = cycles * divider;
+                                                        return (
+                                                            <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                                {divider > 1 && (
+                                                                    <div className="flex items-center mb-0.5">
+                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex items-center py-1">
+                                                                    <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell className={cn("py-1 px-1 text-right border-r border-black", borderClass)}>
+                                                    {(() => {
+                                                        const pressId = pressMap[job.pressName || ''] || '';
+                                                        const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                        const cycles = Number(job.red) || 0;
+                                                        const units = cycles * divider;
+                                                        return (
+                                                            <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
+                                                                {divider > 1 && (
+                                                                    <div className="flex items-center mb-0.5">
+                                                                        <span className="text-[9px] text-gray-400 leading-none">{formatNumber(cycles)} ingegeven</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex items-center py-1">
+                                                                    <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell className={cn("text-right py-1 px-1", borderClass)}>
+                                                    {(() => {
+                                                        const formula = getFormulaForColumn('delta_number');
+                                                        const delta = Number(job.delta_number) || 0;
+
+                                                        return formula
+                                                            ? (
+                                                                <FormulaResultWithTooltip
+                                                                    formula={formula.formula}
+                                                                    job={job}
+                                                                    parameters={parameters}
+                                                                    activePresses={activePresses}
+                                                                    variant="delta"
+                                                                    result={delta}
+                                                                    outputConversions={outputConversions}
+                                                                    pressMap={pressMap}
+                                                                />
+                                                            ) : (
+                                                                <div className={`flex flex-col items-end min-h-[36px] justify-center`}>
+                                                                    <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
+                                                                </div>
+                                                            );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell className={cn("text-right py-1 px-1 border-r border-black", borderClass)}>
+                                                    {(() => {
+                                                        const f = getFormulaForColumn('delta_percentage');
+                                                        if (f) {
+                                                            return (
+                                                                <FormulaResultWithTooltip
+                                                                    formula={f.formula}
+                                                                    job={job}
+                                                                    parameters={parameters}
+                                                                    activePresses={activePresses}
+                                                                    decimals={2}
+                                                                    result={(Number(job.delta_percentage) || 0) * 100}
+                                                                    outputConversions={outputConversions}
+                                                                    pressMap={pressMap}
+                                                                    suffix="%"
+                                                                    hideTooltip={true}
+                                                                />
+                                                            );
+                                                        }
+                                                        return `${formatNumber((Number(job.delta_percentage) || 0) * 100, 2)}%`;
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell className={cn("py-1 px-1 border-r border-black", borderClass)}>
+                                                    <div className="flex gap-1 justify-center">
+                                                        {(() => {
+                                                            const editLimit = getSystemSetting('drukwerken_edit_limit', 1);
+                                                            const referenceDate = job.date || job.created;
+                                                            const isWithinEditLimit = referenceDate ? differenceInDays(new Date(), new Date(referenceDate)) < Number(editLimit) : true;
+                                                            const canEdit = user?.role === 'admin' || user?.role === 'meestergast' || (user?.role === 'press' && isWithinEditLimit);
+
+                                                            if (!canEdit) return null;
+
+                                                            return (
+                                                                <>
+                                                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100 text-blue-600" onClick={() => handleEditJob(job)}>
+                                                                        <Edit className="w-3 h-3" />
+                                                                    </Button>
+                                                                    {(user?.role === 'admin' || user?.role === 'meestergast') && (
+                                                                        <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-red-100 text-red-500" onClick={() => requestDeleteJob(job.id)}>
+                                                                            <Trash2 className="w-3 h-3" />
+                                                                        </Button>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </TableCell>
+                                            </>
+                                        );
+                                    }}
                                     components={{
                                         Table: ({ style, ...props }: any) => (
                                             <table
@@ -2192,7 +2199,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 {props.children}
                                             </table>
                                         ),
-                                        TableRow: (props: any) => <tr {...props} className="h-8 hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group border-b border-gray-100" />
+                                        TableRow: (props: any) => <tr {...props} className="h-8 hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group" />
                                     }}
                                 />
                             </CardContent>

@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { cn } from './ui/utils';
 import { generatePresetReport } from '../utils/generateReport';
 import { format } from 'date-fns';
+import { formatDisplayDateTime } from '../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -284,13 +285,13 @@ export function SystemTasks() {
                                             </TableCell>
                                             <TableCell>
                                                 {task.lastRun
-                                                    ? <span className="text-xs text-slate-600">{task.lastRun.toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                                    ? <span className="text-xs text-slate-600">{formatDisplayDateTime(task.lastRun)}</span>
                                                     : <span className="text-xs text-slate-400 italic">Nog niet uitgevoerd</span>
                                                 }
                                             </TableCell>
                                             <TableCell>
                                                 {task.nextRun
-                                                    ? <span className="text-xs font-bold text-indigo-600">{task.nextRun.toLocaleString('nl-NL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                                    ? <span className="text-xs font-bold text-indigo-600">{task.nextRun.toLocaleDateString('nl-BE', { weekday: 'long' })} {formatDisplayDateTime(task.nextRun)}</span>
                                                     : <span className="text-xs text-slate-400 italic">—</span>
                                                 }
                                             </TableCell>

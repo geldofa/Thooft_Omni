@@ -20,6 +20,7 @@ import {
 import { MaintenanceReportPDF, type MaintenanceTask, type ColumnDef } from '../components/pdf/MaintenanceReportPDF';
 import { pb } from '../lib/pocketbase';
 import { getStatusInfo } from './StatusUtils';
+import { formatDisplayDate } from './dateUtils';
 
 // ─── Types (re-exported for consumers) ──────────────────────────────────────
 
@@ -94,11 +95,6 @@ function formatInterval(val: number, unit: string) {
   return `${val} ${unit}`;
 }
 
-function formatDateNL(dateStr: string | null) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
 
 export function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
   if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
@@ -177,7 +173,7 @@ export async function generatePresetReport(
       parentTask: r.task || '-',
       taskName: r.subtask || r.task || '-',
       interval: formatInterval(r.interval || 0, r.interval_unit || 'Dagen'),
-      completedOn: formatDateNL(r.last_date),
+      completedOn: formatDisplayDate(r.last_date),
       executedBy: exBy,
       note: r.opmerkingen || '',
       statusKey: getStatusInfo(nDate).key,
@@ -198,7 +194,7 @@ export async function generatePresetReport(
       selectedPress={s.selectedPress}
       selectedPeriod={s.selectedPeriod}
       selectedStatus={s.selectedStatus}
-      generatedAt={new Date().toLocaleDateString('nl-NL')}
+      generatedAt={formatDisplayDate(new Date())}
       columns={visibleColumns}
       fontSize={s.fontSize || 9}
       marginH={s.marginH || 30}

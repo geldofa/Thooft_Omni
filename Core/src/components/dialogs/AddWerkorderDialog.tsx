@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Werkorder } from '../Drukwerken';
+import { formatDisplayDate } from '../../utils/dateUtils';
 
 interface AddWerkorderDialogProps {
     open: boolean;
@@ -69,11 +70,7 @@ export function AddWerkorderDialog({
 
     const formatDate = (date: string | null) => {
         if (!date) return 'Kies een datum';
-        return new Date(date).toLocaleDateString('nl-BE', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
+        return formatDisplayDate(date);
     };
 
     return (

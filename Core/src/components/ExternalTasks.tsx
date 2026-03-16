@@ -20,8 +20,9 @@ interface ExternalTasksProps {
 
 // --- Helpers ---
 // --- Helpers ---
+import { formatDisplayDate } from '../utils/dateUtils';
 const formatDate = (date: Date) => {
-    return date.toLocaleDateString('nl-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return formatDisplayDate(date);
 };
 
 const getRelativeTimeString = (date: Date) => {

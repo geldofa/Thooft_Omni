@@ -103,6 +103,7 @@ class DrukwerkenCacheService {
     }
 
     async getIdsFromCache(user?: any, hasPermission?: (perm: any) => boolean) {
+        // Use descending order for date to show newest first by default in the UI
         let jobs = await db.jobs.orderBy('date').reverse().toArray();
 
         // Filter by press if user doesn't have view_all permission
@@ -110,9 +111,9 @@ class DrukwerkenCacheService {
             jobs = jobs.filter(job => job.pressId === user.pressId);
         }
 
-        // Secondary sort by created
+        // Secondary sort by created (newest first)
         jobs.sort((a, b) => {
-            if (a.date !== b.date) return 0; // Already sorted by date
+            if (a.date !== b.date) return 0; // Already sorted by date (desc)
             const timeA = a.created || '';
             const timeB = b.created || '';
             return timeB.localeCompare(timeA); // Newest first
@@ -179,7 +180,7 @@ class DrukwerkenCacheService {
             this.notifyStatus({ statusText: `Loading data (page ${page})...` });
 
             const result = await pb.collection('drukwerken').getList(page, pageSize, {
-                sort: '-date,-created',
+                sort: 'date,created',
                 expand: 'pers',
                 filter: filter
             });

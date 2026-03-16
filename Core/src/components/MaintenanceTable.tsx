@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { formatNumber } from '../utils/formatNumber';
 import { getStatusInfo } from '../utils/StatusUtils';
+import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateUtils';
 
 // --- CONFIGURATION CONSTANTS ---
 // EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
@@ -176,23 +177,11 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
   });
 
   const formatDate = (date: Date | null) => {
-    if (!date) return 'N.v.t.';
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
+    return formatDisplayDate(date);
   };
 
   const formatDateTime = (date: Date | null) => {
-    if (!date) return 'N.v.t.';
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return formatDisplayDateTime(date);
   };
 
   const formatInterval = (interval: number, unit: 'days' | 'weeks' | 'months' | 'years') => {

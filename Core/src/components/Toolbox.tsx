@@ -11,6 +11,7 @@ import { Input } from './ui/input';
 import { PageHeader } from './layout/PageHeader';
 import { Settings, Upload, Wrench, Database } from 'lucide-react';
 import { ConfirmationModal } from './ui/ConfirmationModal';
+import { formatDisplayDateTime } from '../utils/dateUtils';
 
 // Legacy Toolbox wrapper removed as it is now integrated into UnifiedSettingsLayout
 
@@ -972,7 +973,7 @@ export function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <p className="text-[10px] text-gray-500 mt-0.5">{formatBytes(backup.size)} • {new Date(backup.modified).toLocaleString('nl-NL')}</p>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5">{formatBytes(backup.size)} • {formatDisplayDateTime(new Date(backup.modified))}</p>
                                                 </div>
                                                 <div className="flex gap-1">
                                                     <button onClick={() => handleDownloadBackup(backup.key)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Download"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>

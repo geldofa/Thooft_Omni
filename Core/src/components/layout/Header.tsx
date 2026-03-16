@@ -45,12 +45,11 @@ function HeaderClock() {
     return () => clearInterval(timer);
   }, []);
 
-  const formatted = time.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const formatted = time.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const prev = prevRef.current;
   prevRef.current = formatted;
 
   // Characters: H H : M M : S S  (indices 0-7)
-  // Only flash HH:MM digits (indices 0,1,3,4), not the colons or seconds
   const flashIndices = new Set([0, 1, 3, 4]);
 
   return (

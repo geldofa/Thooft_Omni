@@ -49,6 +49,7 @@ import { getStatusInfo } from '../utils/StatusUtils';
 import { generatePresetReport, type ReportPreset as SharedReportPreset } from '../utils/generateReport';
 import { toast } from 'sonner';
 import { ConfirmationModal } from './ui/ConfirmationModal';
+import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateUtils';
 
 // ─── Column configuration ───────────────────────────────────
 
@@ -567,7 +568,7 @@ export function Reports(_props: ReportsProps) {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
     setIsSaving(true);
     try {
-      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
+      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
       const periodType = detectPeriodType(selectedPeriod);
       const filename = buildReportFilename(selectedPress, activeConfig.report_type, periodType);
       const f = new FormData();
@@ -693,7 +694,7 @@ export function Reports(_props: ReportsProps) {
                           <span className="text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1">
                             <RefreshCw className="w-2.5 h-2.5" /> Volgende Run
                           </span>
-                          <span className="font-black text-indigo-600">{nextRun ? nextRun.toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Onbekend'}</span>
+                          <span className="font-black text-indigo-600">{nextRun ? formatDisplayDateTime(nextRun) : 'Onbekend'}</span>
                         </div>
                       )}
                     </div>
@@ -730,7 +731,7 @@ export function Reports(_props: ReportsProps) {
               <TableBody>
                 {archive.length > 0 ? archive.map(r => (
                   <TableRow key={r.id} className="group hover:bg-indigo-50/30 transition-colors">
-                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.date }} className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(r.generated_at).toLocaleString('nl-NL')}</TableCell>
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.date }} className="text-xs font-medium text-slate-500 whitespace-nowrap">{formatDisplayDateTime(new Date(r.generated_at))}</TableCell>
 
                     {/* Dedicated Column for Period Chips */}
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.period }} className="py-3">
@@ -1211,7 +1212,7 @@ export function Reports(_props: ReportsProps) {
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
             ) : activeConfig.report_type === 'taken' ? (
               <PDFViewer width="100%" height="100%" className="border-none">
-                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={new Date().toLocaleDateString('nl-NL')} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />
+                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />
               </PDFViewer>
             ) : (
               <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.report_type}" volgt spoedig.</p></div>

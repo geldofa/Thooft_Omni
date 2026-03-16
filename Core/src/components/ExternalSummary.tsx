@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from './ui/badge';
 import { Calendar, User, Factory } from 'lucide-react';
 import { PageHeader } from './layout/PageHeader';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface ExternalSummaryProps {
     tasks?: GroupedTask[];
@@ -158,11 +159,7 @@ export function ExternalSummary({ tasks: propsTasks, tags: propsTags }: External
 
     const formatDate = (date: Date | null) => {
         if (!date) return 'N.v.t.';
-        return new Date(date).toLocaleDateString('nl-NL', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
+        return formatDisplayDate(date);
     };
 
     const getStatusBadge = (nextDate: Date) => {

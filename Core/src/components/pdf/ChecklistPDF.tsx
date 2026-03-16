@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { formatDisplayDate } from '../../utils/dateUtils';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -30,11 +31,7 @@ export interface ChecklistPDFProps {
 
 const formatDate = (date: Date | null): string => {
     if (!date) return 'N.v.t.';
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${day}/${month}/${year}`;
+    return formatDisplayDate(date);
 };
 
 // ─── Column widths ──────────────────────────────────────────────────────────
@@ -292,7 +289,7 @@ export const ChecklistPDF: React.FC<ChecklistPDFProps> = ({
     });
     const categories = Object.keys(grouped).sort();
     const totalCount = tasks.length;
-    const generatedAt = new Date().toLocaleDateString('nl-NL');
+    const generatedAt = formatDisplayDate(new Date());
 
     const getDisplayName = (task: ChecklistTask): string => {
         if (task.subtaskName && task.subtaskName !== task.task) {

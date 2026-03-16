@@ -17,6 +17,7 @@ import { Plus, RefreshCw } from 'lucide-react';
 import { getStatusInfo } from './utils/StatusUtils';
 import { APP_TITLE } from './config';
 import { useAutoReports } from './hooks/useAutoReports';
+import { formatDisplayDate } from './utils/dateUtils';
 
 // Lazy Imports
 const MaintenanceTable = lazy(() => import('./components/MaintenanceTable').then(m => ({ default: m.MaintenanceTable })));
@@ -496,10 +497,7 @@ function MainApp() {
   }, [location.pathname]);
 
   const formatDateForLog = (date: Date | null | undefined): string => {
-    if (!date) return '-';
-    try {
-      return new Date(date).toLocaleDateString('nl-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch { return '-'; }
+    return formatDisplayDate(date);
   };
 
   const formatIntervalForLog = (interval: number | undefined, unit: string | undefined): string => {

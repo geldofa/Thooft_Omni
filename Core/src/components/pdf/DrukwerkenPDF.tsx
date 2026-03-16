@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
 
 export interface DrukwerkTask {
     id: string;
@@ -105,8 +106,8 @@ const styles = StyleSheet.create({
     tableHeaderRow: {
         flexDirection: 'row',
         backgroundColor: '#f8fafc',
-        borderBottomWidth: 1,
-        borderBottomColor: '#000000',
+        borderTopWidth: 1,
+        borderTopColor: '#000000',
         minHeight: 20,
         alignItems: 'center',
     },
@@ -118,10 +119,14 @@ const styles = StyleSheet.create({
     },
     tableRow: {
         flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e2e8f0',
+        borderTopWidth: 1,
+        borderTopColor: '#e2e8f0', // default light
         minHeight: 22,
         alignItems: 'center',
+    },
+    tableRowDateChange: {
+        borderTopWidth: 1,
+        borderTopColor: '#848484', // Standard 6-digit hex
     },
     tableCell: {
         color: '#1e293b',
@@ -135,7 +140,7 @@ const styles = StyleSheet.create({
     bgPrestatie: { backgroundColor: '#f3e8ff' },  // purple-100
     bgWhite: { backgroundColor: '#ffffff' },
 
-    borderR: { borderRightWidth: 1, borderRightColor: '#e2e8f0' },
+    borderR: { borderRightWidth: 1, borderRightColor: '#cbd5e1' }, // slate-300
     borderRBlack: { borderRightWidth: 1, borderRightColor: '#000000' },
 
     // Columns - Landscape (Total 100%)
@@ -183,10 +188,10 @@ const styles = StyleSheet.create({
 export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
     reportTitle,
     selectedPeriod,
-    generatedAt = new Date().toLocaleString('nl-BE'),
+    generatedAt = formatDisplayDateTime(new Date()),
     tasks,
     fontSize = 8,
-    marginH = 20,
+    marginH = 10,
     marginV = 10,
 }) => {
     const dynamicStyles = {
@@ -300,67 +305,79 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
                             <View style={[styles.colDeltaPercent, styles.borderRBlack]}><Text style={[styles.tableHeaderCell, styles.textCenter]}>%</Text></View>
                         </View>
 
-                        {pressGroups[pressName].map((task) => (
-                            <View style={styles.tableRow} key={task.id} wrap={false}>
-                                <View style={[styles.colDate, styles.borderR]}><Text style={[styles.tableCell, { fontSize }]}>{task.date}</Text></View>
-                                <View style={[styles.colOrderNr, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.bold]}>{task.order_nummer}</Text></View>
-                                <View style={[styles.colOrderName, styles.borderRBlack]}>
-                                    <Text style={[styles.tableCell, { fontSize }]}>{task.klant_order_beschrijving}</Text>
-                                    {task.versie && (
-                                        <Text style={[styles.tableCell, styles.subtext]}>{task.versie}</Text>
-                                    )}
+                        {pressGroups[pressName].map((task, index) => {
+                            const prevTask = index > 0 ? pressGroups[pressName][index - 1] : null;
+                            const isDateChange = prevTask && task.date !== prevTask.date;
+
+                            return (
+                                <View
+                                    style={[
+                                        styles.tableRow,
+                                        isDateChange ? styles.tableRowDateChange : {}
+                                    ]}
+                                    key={task.id}
+                                    wrap={false}
+                                >
+                                    <View style={[styles.colDate, styles.borderR]}><Text style={[styles.tableCell, { fontSize }]}>{formatDisplayDate(task.date)}</Text></View>
+                                    <View style={[styles.colOrderNr, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.bold]}>{task.order_nummer}</Text></View>
+                                    <View style={[styles.colOrderName, styles.borderRBlack]}>
+                                        <Text style={[styles.tableCell, { fontSize }]}>{task.klant_order_beschrijving}</Text>
+                                        {task.versie && (
+                                            <Text style={[styles.tableCell, styles.subtext]}>{task.versie}</Text>
+                                        )}
+                                    </View>
+
+                                    {/* Data */}
+                                    <View style={[styles.colPages, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.blz || '-'}</Text></View>
+                                    <View style={[styles.colExOmw, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.ex_omw || '-'}</Text></View>
+                                    <View style={[styles.colNetRun, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight, styles.bold]}>{task.netto_oplage.toLocaleString('nl-BE')}</Text></View>
+
+                                    {/* Wissels */}
+                                    <View style={[styles.colStartup, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.opstart ? 'Ja' : 'Nee'}</Text></View>
+                                    <View style={[styles.col4_4, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_4 || '-'}</Text></View>
+                                    <View style={[styles.col4_0, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_0 || '-'}</Text></View>
+                                    <View style={[styles.col1_0, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_1_0 || '-'}</Text></View>
+                                    <View style={[styles.col1_1, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_1_1 || '-'}</Text></View>
+                                    <View style={[styles.col4_1, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_1 || '-'}</Text></View>
+
+                                    {/* Berekening */}
+                                    <View style={[styles.colMaxGross, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.max_bruto).toLocaleString('nl-BE')}</Text></View>
+                                    <View style={[styles.colGreen, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.groen).toLocaleString('nl-BE')}</Text></View>
+                                    <View style={[styles.colRed, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.rood).toLocaleString('nl-BE')}</Text></View>
+
+                                    {/* Prestatie */}
+                                    <View style={[styles.colDelta, styles.borderR]}>
+                                        <Text style={[
+                                            styles.tableCell,
+                                            { fontSize },
+                                            styles.textRight,
+                                            task.delta > 0 ? styles.bold : {}
+                                        ]}>
+                                            {Math.round(task.delta).toLocaleString('nl-BE')}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.colDeltaPercent, styles.borderRBlack]}>
+                                        <Text style={[
+                                            styles.tableCell,
+                                            { fontSize },
+                                            styles.textRight,
+                                            (() => {
+                                                const dp = task.delta_percent;
+                                                if (dp > 1.05) return { color: '#dc2626', fontFamily: 'Helvetica-Bold' }; // Red & Bold
+                                                if (dp > 1.02) return { color: '#ea580c', fontFamily: 'Helvetica-Bold' }; // Darker Orange & Bold
+                                                if (dp > 1.00) return { color: '#fb923c' }; // Orange
+                                                if (dp < 0.95) return { color: '#166534' }; // Dark green
+                                                if (dp < 0.98) return { color: '#15803d' }; // Green
+                                                if (dp < 1.00) return { color: '#22c55e' }; // Lighter green
+                                                return {};
+                                            })()
+                                        ]}>
+                                            {(task.delta_percent * 100).toFixed(1)}%
+                                        </Text>
+                                    </View>
                                 </View>
-
-                                {/* Data */}
-                                <View style={[styles.colPages, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.blz || '-'}</Text></View>
-                                <View style={[styles.colExOmw, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.ex_omw || '-'}</Text></View>
-                                <View style={[styles.colNetRun, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight, styles.bold]}>{task.netto_oplage.toLocaleString('nl-BE')}</Text></View>
-
-                                {/* Wissels */}
-                                <View style={[styles.colStartup, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.opstart ? 'Ja' : 'Nee'}</Text></View>
-                                <View style={[styles.col4_4, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_4 || '-'}</Text></View>
-                                <View style={[styles.col4_0, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_0 || '-'}</Text></View>
-                                <View style={[styles.col1_0, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_1_0 || '-'}</Text></View>
-                                <View style={[styles.col1_1, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_1_1 || '-'}</Text></View>
-                                <View style={[styles.col4_1, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textCenter]}>{task.k_4_1 || '-'}</Text></View>
-
-                                {/* Berekening */}
-                                <View style={[styles.colMaxGross, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.max_bruto).toLocaleString('nl-BE')}</Text></View>
-                                <View style={[styles.colGreen, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.groen).toLocaleString('nl-BE')}</Text></View>
-                                <View style={[styles.colRed, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.rood).toLocaleString('nl-BE')}</Text></View>
-
-                                {/* Prestatie */}
-                                <View style={[styles.colDelta, styles.borderR]}>
-                                    <Text style={[
-                                        styles.tableCell,
-                                        { fontSize },
-                                        styles.textRight,
-                                        task.delta > 0 ? styles.bold : {}
-                                    ]}>
-                                        {Math.round(task.delta).toLocaleString('nl-BE')}
-                                    </Text>
-                                </View>
-                                <View style={[styles.colDeltaPercent, styles.borderRBlack]}>
-                                    <Text style={[
-                                        styles.tableCell,
-                                        { fontSize },
-                                        styles.textRight,
-                                        (() => {
-                                            const dp = task.delta_percent;
-                                            if (dp > 1.05) return { color: '#dc2626', fontFamily: 'Helvetica-Bold' }; // Red & Bold
-                                            if (dp > 1.02) return { color: '#ea580c', fontFamily: 'Helvetica-Bold' }; // Darker Orange & Bold
-                                            if (dp > 1.00) return { color: '#fb923c' }; // Orange
-                                            if (dp < 0.95) return { color: '#166534' }; // Dark green
-                                            if (dp < 0.98) return { color: '#15803d' }; // Green
-                                            if (dp < 1.00) return { color: '#22c55e' }; // Lighter green
-                                            return {};
-                                        })()
-                                    ]}>
-                                        {(task.delta_percent * 100).toFixed(1)}%
-                                    </Text>
-                                </View>
-                            </View>
-                        ))}
+                            );
+                        })}
                     </View>
 
                     <Text

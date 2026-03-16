@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { formatDisplayDateTime } from '../../utils/dateUtils';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 export interface MaintenanceTask {
@@ -271,7 +272,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     selectedPress,
     selectedPeriod,
     selectedStatus,
-    generatedAt = new Date().toLocaleString('nl-BE'),
+    generatedAt = formatDisplayDateTime(new Date()),
     tasks,
     columns,
     fontSize = 9,

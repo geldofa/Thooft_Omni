@@ -13,6 +13,7 @@ import { ChecklistPDF, ChecklistTask } from './pdf/ChecklistPDF';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card';
 import { Input } from './ui/input';
 import { cn } from './ui/utils';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface MaintenanceChecklistProps {
   tasks?: MaintenanceTask[];
@@ -131,12 +132,7 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
   }, []);
 
   const formatDate = (date: Date | null): string => {
-    if (!date) return 'N.v.t.';
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
+    return formatDisplayDate(date);
   };
 
   const activePresses = presses.filter(p => p.active && !p.archived);

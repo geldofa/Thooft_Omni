@@ -17,8 +17,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { FileText, Clock, Download, Eye, Search, Calendar as CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { format } from 'date-fns';
+import { formatDisplayDateTime } from '../../utils/dateUtils';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -46,10 +47,7 @@ interface AllExportsDialogProps {
 
 function formatDate(iso: string): string {
     if (!iso) return '-';
-    const d = new Date(iso);
-    const date = d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' });
-    const time = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${date} ${time}`;
+    return formatDisplayDateTime(new Date(iso));
 }
 
 function getBadgeStyle(configName: string): React.CSSProperties {

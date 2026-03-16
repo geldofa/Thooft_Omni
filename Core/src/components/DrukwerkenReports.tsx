@@ -26,7 +26,7 @@ export function DrukwerkenReports({ presses: initialPresses }: DrukwerkenReports
     const [reportTitle, setReportTitle] = useState('Drukwerken Overzicht');
 
     const [fontSize, setFontSize] = useState(9);
-    const [marginH, setMarginH] = useState(30);
+    const [marginH, setMarginH] = useState(10);
     const [marginV, setMarginV] = useState(10);
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
@@ -96,7 +96,7 @@ export function DrukwerkenReports({ presses: initialPresses }: DrukwerkenReports
                 const records = await pb.collection('drukwerken').getFullList({
                     filter: filters.join(' && ') || undefined,
                     expand: 'pers',
-                    sort: '-date',
+                    sort: 'date',
                 });
 
                 const mapped: DrukwerkTask[] = records.map((r: any) => ({
@@ -221,7 +221,7 @@ export function DrukwerkenReports({ presses: initialPresses }: DrukwerkenReports
                                             marginV={marginV}
                                         />
                                     }
-                                    fileName={`drukwerken-${selectedPress.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`}
+                                    fileName={`drukwerken-${selectedPress.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`}
                                     className="w-full"
                                 >
                                     {({ loading }) => (

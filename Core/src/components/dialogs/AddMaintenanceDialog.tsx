@@ -15,6 +15,7 @@ import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { CalendarIcon, Trash2, GripVertical } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateUtils';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -436,11 +437,7 @@ export function AddMaintenanceDialog({
 
   const formatDate = (date: Date | null) => {
     if (!date) return 'Kies een datum';
-    return new Date(date).toLocaleDateString('nl-NL', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    return formatDisplayDate(date);
   };
 
   const filteredCategories = categories.filter(cat =>
