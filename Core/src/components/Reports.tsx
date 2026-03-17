@@ -112,7 +112,7 @@ export interface GeneratedReport {
   expand?: {
     maintenance_report?: {
       name: string;
-      report_type?: string;
+      export_types?: string[];
     }
   };
 }
@@ -374,7 +374,7 @@ export function Reports(_props: ReportsProps) {
   const [activeConfig, setActiveConfig] = useState<{
     name: string;
     description: string;
-    report_type: string;
+    export_types: string[];
     is_automated: boolean;
     email_recipients: string;
     schedule_interval: string;
@@ -388,7 +388,7 @@ export function Reports(_props: ReportsProps) {
   }>({
     name: 'Nieuw Sjabloon',
     description: '',
-    report_type: 'taken',
+    export_types: ['taken'],
     is_automated: false,
     email_recipients: '',
     schedule_interval: 'week',
@@ -432,8 +432,12 @@ export function Reports(_props: ReportsProps) {
     setIsDataLoading(true);
     try {
       const [pList, aList] = await Promise.all([
-        pb.collection('maintenance_reports').getFullList<ReportPreset>({ sort: 'name' }),
+        pb.collection('maintenance_reports').getFullList<ReportPreset>({ 
+          filter: 'export_types ?~ "taken" || export_types = "[]" || export_types = null || export_types = ""',
+          sort: 'name' 
+        }),
         pb.collection('report_files').getFullList<GeneratedReport>({
+          filter: 'maintenance_report = "" || maintenance_report.export_types ?~ "taken" || maintenance_report.export_types = "[]" || maintenance_report.export_types = null || maintenance_report.export_types = ""',
           sort: '-generated_at',
           expand: 'maintenance_report'
         })
@@ -466,7 +470,7 @@ export function Reports(_props: ReportsProps) {
       setActiveConfig({
         name: preset.name,
         description: preset.description || '',
-        report_type: 'taken',
+        export_types: ['taken'],
         is_automated: preset.auto_generate,
         email_recipients: preset.email_recipients || '',
         schedule_interval: preset.period || 'week',
@@ -491,7 +495,7 @@ export function Reports(_props: ReportsProps) {
       setActiveConfig({
         name: 'Nieuw Sjabloon',
         description: '',
-        report_type: 'taken',
+        export_types: ['taken'],
         is_automated: false,
         email_recipients: '',
         schedule_interval: 'week',
@@ -527,7 +531,7 @@ export function Reports(_props: ReportsProps) {
   }, [selectedColumns, selectedStatus]);
 
   useEffect(() => {
-    if (currentView !== 'editor' || activeConfig.report_type !== 'taken') return;
+    if (currentView !== 'editor' || !activeConfig.export_types.includes('taken')) return;
     let cancelled = false;
     (async () => {
       setIsLoading(true);
@@ -562,7 +566,7 @@ export function Reports(_props: ReportsProps) {
       } finally { if (!cancelled) setIsLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [selectedPress, selectedPeriod, selectedStatus, currentView, activeConfig.report_type]);
+  }, [selectedPress, selectedPeriod, selectedStatus, currentView, activeConfig.export_types]);
 
   const handleGenerateAndSave = async () => {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
@@ -570,7 +574,7 @@ export function Reports(_props: ReportsProps) {
     try {
       const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
       const periodType = detectPeriodType(selectedPeriod);
-      const filename = buildReportFilename(selectedPress, activeConfig.report_type, periodType);
+      const filename = buildReportFilename(selectedPress, 'taken', periodType);
       const f = new FormData();
       f.append('file', b, filename);
       if (activePreset) {
@@ -579,6 +583,9 @@ export function Reports(_props: ReportsProps) {
       f.append('generated_at', new Date().toISOString());
       f.append('trigger', 'manual');
       f.append('created_by', user?.name || user?.username || 'Onbekend');
+      // No need to append report_type here as it's linked via maintenance_report
+      // but for manual exports without a preset, we might want it.
+      // However, the filter 'maintenance_report = null' handles it in the dashboard.
 
       await pb.collection('report_files').create(f);
       toast.success("Rapport opgeslagen in archief");
@@ -614,6 +621,7 @@ export function Reports(_props: ReportsProps) {
         schedule_weekdays: activeConfig.schedule_interval === 'week' ? [(activeConfig.schedule_weekday === 7 ? 0 : activeConfig.schedule_weekday).toString()] : [],
         schedule_day: activeConfig.schedule_exact_day,
         schedule_month_type: activeConfig.schedule_day_type,
+        export_types: ['taken'],
         settings: fullSettings
       };
       if (activePreset) await pb.collection('maintenance_reports').update(activePreset.id, p);
@@ -805,7 +813,7 @@ export function Reports(_props: ReportsProps) {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.type }} className="text-center"><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.report_type || 'taken'}</Badge></TableCell>
+                    <TableCell style={{ width: ARCHIVE_COL_WIDTHS.type }} className="text-center"><Badge variant="outline" className="capitalize text-[10px] bg-white">{r.expand?.maintenance_report?.export_types?.[0] || 'taken'}</Badge></TableCell>
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.trigger }} className="text-center">
                       {r.trigger === 'auto' ? (
                         <Badge className={cn("text-[10px] px-1.5 h-5", "bg-green-100 text-green-700")}>
@@ -1210,12 +1218,12 @@ export function Reports(_props: ReportsProps) {
           <div className="relative h-full bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-sm flex items-center justify-center" style={{ aspectRatio: '1 / 1.414' }}>
             {isLoading ? (
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
-            ) : activeConfig.report_type === 'taken' ? (
+            ) : activeConfig.export_types.includes('taken') ? (
               <PDFViewer width="100%" height="100%" className="border-none">
                 <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />
               </PDFViewer>
             ) : (
-              <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.report_type}" volgt spoedig.</p></div>
+              <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.export_types.join(', ')}" volgt spoedig.</p></div>
             )}
           </div>
         </div>
