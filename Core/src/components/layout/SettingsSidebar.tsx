@@ -25,7 +25,7 @@ export function SettingsSidebar({ groups, activeValue, onSelect, title }: Settin
             {title && (
                 <div className="px-5 py-3 pb-1">
                     <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                        <span className="w-1.5 h-5 bg-blue-600 rounded-full" />
+                        <span className={`w-1.5 h-5 rounded-full ${title === 'Analyses' ? 'bg-emerald-500' : 'bg-blue-600'}`} />
                         {title}
                     </h2>
                 </div>

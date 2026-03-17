@@ -60,29 +60,45 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica-Bold',
         color: '#ffffff',
     },
-    filterText: {
-        fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.8)',
-        marginTop: 4,
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    headerTitleRow: {
+        marginBottom: 15,
+    },
+    mainTitle: {
+        fontSize: 24,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 5,
+    },
+    detailText: {
+        fontSize: 16,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    detailTextSmall: {
+        fontSize: 12,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerSpacer: {
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.4)',
+        marginTop: 5,
+        marginBottom: 10,
     },
     dateText: {
         fontSize: 8,
-        color: 'rgba(255, 255, 255, 0.6)',
-    },
-    subHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 5,
-    },
-    machineName: {
-        fontSize: 14,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
-    },
-    totalCount: {
-        fontSize: 10,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
+        color: 'rgba(255, 255, 255, 0.8)',
     },
     pageContent: {
         paddingTop: 10,
@@ -191,14 +207,14 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
     generatedAt = formatDisplayDateTime(new Date()),
     tasks,
     fontSize = 8,
-    marginH = 10,
+    marginH = 15,
     marginV = 10,
 }) => {
     const dynamicStyles = {
         headerWrapper: {
             paddingHorizontal: marginH,
             paddingTop: marginV + 15,
-            paddingBottom: 15,
+            paddingBottom: 8,
         },
         pageContent: {
             paddingHorizontal: marginH,
@@ -223,24 +239,32 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
         <Document>
             {sortedPresses.map((pressName) => (
                 <Page key={pressName} size="A4" orientation="landscape" style={styles.page}>
+                    {/* ── Fixed Header ── */}
                     <View style={[styles.headerWrapper, dynamicStyles.headerWrapper]} fixed>
-                        <View style={styles.headerContainer}>
-                            <View>
-                                <Text style={styles.omniLogo}>OMNI</Text>
-                                <Text style={styles.filterText}>
-                                    {reportTitle} | {selectedPeriod}
-                                </Text>
+                        {/* Top Row: Title (Left) & Logo/Date (Right) */}
+                        <View style={styles.headerTopRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.mainTitle}>{reportTitle}</Text>
                             </View>
                             <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.dateText}>Gegenereerd op:</Text>
-                                <Text style={styles.dateText}>{generatedAt}</Text>
+                                <Text style={styles.omniLogo}>OMNI</Text>
+                                <Text style={styles.dateText}>Gegenereerd op: {generatedAt}</Text>
                             </View>
                         </View>
-                        <View style={styles.subHeader}>
-                            <Text style={styles.machineName}>{pressName}</Text>
-                            <Text style={styles.totalCount}>
-                                Totaal: {pressGroups[pressName].length} jobs
-                            </Text>
+
+                        {/* Spacer (Horizontal Line) */}
+                        <View style={styles.headerSpacer} />
+
+                        {/* Detail Row */}
+                        <View style={styles.headerDetailRow}>
+                            <View style={{ width: '50%' }}>
+                                <Text style={styles.detailText}>{pressName}</Text>
+                            </View>
+                            <View style={{ width: '50%', alignItems: 'flex-end' }}>
+                                <Text style={styles.detailTextSmall}>
+                                    {selectedPeriod}: {pressGroups[pressName].length} jobs
+                                </Text>
+                            </View>
                         </View>
                     </View>
 

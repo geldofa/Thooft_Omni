@@ -252,7 +252,7 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
       selectedPress: 'Alle persen',
       selectedPeriod: 'Deze Week',
       fontSize: 8,
-      marginH: 10,
+      marginH: 15,
       marginV: 10
     }
   });
@@ -337,7 +337,7 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
           selectedPress: s.selectedPress || 'Alle persen',
           selectedPeriod: s.selectedPeriod || 'Deze Week',
           fontSize: s.fontSize ?? 8,
-          marginH: s.marginH ?? 10,
+          marginH: s.marginH ?? 15,
           marginV: s.marginV ?? 10,
         },
       });
@@ -354,7 +354,7 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
         schedule_day_type: 'first_day',
         schedule_exact_day: 1,
         schedule_month: 1,
-        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Deze Week', fontSize: 8, marginH: 10, marginV: 10 },
+        settings: { selectedPress: 'Alle persen', selectedPeriod: 'Deze Week', fontSize: 8, marginH: 15, marginV: 10 },
       });
     }
     setCurrentView('editor');
@@ -430,6 +430,12 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
         period: activeConfig.schedule_interval || 'week',
         auto_generate: activeConfig.is_automated,
         email_recipients: activeConfig.email_recipients,
+        schedule_hour: activeConfig.schedule_hour,
+        schedule_weekdays: activeConfig.schedule_interval === 'week'
+          ? [(activeConfig.schedule_weekday === 7 ? 0 : activeConfig.schedule_weekday).toString()]
+          : [],
+        schedule_day: activeConfig.schedule_exact_day,
+        schedule_month_type: activeConfig.schedule_day_type,
         export_types: ['drukwerken'],
         settings: fullSettings
       };
@@ -656,14 +662,21 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
 
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.actions }} className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download PDF" onClick={() => {
+                        <a href={pb.files.getURL(r, r.file)} target="_blank" rel="noopener noreferrer">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </a>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download PDF" onClick={async () => {
                           const url = pb.files.getURL(r, r.file);
+                          const res = await fetch(url);
+                          const blob = await res.blob();
+                          const blobUrl = URL.createObjectURL(blob);
                           const a = document.createElement('a');
-                          a.href = url; a.download = r.file || 'rapport.pdf';
-                          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                          a.href = blobUrl;
+                          a.download = r.file || 'rapport.pdf';
+                          a.click();
+                          URL.revokeObjectURL(blobUrl);
                         }}>
                           <Download className="w-4 h-4" />
                         </Button>

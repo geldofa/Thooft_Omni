@@ -25,6 +25,7 @@ export interface ChecklistPDFProps {
     fontSize?: number;
     marginH?: number;
     marginV?: number;
+    selectedPeriod: string;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -53,9 +54,9 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica',
         color: '#1f2937',
     },
-    // Header (indigo banner)
+    // Header (emerald banner)
     headerWrapper: {
-        backgroundColor: '#4f46e5',
+        backgroundColor: '#059669',
         color: '#ffffff',
     },
     headerContainer: {
@@ -73,29 +74,45 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica-Bold',
         color: '#ffffff',
     },
-    filterText: {
-        fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.8)',
-        marginTop: 4,
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    headerTitleRow: {
+        marginBottom: 15,
+    },
+    mainTitle: {
+        fontSize: 24,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 5,
+    },
+    detailText: {
+        fontSize: 16,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    detailTextSmall: {
+        fontSize: 12,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerSpacer: {
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.4)',
+        marginTop: 5,
+        marginBottom: 10,
     },
     dateText: {
         fontSize: 8,
-        color: 'rgba(255, 255, 255, 0.6)',
-    },
-    subHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 5,
-    },
-    machineName: {
-        fontSize: 14,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
-    },
-    totalCount: {
-        fontSize: 10,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
+        color: 'rgba(255, 255, 255, 0.8)',
     },
     // Page content
     pageContent: {
@@ -107,21 +124,21 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         padding: 8,
         borderWidth: 1,
-        borderColor: '#93c5fd',
-        backgroundColor: '#eff6ff',
+        borderColor: '#6ee7b7',
+        backgroundColor: '#ecfdf5',
         borderRadius: 3,
     },
     guidanceLabel: {
         fontSize: 8,
         fontFamily: 'Helvetica-Bold',
-        color: '#1e40af',
+        color: '#065f46',
         marginBottom: 3,
         textTransform: 'uppercase',
         letterSpacing: 0.4,
     },
     guidanceText: {
         fontSize: 9,
-        color: '#1e3a8a',
+        color: '#064e3b',
         lineHeight: 1.4,
     },
     // Category header
@@ -260,8 +277,9 @@ export const ChecklistPDF: React.FC<ChecklistPDFProps> = ({
     supervisorGuidance,
     categorySubtexts = {},
     fontSize = 9,
-    marginH = 10,
+    marginH = 15,
     marginV = 10,
+    selectedPeriod,
 }) => {
     const dynamicStyles = {
         text: { fontSize },
@@ -269,7 +287,7 @@ export const ChecklistPDF: React.FC<ChecklistPDFProps> = ({
         headerWrapper: {
             paddingHorizontal: marginH,
             paddingTop: marginV + 15,
-            paddingBottom: 20,
+            paddingBottom: 12,
         },
         pageContent: {
             paddingHorizontal: marginH,
@@ -310,19 +328,28 @@ export const ChecklistPDF: React.FC<ChecklistPDFProps> = ({
             <Page size="A4" style={styles.page}>
                 {/* ── Fixed Header ── */}
                 <View style={[styles.headerWrapper, dynamicStyles.headerWrapper]} fixed>
-                    <View style={styles.headerContainer}>
-                        <View>
-                            <Text style={styles.omniLogo}>OMNI</Text>
-                            <Text style={styles.filterText}>Checklist | {pressName}</Text>
+                    {/* Top Row: Title (Left) & Logo/Date (Right) */}
+                    <View style={styles.headerTopRow}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.mainTitle}>Checklist {pressName}</Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.dateText}>Gegenereerd op:</Text>
-                            <Text style={styles.dateText}>{generatedAt}</Text>
+                            <Text style={styles.omniLogo}>OMNI</Text>
+                            <Text style={styles.dateText}>Gegenereerd op: {generatedAt}</Text>
                         </View>
                     </View>
-                    <View style={styles.subHeader}>
-                        <Text style={styles.machineName}>{pressName}</Text>
-                        <Text style={styles.totalCount}>{totalCount} taken</Text>
+
+                    {/* Spacer (Horizontal Line) */}
+                    <View style={styles.headerSpacer} />
+
+                    {/* Detail Row */}
+                    <View style={styles.headerDetailRow}>
+                        <View style={{ width: '50%' }}>
+                            <Text style={styles.detailText}>{selectedPeriod}</Text>
+                        </View>
+                        <View style={{ width: '50%', alignItems: 'flex-end' }}>
+                            <Text style={styles.detailTextSmall}>{totalCount} taken</Text>
+                        </View>
                     </View>
                 </View>
 

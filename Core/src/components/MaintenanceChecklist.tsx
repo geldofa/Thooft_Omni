@@ -3,10 +3,10 @@ import { MaintenanceTask, pb, Category, Press } from './AuthContext';
 import { useAuth, PressType } from './AuthContext';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
-import { Clock, FileText, ChevronRight, Download, Loader2, ClipboardCheck } from 'lucide-react';
+import { Clock, ChevronRight, Download, Loader2, ClipboardCheck } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { Textarea } from './ui/textarea';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+
 import { formatNumber } from '../utils/formatNumber';
 import { PDFViewer, PDFDownloadLink } from '@react-pdf/renderer';
 import { ChecklistPDF, ChecklistTask } from './pdf/ChecklistPDF';
@@ -121,8 +121,9 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]); // State for task IDs to print
   const [supervisorGuidance, setSupervisorGuidance] = useState(''); // New state for supervisor guidance
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState('Vandaag');
   const [fontSize, setFontSize] = useState(9);
-  const [marginH, setMarginH] = useState(30);
+  const [marginH, setMarginH] = useState(15);
   const [marginV, setMarginV] = useState(10);
 
   const today = useMemo(() => {
@@ -209,7 +210,8 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
       nextMaintenance: task.nextMaintenance,
       lastMaintenance: task.lastMaintenance,
       opmerkingen: task.opmerkingen,
-      isOverdue: isTaskOverdue(task)
+      isOverdue: isTaskOverdue(task),
+      period: selectedPeriod
     }));
 
   // Subtexts mapped for PDF
@@ -223,46 +225,72 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
-            <p className="font-medium text-indigo-900 text-lg">Laden...</p>
+            <Loader2 className="h-10 w-10 animate-spin text-emerald-600" />
+            <p className="font-medium text-emerald-900 text-lg">Laden...</p>
           </div>
         </div>
       )}
 
       <div className="flex items-center justify-between shrink-0">
         <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-          <ClipboardCheck className="w-6 h-6 text-indigo-600" /> Checklist Genereren
+          <ClipboardCheck className="w-6 h-6 text-emerald-600" /> Checklist
         </h1>
       </div>
 
       <div className="flex flex-row gap-6 items-start w-full h-[calc(100vh-170px)]">
         {/* Left Panel - Configuration */}
         <div className="flex-1 min-w-[400px] h-full">
-          <Card className="flex flex-col h-full border-indigo-100 shadow-sm overflow-hidden flex-1 shrink-0">
+          <Card className="flex flex-col h-full border-emerald-100 shadow-sm overflow-hidden flex-1 shrink-0">
             <CardHeader className="pb-4 shrink-0">
-              <CardTitle className="text-base">Checklist Informatie</CardTitle>
+              <CardTitle className="text-base font-bold text-slate-800">Configuratie</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6 flex-1 overflow-y-auto min-h-0 custom-scrollbar pb-6 pr-4">
-              <div className="space-y-3">
-                <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Pers Selecteren</Label>
-                <div className="flex flex-wrap gap-2">
-                  {activePresses.filter(p => p.name && p.name.trim() !== '').map((press) => (
-                    <Button
-                      key={press.id}
-                      variant={selectedPress === press.name ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedPress(press.name as PressType);
-                        setSelectedTasks([]); // Clear selection when press changes
-                      }}
-                      className={cn(
-                        "rounded-full px-4 h-8 text-xs transition-all",
-                        selectedPress === press.name ? "bg-indigo-600 border-indigo-600 shadow-sm" : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                      )}
-                    >
-                      {press.name}
-                    </Button>
-                  ))}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-3 flex-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Pers Selecteren</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {activePresses.filter(p => p.name && p.name.trim() !== '').map((press) => (
+                        <Button
+                          key={press.id}
+                          variant={selectedPress === press.name ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setSelectedPress(press.name as PressType);
+                            setSelectedTasks([]); // Clear selection when press changes
+                          }}
+                          className={cn(
+                            "rounded-full px-4 h-8 text-xs transition-all",
+                            selectedPress === press.name ? "bg-emerald-600 border-emerald-600 shadow-sm" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          {press.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 min-w-[120px]">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Periode</Label>
+                    <div className="flex gap-1.5 p-1 bg-slate-100 rounded-lg">
+                      {['Dag', 'Week', 'Mnd'].map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setSelectedPeriod(p === 'Dag' ? 'Vandaag' : p === 'Week' ? 'Deze Week' : 'Deze Maand')}
+                          className={cn(
+                            "px-2.5 py-1 text-[10px] font-bold rounded-md transition-all",
+                            (selectedPeriod === 'Vandaag' && p === 'Dag') || 
+                            (selectedPeriod === 'Deze Week' && p === 'Week') || 
+                            (selectedPeriod === 'Deze Maand' && p === 'Mnd')
+                              ? "bg-white text-emerald-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -285,7 +313,7 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
                     <Button
                       variant="outline"
                       onClick={handleAddAllOverdue}
-                      className="gap-1.5 h-7 text-[10px] px-2"
+                      className="gap-1.5 h-7 text-[10px] px-2 border-red-100 text-red-600 hover:bg-red-50"
                       title="Voeg alle taken toe waarvan de volgende datum in het verleden ligt."
                     >
                       <Clock className="w-3 h-3" />
@@ -293,76 +321,93 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
                     </Button>
                   </div>
 
-                  <Accordion type="multiple" className="w-full">
-                    {allCategories.map((category) => {
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    {allCategories.map((category, catIdx) => {
                       const categoryTasks = allTasksGrouped[category];
                       const overdueCount = categoryTasks.filter(isTaskOverdue).length;
                       const allSelectedInCategory = categoryTasks.every(t => selectedTasks.includes(t.id));
                       const someSelectedInCategory = categoryTasks.some(t => selectedTasks.includes(t.id)) && !allSelectedInCategory;
 
                       return (
-                        <AccordionItem key={category} value={category} className="border border-slate-200 rounded-lg mb-2 overflow-hidden px-1">
-                          <AccordionTrigger className="font-bold py-2 px-3 hover:no-underline hover:bg-slate-50 [&[data-state=open]]:bg-slate-50 rounded-md transition-colors">
-                            <div className="flex justify-between w-full items-center mr-2">
-                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <div key={category}>
+                          {/* Category header row */}
+                          <div
+                            className={cn(
+                              "flex items-center justify-between px-3 py-1.5 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors select-none",
+                              catIdx > 0 && "border-t border-slate-200"
+                            )}
+                            onClick={() => handleToggleCategory(category, !allSelectedInCategory)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={allSelectedInCategory ? true : someSelectedInCategory ? "indeterminate" : false}
+                                onCheckedChange={(c) => { handleToggleCategory(category, c === true); }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                              />
+                              <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">{category}</span>
+                              <span className="text-[10px] text-slate-400 font-medium">{formatNumber(categoryTasks.length)}</span>
+                            </div>
+                            {overdueCount > 0 && (
+                              <Badge variant="outline" className="bg-red-50 text-red-600 border-transparent text-[9px] px-1.5 h-4 font-bold flex gap-1 items-center">
+                                {formatNumber(overdueCount)} te laat
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Task rows */}
+                          {categoryTasks.map((task) => {
+                            const isSelected = selectedTasks.includes(task.id);
+                            const overdue = isTaskOverdue(task);
+                            const subtext = task.subtaskName && task.subtaskName !== task.task
+                              ? task.subtaskSubtext || task.taskSubtext
+                              : task.taskSubtext;
+
+                            return (
+                              <div
+                                key={task.id}
+                                className={cn(
+                                  "flex items-center gap-2.5 px-3 py-1.5 border-t border-slate-100 cursor-pointer transition-colors",
+                                  isSelected ? "bg-emerald-50/60" : "hover:bg-slate-50/80"
+                                )}
+                                onClick={() => handleToggleTask(task.id, !isSelected)}
+                              >
                                 <Checkbox
-                                  checked={allSelectedInCategory ? true : someSelectedInCategory ? "indeterminate" : false}
-                                  onCheckedChange={(c) => handleToggleCategory(category, c === true)}
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => handleToggleTask(task.id, Boolean(checked))}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="shrink-0 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
                                 />
-                                <span className="text-sm">{category}</span>
-                                <span className="text-slate-400 font-normal text-xs">({formatNumber(categoryTasks.length)})</span>
-                              </div>
-                              {overdueCount > 0 && (
-                                <Badge variant="outline" className="bg-red-50 text-red-600 border-transparent text-[9px] px-1.5 h-4 ml-4 font-bold flex gap-1 items-center">
-                                  {formatNumber(overdueCount)} Te laat
-                                </Badge>
-                              )}
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="pb-2 px-3">
-                            <div className="space-y-1.5 pt-2">
-                              {categoryTasks.map((task) => (
-                                <div key={task.id} className={cn(
-                                  "flex items-start justify-between p-2 border rounded-md transition-colors",
-                                  selectedTasks.includes(task.id) ? "bg-indigo-50/50 border-indigo-100" : "hover:bg-slate-50 border-transparent"
-                                )}>
-                                  <div className="flex items-start gap-2.5">
-                                    <Checkbox
-                                      id={`task-${task.id}`}
-                                      checked={selectedTasks.includes(task.id)}
-                                      onCheckedChange={(checked) => handleToggleTask(task.id, Boolean(checked))}
-                                      className="mt-0.5"
-                                    />
-                                    <Label htmlFor={`task-${task.id}`} className="cursor-pointer space-y-0.5 font-normal flex flex-col pt-0.5">
-                                      <span className="font-medium text-slate-700 text-xs">
-                                        {task.subtaskName && task.subtaskName !== task.task
-                                          ? `${task.task} -> ${task.subtaskName}`
-                                          : task.task}
-                                      </span>
-                                      {(task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext) && (
-                                        <span className="text-[10px] text-slate-500 line-clamp-1 pr-2">
-                                          {task.subtaskName && task.subtaskName !== task.task ? task.subtaskSubtext || task.taskSubtext : task.taskSubtext}
-                                        </span>
-                                      )}
-                                    </Label>
-                                  </div>
-                                  <div className={`text-right text-[10px] whitespace-nowrap pt-0.5 font-medium shrink-0 ${isTaskOverdue(task) ? 'text-red-500' : 'text-slate-400'}`}>
-                                    {isTaskOverdue(task) && <span className="font-bold mr-1 uppercase tracking-wider">Te Laat</span>}
-                                    {formatDate(task.nextMaintenance)}
-                                  </div>
+                                <div className="flex-1 min-w-0 flex items-center gap-2">
+                                  <span className="text-xs font-medium text-slate-700 truncate">
+                                    {task.subtaskName && task.subtaskName !== task.task
+                                      ? `${task.task} → ${task.subtaskName}`
+                                      : task.task}
+                                  </span>
+                                  {subtext && (
+                                    <span className="text-[10px] text-emerald-600/70 italic truncate shrink-0 max-w-[120px]">{subtext}</span>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
+                                <div className={cn(
+                                  "text-[10px] whitespace-nowrap font-medium shrink-0",
+                                  overdue ? "text-red-500 font-bold" : "text-slate-400"
+                                )}>
+                                  {overdue && <span className="mr-1 uppercase tracking-wider">!</span>}
+                                  {formatDate(task.nextMaintenance)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       );
                     })}
-                  </Accordion>
+                  </div>
                 </div>
               ) : (
                 <div className="pt-4 flex flex-col items-center justify-center p-8 text-center border-t border-dashed h-40">
-                  <Factory className="w-10 h-10 text-slate-200 mb-2" />
-                  <p className="text-sm text-slate-500">Selecteer eerst een pers om taken te kiezen</p>
+                  <Factory className="w-10 h-10 text-emerald-200 mb-3" />
+                  <p className="text-sm font-medium text-slate-500">Selecteer een pers</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Kies hierboven een pers om de bijbehorende taken te zien</p>
                 </div>
               )}
 
@@ -381,7 +426,7 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col gap-2 pt-4 border-t bg-slate-50/50 shrink-0">
+            <CardFooter className="flex flex-col gap-2 py-3 px-4 border-t bg-slate-50/50 shrink-0">
               {selectedPress && checklistPdfTasks.length > 0 ? (
                 <PDFDownloadLink
                   document={
@@ -393,20 +438,21 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
                       fontSize={fontSize}
                       marginH={marginH}
                       marginV={marginV}
+                      selectedPeriod={selectedPeriod}
                     />
                   }
                   fileName={`checklist-${selectedPress.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`}
                   className="w-full"
                 >
                   {({ loading }) => (
-                    <Button className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2" disabled={loading}>
+                    <Button className="w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 shadow-md shadow-emerald-100 rounded-lg" disabled={loading}>
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                       {loading ? 'Document genereren...' : `Download PDF (${checklistPdfTasks.length} taken)`}
                     </Button>
                   )}
                 </PDFDownloadLink>
               ) : (
-                <Button disabled className="w-full h-10 font-bold gap-2">
+                <Button disabled className="w-full h-10 font-bold gap-2 rounded-lg">
                   <Download className="w-4 h-4" /> Download PDF
                 </Button>
               )}
@@ -416,7 +462,7 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
 
         {/* Right Panel - Live Preview */}
         <div className="h-full shrink-0 flex justify-center bg-transparent">
-          <div className="relative h-full bg-slate-100 rounded-xl border border-indigo-100 overflow-hidden shadow-sm flex items-center justify-center" style={{ aspectRatio: '1 / 1.414' }}>
+          <div className="relative h-full bg-slate-100 rounded-xl border border-emerald-100 overflow-hidden shadow-sm flex items-center justify-center" style={{ aspectRatio: '1 / 1.414' }}>
             {selectedPress && checklistPdfTasks.length > 0 ? (
               <PDFViewer width="100%" height="100%" className="border-none">
                 <ChecklistPDF
@@ -427,12 +473,14 @@ export function MaintenanceChecklist({ tasks: initialTasks, presses: initialPres
                   fontSize={fontSize}
                   marginH={marginH}
                   marginV={marginV}
+                  selectedPeriod={selectedPeriod}
                 />
               </PDFViewer>
             ) : (
               <div className="text-center p-8">
-                <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-sm text-slate-400 font-medium">Selecteer een pers en ten minste één taak om de preview te bekijken.</p>
+                <ClipboardCheck className="w-12 h-12 text-emerald-200 mx-auto mb-3" />
+                <p className="text-sm text-slate-500 font-medium">PDF Preview</p>
+                <p className="text-[10px] text-slate-400 mt-1">Selecteer een pers en minstens één taak</p>
               </div>
             )}
           </div>

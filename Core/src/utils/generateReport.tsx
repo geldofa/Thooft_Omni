@@ -203,7 +203,7 @@ export async function generatePresetReport(
         generatedAt={formatDisplayDateTime(new Date())}
         columns={visibleColumns}
         fontSize={s.fontSize || 9}
-        marginH={s.marginH || 30}
+        marginH={s.marginH || 15}
         marginV={s.marginV || 10}
         columnWidths={s.columnWidths || {}}
       />
@@ -286,7 +286,7 @@ export async function generatePresetReport(
         tasks={mapped}
         generatedAt={formatDisplayDateTime(new Date())}
         fontSize={s.fontSize || 8}
-        marginH={s.marginH || 10}
+        marginH={s.marginH || 15}
         marginV={s.marginV || 10}
       />
     ).toBlob();

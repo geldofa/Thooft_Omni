@@ -142,29 +142,45 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica-Bold',
         color: '#ffffff',
     },
-    filterText: {
-        fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.8)',
-        marginTop: 4,
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    headerTitleRow: {
+        marginBottom: 15,
+    },
+    mainTitle: {
+        fontSize: 24,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 5,
+    },
+    detailText: {
+        fontSize: 16,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    detailTextSmall: {
+        fontSize: 12,
+        fontFamily: 'Helvetica-Bold',
+        color: '#ffffff',
+    },
+    headerSpacer: {
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.4)',
+        marginTop: 5,
+        marginBottom: 10,
     },
     dateText: {
         fontSize: 8,
-        color: 'rgba(255, 255, 255, 0.6)',
-    },
-    subHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 5,
-    },
-    machineName: {
-        fontSize: 14,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
-    },
-    totalCount: {
-        fontSize: 10,
-        fontFamily: 'Helvetica-Bold',
-        color: '#ffffff',
+        color: 'rgba(255, 255, 255, 0.8)',
     },
     table: {
         width: '100%',
@@ -276,7 +292,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
     tasks,
     columns,
     fontSize = 9,
-    marginH = 10,
+    marginH = 15,
     marginV = 10,
     columnWidths,
 }) => {
@@ -291,7 +307,7 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
         headerWrapper: {
             paddingHorizontal: marginH,
             paddingTop: marginV + 15,
-            paddingBottom: 20,
+            paddingBottom: 12,
         },
         pageContent: {
             paddingHorizontal: marginH,
@@ -320,26 +336,32 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
 
         return (
             <Page size="A4" style={styles.page} key={pressName}>
-                {/* Header with press name */}
+                {/* ── Fixed Header ── */}
                 <View style={[styles.headerWrapper, dynamicStyles.headerWrapper]} fixed>
-                    <View style={styles.headerContainer}>
-                        <View>
-                            <Text style={styles.omniLogo}>OMNI</Text>
-                            <Text style={styles.filterText}>
-                                {reportTitle} | {displayPressName} | {selectedPeriod}
-                            </Text>
+                    {/* Top Row: Title (Left) & Logo/Date (Right) */}
+                    <View style={styles.headerTopRow}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.mainTitle}>{reportTitle}</Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.dateText}>Gegenereerd op:</Text>
-                            <Text style={styles.dateText}>{generatedAt}</Text>
+                            <Text style={styles.omniLogo}>OMNI</Text>
+                            <Text style={styles.dateText}>Gegenereerd op: {generatedAt}</Text>
                         </View>
                     </View>
 
-                    <View style={styles.subHeader}>
-                        <Text style={styles.machineName}>{displayPressName}</Text>
-                        <Text style={styles.totalCount}>
-                            Status {selectedStatus}: {pressTaskCount} taken
-                        </Text>
+                    {/* Spacer (Horizontal Line) */}
+                    <View style={styles.headerSpacer} />
+
+                    {/* Detail Row */}
+                    <View style={styles.headerDetailRow}>
+                        <View style={{ width: '40%' }}>
+                            <Text style={styles.detailText}>{displayPressName}</Text>
+                        </View>
+                        <View style={{ width: '60%', alignItems: 'flex-end' }}>
+                            <Text style={styles.detailTextSmall}>
+                                {selectedPeriod} - {selectedStatus}: {pressTaskCount} taken
+                            </Text>
+                        </View>
                     </View>
                 </View>
 
@@ -415,15 +437,15 @@ export const MaintenanceReportPDF: React.FC<MaintenanceReportPDFProps> = ({
                                     </View>
                                 )}
 
-                                {categoryTasks.slice(1).map((task) => {
+                                {categoryTasks.slice(1).map(task => {
                                     const statusColor = task.statusKey ? STATUS_COLORS[task.statusKey] : STATUS_COLORS['Gepland'];
                                     const showIndicator = task.statusKey && task.statusKey !== 'Gepland';
                                     const isChild = task.parentTask && task.taskName !== task.parentTask;
 
                                     return (
                                         <View
-                                            style={styles.tableRow}
                                             key={task.id}
+                                            style={styles.tableRow}
                                             wrap={false}
                                         >
                                             {showIndicator && (

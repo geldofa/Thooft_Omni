@@ -63,9 +63,9 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         permission: 'reports_view',
         color: 'bg-purple-600',
         subtabs: (_activePresses, hasPermission) => [
-            ...(hasPermission('reports_view') ? [{ label: 'Rapporten', path: '/Analyses/Rapport' }] : []),
-            ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist' }] : []),
+            ...(hasPermission('reports_view') ? [{ label: 'Onderhoud', path: '/Analyses/Rapport' }] : []),
             ...(hasPermission('drukwerken_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken' }] : []),
+            ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist' }] : []),
         ]
     },
     {

@@ -13,13 +13,28 @@
 cronAdd("report_automation_check", "0 * * * *", () => {
     try {
         const now = new Date();
-        // Server runs in UTC. schedule_hour is stored in local time (CET = UTC+1).
-        // Convert UTC hour to local hour before matching.
-        const UTC_OFFSET_HOURS = 1; // CET (UTC+1). Change to 2 for CEST if needed.
-        const currentHourUTC = now.getHours();
-        const currentHour = (currentHourUTC + UTC_OFFSET_HOURS) % 24;
-        const currentDate = now.getDate();
-        const currentDay = now.getDay(); // JS: 0=Sun, 1=Mon, ..., 6=Sat
+
+        // Dynamically determine CET (UTC+1) vs CEST (UTC+2).
+        // CEST starts last Sunday of March at 02:00 CET (01:00 UTC).
+        // CEST ends   last Sunday of October at 03:00 CEST (01:00 UTC).
+        function getCETOffset(d) {
+            const y = d.getUTCFullYear();
+            // Last Sunday of March
+            const mar31 = new Date(Date.UTC(y, 2, 31));
+            const dstStart = new Date(Date.UTC(y, 2, 31 - mar31.getUTCDay(), 1, 0, 0));
+            // Last Sunday of October
+            const oct31 = new Date(Date.UTC(y, 9, 31));
+            const dstEnd = new Date(Date.UTC(y, 9, 31 - oct31.getUTCDay(), 1, 0, 0));
+            return (d >= dstStart && d < dstEnd) ? 2 : 1;
+        }
+
+        const utcOffsetHours = getCETOffset(now);
+        const currentHour = (now.getUTCHours() + utcOffsetHours) % 24;
+
+        // Compute local date/day from UTC + offset
+        const localNow = new Date(now.getTime() + utcOffsetHours * 3600_000);
+        const currentDate = localNow.getUTCDate();
+        const currentDay = localNow.getUTCDay(); // JS: 0=Sun, 1=Mon, ..., 6=Sat
 
         // Find reports that are set to auto_generate and match the current hour
         const reports = $app.findRecordsByFilter(
@@ -51,7 +66,7 @@ cronAdd("report_automation_check", "0 * * * *", () => {
                 if (monthType === 'first_day') {
                     if (currentDate === 1) shouldRun = true;
                 } else if (monthType === 'last_day') {
-                    const lastDayOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                    const lastDayOfCurrentMonth = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth() + 1, 0)).getUTCDate();
                     if (currentDate === lastDayOfCurrentMonth) shouldRun = true;
                 } else if (monthType === 'first_weekday') {
                     // Logic for first weekday:
@@ -64,17 +79,17 @@ cronAdd("report_automation_check", "0 * * * *", () => {
                 }
             } else if (period === 'year') {
                 // Yearly reports run on January 1st
-                if (now.getMonth() === 0 && currentDate === 1) shouldRun = true;
+                if (localNow.getUTCMonth() === 0 && currentDate === 1) shouldRun = true;
             }
 
             // 2. Prevent Double Run (Safety guard)
             // Even though cron triggers exactly at :00, we verify last_run isn't in this same hour.
             if (shouldRun && lastRunStr) {
                 const lastRun = new Date(lastRunStr);
-                const isSameHour = lastRun.getFullYear() === now.getFullYear() &&
-                    lastRun.getMonth() === now.getMonth() &&
-                    lastRun.getDate() === now.getDate() &&
-                    lastRun.getHours() === now.getHours();
+                const isSameHour = lastRun.getUTCFullYear() === now.getUTCFullYear() &&
+                    lastRun.getUTCMonth() === now.getUTCMonth() &&
+                    lastRun.getUTCDate() === now.getUTCDate() &&
+                    lastRun.getUTCHours() === now.getUTCHours();
                 if (isSameHour) {
                     shouldRun = false;
                 }

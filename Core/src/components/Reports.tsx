@@ -410,7 +410,7 @@ export function Reports(_props: ReportsProps) {
   const [pressNames, setPressNames] = useState<string[]>(['Alle persen']);
   const [selectedColumns, setSelectedColumns] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
   const [fontSize, setFontSize] = useState(9);
-  const [marginH, setMarginH] = useState(30);
+  const [marginH, setMarginH] = useState(15);
   const [marginV, setMarginV] = useState(10);
   const [presetToDelete, setPresetToDelete] = useState<ReportPreset | null>(null);
   const [archiveToDelete, setArchiveToDelete] = useState<GeneratedReport | null>(null);
@@ -832,17 +832,21 @@ export function Reports(_props: ReportsProps) {
                     </TableCell>
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.actions }} className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF" onClick={() => window.open(pb.files.getURL(r, r.file), '_blank')}>
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download PDF" onClick={() => {
+                        <a href={pb.files.getURL(r, r.file)} target="_blank" rel="noopener noreferrer">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Bekijk PDF">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </a>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download PDF" onClick={async () => {
                           const url = pb.files.getURL(r, r.file);
+                          const res = await fetch(url);
+                          const blob = await res.blob();
+                          const blobUrl = URL.createObjectURL(blob);
                           const a = document.createElement('a');
-                          a.href = url;
+                          a.href = blobUrl;
                           a.download = r.file || 'rapport.pdf';
-                          document.body.appendChild(a);
                           a.click();
-                          document.body.removeChild(a);
+                          URL.revokeObjectURL(blobUrl);
                         }}>
                           <Download className="w-4 h-4" />
                         </Button>

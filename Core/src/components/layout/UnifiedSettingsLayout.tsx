@@ -200,9 +200,9 @@ export function UnifiedSettingsLayout() {
             {
                 label: 'Analyses & Overzichten',
                 items: [
-                    ...(hasPermission('reports_view') ? [{ value: 'Rapport', label: 'Rapporten', icon: Calculator, description: 'Onderhoud statistieken' }] : []),
-                    ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Periodieke checks' }] : []),
+                    ...(hasPermission('reports_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'Onderhoud statistieken' }] : []),
                     ...(hasPermission('drukwerken_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'Productie overzicht' }] : []),
+                    ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Periodieke checks' }] : []),
                 ]
             }
         ];
