@@ -311,7 +311,7 @@ function MainApp() {
         sort_order: task.sort_order || 0,
         tags: task.tagIds || []
       });
-      if (refresh) fetchData();
+      if (refresh) await fetchData();
       if (!silent) toast.success('Taak succesvol bijgewerkt');
     } catch (e: any) {
       console.error("Update task failed:", e);
@@ -531,15 +531,61 @@ function MainApp() {
     const oldTask = tasks.find(t => t.id === task.id);
     await updateTask(task);
     setEditingTask(null);
+
     if (oldTask) {
+      const changes: string[] = [];
+      const oldVals: string[] = [];
+      const newVals: string[] = [];
+
+      // Helper to compare dates
+      const datesEqual = (d1: Date | null | undefined, d2: Date | null | undefined) => {
+        if (!d1 && !d2) return true;
+        if (!d1 || !d2) return false;
+        return new Date(d1).getTime() === new Date(d2).getTime();
+      };
+
+      if (!datesEqual(oldTask.lastMaintenance, task.lastMaintenance)) {
+        changes.push('laatste onderhoud');
+        oldVals.push(`Laatste onderhoud: ${formatDateForLog(oldTask.lastMaintenance)}`);
+        newVals.push(`Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`);
+      }
+
+      if (!datesEqual(oldTask.nextMaintenance, task.nextMaintenance)) {
+        changes.push('volgend onderhoud');
+        oldVals.push(`Volgend onderhoud: ${formatDateForLog(oldTask.nextMaintenance)}`);
+        newVals.push(`Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`);
+      }
+
+      if (oldTask.maintenanceInterval !== task.maintenanceInterval || oldTask.maintenanceIntervalUnit !== task.maintenanceIntervalUnit) {
+        changes.push('interval');
+        oldVals.push(`Interval: ${formatIntervalForLog(oldTask.maintenanceInterval, oldTask.maintenanceIntervalUnit)}`);
+        newVals.push(`Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`);
+      }
+
+      const oldAssigned = Array.isArray(oldTask.assignedToIds) ? [...oldTask.assignedToIds].sort().join(',') : '';
+      const newAssigned = Array.isArray(task.assignedToIds) ? [...task.assignedToIds].sort().join(',') : '';
+      if (oldAssigned !== newAssigned) {
+        changes.push('toewijzing');
+        oldVals.push(`Toegewezen aan: ${oldTask.assignedTo || 'Niemand'}`);
+        newVals.push(`Toegewezen aan: ${task.assignedTo || 'Niemand'}`);
+      }
+
+      if (oldTask.opmerkingen !== task.opmerkingen) {
+        changes.push('opmerkingen');
+        oldVals.push(`Opmerkingen: ${oldTask.opmerkingen || '(leeg)'}`);
+        newVals.push(`Opmerkingen: ${task.opmerkingen || '(leeg)'}`);
+      }
+
       addActivityLog({
         user: user?.name || user?.username || 'Onbekend',
         action: 'Updated',
         entity: 'Task',
         entityId: task.id,
         entityName: `${task.category} | ${task.task}`,
-        details: 'Taak bijgewerkt',
-        press: task.press
+        details: changes.length > 0 ? `Taak bijgewerkt: ${changes.join(', ')}` : 'Taak bijgewerkt (geen wijzigingen)',
+        press: task.press,
+        oldValue: oldVals.join('|||'),
+        newValue: newVals.join('|||')
       });
     }
   };
@@ -584,6 +630,21 @@ function MainApp() {
       setIsAddDialogOpen(false);
       setEditingTask(null);
       setEditingTaskGroup(null);
+
+      // Log the group update
+      if (tasks.length > 0) {
+        const firstTask = tasks[0];
+        addActivityLog({
+          user: user?.name || user?.username || 'Onbekend',
+          action: 'Updated',
+          entity: 'Task',
+          entityId: firstTask.id || 'group',
+          entityName: `${firstTask.category} | ${firstTask.task}`,
+          details: `Groep van ${tasks.length} taken bijgewerkt`,
+          press: firstTask.press
+        });
+      }
+
       toast.success('Groep succesvol bijgewerkt');
     } catch (error) {
       console.error('Failed to update group:', error);

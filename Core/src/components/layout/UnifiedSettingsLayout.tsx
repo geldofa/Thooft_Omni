@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
     Users, Tags, Factory, Key, Tag as TagIcon, Shield,
     Calculator, Palette, Bell, CalendarClock, Settings,
-    Upload, Wrench, Database, Printer, Activity
+    Upload, Database, Printer, Activity, ShieldCheck
 } from 'lucide-react';
 import { useAuth, pb, Operator, Ploeg, MaintenanceTask, Press, GroupedTask } from '../AuthContext';
 import { SettingsSidebar, SidebarGroup } from '../layout/SettingsSidebar';
@@ -20,6 +20,7 @@ import { MaintenanceChecklist } from '../MaintenanceChecklist';
 import { ProductionAnalytics } from '../ProductionAnalytics';
 import { SystemTasks } from '../SystemTasks';
 import { ToolboxContent } from '../Toolbox';
+import { DataChecker } from '../management/DataChecker';
 
 const ParameterManagement = lazy(() => import('../management/ParameterManagement').then(m => ({ default: m.ParameterManagement })));
 const NotificationManagement = lazy(() => import('../management/NotificationManagement').then(m => ({ default: m.NotificationManagement })));
@@ -248,7 +249,7 @@ export function UnifiedSettingsLayout() {
                     ...(hasPermission('toolbox_access') ? [
                         { value: 'Tools', label: 'Tools', icon: Settings, description: 'Algemene tools' },
                         { value: 'Import', label: 'Import', icon: Upload, description: 'Data importeren' },
-                        { value: 'Fixes', label: 'Database Fixes', icon: Wrench, description: 'Correcties' },
+                        { value: 'Fixes', label: 'Data Checker', icon: ShieldCheck, description: 'Logboek vs Database' },
                         { value: 'Backup', label: 'Backup & Herstel', icon: Database, description: 'Cloud & snapshots' },
                     ] : []),
                 ]
@@ -315,7 +316,8 @@ export function UnifiedSettingsLayout() {
                         {activeTab === 'statistieken/productie' && <div className="w-full h-full absolute inset-0 p-4 overflow-y-auto bg-slate-50/50"><ProductionAnalytics /></div>}
 
                         {/* Toolbox screens */}
-                        {['Tools', 'Import', 'Fixes', 'Backup'].includes(activeTab) && (
+                        {activeTab === 'Fixes' && <DataChecker />}
+                        {['Tools', 'Import', 'Backup'].includes(activeTab) && (
                             <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8">
                                 <ToolboxContent onNavigateHome={() => navigate('/')} />
                             </div>
