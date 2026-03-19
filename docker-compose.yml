@@ -5,7 +5,7 @@ services:
       dockerfile: Core/Dockerfile
     image: docker.io/geldofa/thooft_omni:latest
     ports:
-      - "8080:80"
+      - "80:80"
     networks:
       default:
         aliases:
@@ -18,6 +18,23 @@ services:
         condition: service_started
     restart: unless-stopped
     container_name: thooft_omni
+
+  app_stable:
+    image: docker.io/geldofa/thooft_omni:stable
+    ports:
+      - "8081:80"
+    networks:
+      default:
+        aliases:
+          - OMNItest_stable
+    environment:
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_started
+    restart: unless-stopped
+    container_name: thooft_omni_stable
 
   db_init:
     image: docker.io/geldofa/thooft_omni:latest
