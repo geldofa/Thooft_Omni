@@ -1123,8 +1123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // authWithPassword accepts both username and email as identity directly —
       // no pre-lookup needed (and it avoids needing list-auth on the users collection).
       try {
-        console.log(`[Auth] Authenticating with identity: ${username}`);
+        console.log(`[Auth] Authenticating with identity: ${username} via ${pb.baseUrl}`);
         const authData = await pb.collection('users').authWithPassword(username, password);
+        console.log(`[Auth] authWithPassword response:`, authData ? 'success' : 'no data');
         if (pb.authStore.isValid && authData.record) {
           setUser({
             id: authData.record.id,
@@ -1137,7 +1138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           return true;
         }
-      } catch (e) {
+      } catch (e: any) {
+        console.error("[Auth] User login failed:", e?.status, e?.data, e?.message, e);
         // Fallback for Admin (Superuser) login
         // In PB 0.23, superusers are in the _superusers collection
         if (username.includes('@')) {
@@ -1157,7 +1159,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error("[Auth] Superuser login failed:", adminError);
           }
         }
-        console.error("[Auth] User login failed:", e);
       }
 
       return false;
