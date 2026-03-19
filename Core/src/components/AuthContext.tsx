@@ -1010,7 +1010,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyCloudBackups = async (filenames: string[]): Promise<Record<string, boolean>> => {
     if (!isSuperuser || filenames.length === 0) return {};
     try {
-      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:8090/api/cloud-sync/verify-batch?token=${encodeURIComponent(pb.authStore.token)}`, {
+      const response = await fetch(`${pb.baseUrl}/api/cloud-sync/verify-batch?token=${encodeURIComponent(pb.authStore.token)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1120,40 +1120,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!username || !password) return false;
 
-      // Use raw fetch instead of SDK to bypass potential SDK issues
+      // authWithPassword accepts both username and email as identity directly.
       try {
-        const authUrl = `${pb.baseUrl}/api/collections/users/auth-with-password`;
-        console.log(`[Auth] Authenticating with identity: ${username} via ${authUrl}`);
-        
-        const response = await fetch(authUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identity: username, password: password })
-        });
-        
-        console.log(`[Auth] Response status: ${response.status}`);
-        const data = await response.json();
-        console.log(`[Auth] Response data:`, data?.record ? 'has record' : 'no record', data);
-        
-        if (response.ok && data.token && data.record) {
-          // Manually save to PB auth store
-          pb.authStore.save(data.token, data.record);
-          
+        console.log(`[Auth] Authenticating with identity: ${username} via ${pb.baseUrl}`);
+        const authData = await pb.collection('users').authWithPassword(username, password);
+        if (pb.authStore.isValid && authData.record) {
           setUser({
-            id: data.record.id,
-            username: data.record.username,
-            name: data.record.name,
-            role: data.record.role ? mapDbRoleToUi(data.record.role) : 'press',
-            press: data.record.press,
-            pressId: data.record.pers,
-            operator_id: data.record.operator_id
+            id: authData.record.id,
+            username: authData.record.username,
+            name: authData.record.name,
+            role: authData.record.role ? mapDbRoleToUi(authData.record.role) : 'press',
+            press: authData.record.press,
+            pressId: authData.record.pers,
+            operator_id: authData.record.operator_id
           });
           return true;
-        } else {
-          console.error("[Auth] Auth response not OK:", response.status, data);
         }
       } catch (e: any) {
-        console.error("[Auth] User login failed:", e?.message, e);
+        console.error("[Auth] User login failed:", e?.status, e?.message, e);
         // Fallback for Admin (Superuser) login
         // In PB 0.23, superusers are in the _superusers collection
         if (username.includes('@')) {
