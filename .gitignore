@@ -32,5 +32,12 @@ types.d.ts
 .env
 stack.env
 
+# Debug/Test scripts (containing credentials)
+superuser_debug.js
+superuser_debug_raw.js
+test_login.js
+debug_auth.js
+Core/scripts/
+
 # Docker
 docker-compose.override.yml

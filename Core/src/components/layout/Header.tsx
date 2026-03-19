@@ -6,6 +6,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { HeaderActivityTicker } from './HeaderActivityTicker';
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { NAVIGATION_CONFIG, NavItemConfig } from '../../config/navigationConfig';
 
@@ -163,6 +164,9 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               </Tabs>
             </div>
           </div>
+
+          {/* --- CENTER-RIGHT: ACTIVITY TICKER (admin only) --- */}
+          <HeaderActivityTicker />
 
           {/* --- RIGHT: USER & LOGOUT --- */}
           <div className="flex-shrink-0 flex items-center gap-6 ml-4">

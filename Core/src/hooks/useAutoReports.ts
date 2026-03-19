@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { pb } from '../lib/pocketbase';
 import { generatePresetReport, type ReportPreset } from '../utils/generateReport';
+import { pushActivityEvent } from './useActivityFeed';
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 min gap between last_run and latest file
@@ -69,8 +70,10 @@ export function useAutoReports(enabled: boolean) {
             try {
               await generatePresetReport(preset, 'auto', 'Systeem');
               console.log(`[AutoReports] Successfully generated: ${preset.name}`);
+              pushActivityEvent({ type: 'auto', message: `Auto-rapport gegenereerd: ${preset.name}` });
             } catch (err) {
               console.error(`[AutoReports] Failed to generate: ${preset.name}`, err);
+              pushActivityEvent({ type: 'error', message: `Auto-rapport mislukt: ${preset.name}` });
             }
 
             // Only process one per cycle to avoid blocking

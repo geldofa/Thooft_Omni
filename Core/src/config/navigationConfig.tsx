@@ -66,6 +66,7 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
             ...(hasPermission('reports_view') ? [{ label: 'Onderhoud', path: '/Analyses/Rapport' }] : []),
             ...(hasPermission('drukwerken_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken' }] : []),
             ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist' }] : []),
+            ...(hasPermission('reports_view') ? [{ label: 'Statistieken > Onderhoud (BETA)', path: '/analyses/statistieken/onderhoud' }] : []),
         ]
     },
     {

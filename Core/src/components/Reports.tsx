@@ -15,9 +15,10 @@ import {
   subMonths,
   subYears,
   addDays,
-  isBefore,
-  getISOWeek
+  getDay
 } from 'date-fns';
+
+
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import {
@@ -50,6 +51,15 @@ import { generatePresetReport, type ReportPreset as SharedReportPreset } from '.
 import { toast } from 'sonner';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateUtils';
+import { 
+  detectPeriodType, 
+  formatPeriodLabel, 
+  resolveTitleVariables,
+  matchesStatus,
+  buildReportFilename,
+  NL_MONTH_NAMES,
+  NL_DAY_NAMES
+} from '../utils/reportUtils';
 
 // ─── Column configuration ───────────────────────────────────
 
@@ -180,24 +190,7 @@ function buildPeriodFilter(period: string, status: string): string {
   return '';
 }
 
-function matchesStatus(nextDate: Date | null, status: string): boolean {
-  const todayStart = startOfDay(new Date());
-
-  if (status === 'Nu Nodig') {
-    // Overdue: next_date is strictly before start of today
-    return !!nextDate && isBefore(nextDate, todayStart);
-  }
-  if (status === 'Binnenkort') {
-    // Upcoming: next_date is today or in the future (not overdue)
-    if (!nextDate) return false;
-    return !isBefore(nextDate, todayStart);
-  }
-  if (status === 'Voltooid') {
-    // Completed: rely on buildPeriodFilter (uses last_date), allow all through here
-    return true;
-  }
-  return true;
-}
+// matchesStatus moved to reportUtils.ts
 
 function formatInterval(val: number, unit: string) {
   if (val === 1) {
@@ -220,25 +213,51 @@ function formatDateNL(dateStr: string | null) {
 
 function parseReportFileInfo(filename: string | undefined) {
   if (!filename) return null;
-
-  // PocketBase appends a random hash, so we optionally match it before .pdf
-
-  // Day: _YYYY_MM_DD
+  
+  // Day: _2026_03_18.pdf
   let match = filename.match(/_(\d{4})_(\d{2})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
-  if (match) return { type: 'day', year: match[1], date: `${match[3]}/${match[2]}/${match[1]}` };
-
-  // Week: _YYYY_Www
+  if (match) {
+    const d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+    const dayName = NL_DAY_NAMES[getDay(d)];
+    const dateFormatted = `${match[3]}/${match[2]}/${match[1]}`;
+    return { 
+      type: 'day', 
+      year: match[1], 
+      date: dateFormatted,
+      periodLabel: `${dayName} ${dateFormatted}`
+    };
+  }
+  
+  // Week: _2026_W01.pdf
   match = filename.match(/_(\d{4})_W(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
-  if (match) return { type: 'week', year: match[1], week: `W${match[2]}` };
-
-  // Month: _YYYY_MM
+  if (match) return { 
+    type: 'week', 
+    year: match[1], 
+    week: `W${match[2]}`,
+    periodLabel: `${match[1]} - W${match[2]}`
+  };
+  
+  // Month: _2026_03.pdf
   match = filename.match(/_(\d{4})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
-  if (match) return { type: 'month', year: match[1], month: match[2] };
-
-  // Year: _YYYY
+  if (match) {
+    const monthIndex = parseInt(match[2]) - 1;
+    const monthName = NL_MONTH_NAMES[monthIndex];
+    return { 
+      type: 'month', 
+      year: match[1], 
+      month: match[2],
+      periodLabel: `${match[1]} - ${monthName}`
+    };
+  }
+  
+  // Year: _2026.pdf
   match = filename.match(/_(\d{4})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
-  if (match) return { type: 'year', year: match[1] };
-
+  if (match) return { 
+    type: 'year', 
+    year: match[1],
+    periodLabel: match[1]
+  };
+  
   return null;
 }
 
@@ -250,108 +269,55 @@ function cleanReportFilename(filename: string | undefined) {
 
 // ─── Naming helper ──────────────────────────────────────────
 
+// Scheduled run logic
+
+
 function getNextRunDate(p: ReportPreset): Date | null {
   if (!p.auto_generate) return null;
-
   const now = new Date();
   const hour = p.settings?.schedule_hour ?? 0;
-  const interval = p.period || 'week'; // Note: 'period' in DB stores 'day', 'week', etc.
-
+  const interval = p.period || 'week';
   let next = new Date(now);
   next.setHours(hour, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
 
-  // If next is in the past today, start from tomorrow
-  if (next <= now) {
-    next.setDate(next.getDate() + 1);
-  }
-
-  if (interval === 'day') {
-    return next;
-  }
-
+  if (interval === 'day') return next;
   if (interval === 'week') {
-    const targetDay = p.settings?.schedule_weekday; // 1 (Ma) to 7 (Zo)
+    const targetDay = p.settings?.schedule_weekday;
     if (targetDay === undefined) return next;
-
-    // Map UI 1-7 (Ma-Zo) to JS 1-0 (Mon-Sun)
     const jsDayMap: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 0 };
     const targetJsDay = jsDayMap[targetDay];
-
-    while (next.getDay() !== targetJsDay) {
-      next.setDate(next.getDate() + 1);
-    }
+    while (next.getDay() !== targetJsDay) next.setDate(next.getDate() + 1);
     return next;
   }
-
   if (interval === 'month') {
     const dayType = p.settings?.schedule_day_type || 'first_day';
     const exactDay = p.settings?.schedule_exact_day || 1;
-
     const findMonthRun = (date: Date): Date => {
       let d = new Date(date.getFullYear(), date.getMonth(), 1, hour, 0, 0, 0);
-      if (dayType === 'first_day') {
-        // Already at 1st
-      } else if (dayType === 'last_day') {
-        d = new Date(date.getFullYear(), date.getMonth() + 1, 0, hour, 0, 0, 0);
-      } else if (dayType === 'exact_day') {
-        d.setDate(exactDay);
-      } else if (dayType === 'first_weekday') {
-        // First weekday logic: 
-        // If 1st is Mon-Fri, that's it.
-        // If 1st is Sat (6), then 3rd is Mon.
-        // If 1st is Sun (0), then 2nd is Mon.
+      if (dayType === 'last_day') d = new Date(date.getFullYear(), date.getMonth() + 1, 0, hour, 0, 0, 0);
+      else if (dayType === 'exact_day') d.setDate(exactDay);
+      else if (dayType === 'first_weekday') {
         const firstDay = d.getDay();
         if (firstDay === 6) d.setDate(3);
         else if (firstDay === 0) d.setDate(2);
       }
       return d;
     };
-
     let nextRun = findMonthRun(next);
-    if (nextRun <= now) {
-      nextRun = findMonthRun(new Date(next.getFullYear(), next.getMonth() + 1, 1));
-    }
+    if (nextRun <= now) nextRun = findMonthRun(new Date(next.getFullYear(), next.getMonth() + 1, 1));
     return nextRun;
   }
-
   if (interval === 'year') {
     const month = p.settings?.schedule_month || 1;
     let nextRun = new Date(now.getFullYear(), month - 1, 1, hour, 0, 0, 0);
-    if (nextRun <= now) {
-      nextRun.setFullYear(now.getFullYear() + 1);
-    }
+    if (nextRun <= now) nextRun.setFullYear(now.getFullYear() + 1);
     return nextRun;
   }
-
   return null;
 }
 
-function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
-  if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
-  if (['Deze Week', 'Vorige Week'].includes(selectedPeriod)) return 'week';
-  if (['Deze Maand', 'Vorige Maand', '14 Dagen'].includes(selectedPeriod)) return 'month';
-  if (['Dit Jaar', 'Vorig Jaar'].includes(selectedPeriod)) return 'year';
-  return 'day'; // default for Alles overtijd, > 6 maanden, > 1 jaar
-}
-
-function buildReportFilename(
-  pressName: string,
-  reportType: string,
-  periodType: 'day' | 'week' | 'month' | 'year',
-  presetName?: string // if provided, use preset name instead of Press_Type
-): string {
-  const now = new Date();
-  const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
-  const prefix = presetName ? sanitize(presetName) : `${sanitize(pressName)}_${sanitize(reportType)}`;
-  const yyyy = format(now, 'yyyy');
-
-  switch (periodType) {
-    case 'day': return `${prefix}_${yyyy}_${format(now, 'MM')}_${format(now, 'dd')}.pdf`;
-    case 'week': return `${prefix}_${yyyy}_W${String(getISOWeek(now)).padStart(2, '0')}.pdf`;
-    case 'month': return `${prefix}_${yyyy}_${format(now, 'MM')}.pdf`;
-    case 'year': return `${prefix}_${yyyy}.pdf`;
-  }
-}
+// Shared helpers moved to reportUtils.ts or dateUtils.ts
 
 // ─── Component ──────────────────────────────────────────────
 
@@ -572,21 +538,24 @@ export function Reports(_props: ReportsProps) {
     if (!activeConfig.name.trim()) return toast.error("Naam verplicht");
     setIsSaving(true);
     try {
-      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
-      const periodType = detectPeriodType(selectedPeriod);
-      const filename = buildReportFilename(selectedPress, 'taken', periodType);
+      const b = await pdf(<MaintenanceReportPDF tasks={tasks} reportTitle={resolveTitleVariables(reportTitle, selectedPeriod)} selectedPress={selectedPress} selectedPeriod={formatPeriodLabel(selectedPeriod)} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />).toBlob();
+      const periodType = detectPeriodType(selectedPeriod) || 'day';
+      const filename = buildReportFilename(selectedPress, 'taken', periodType, activeConfig.name);
       const f = new FormData();
       f.append('file', b, filename);
       if (activePreset) {
         f.append('maintenance_report', activePreset.id);
       }
+
+      // Save formatted title for archive display
+      const formattedPeriod = formatPeriodLabel(selectedPeriod);
+      const tasksCount = tasks.length;
+      f.append('title', `${formattedPeriod}: ${tasksCount} taken`);
+
       f.append('generated_at', new Date().toISOString());
       f.append('trigger', 'manual');
       f.append('created_by', user?.name || user?.username || 'Onbekend');
-      // No need to append report_type here as it's linked via maintenance_report
-      // but for manual exports without a preset, we might want it.
-      // However, the filter 'maintenance_report = null' handles it in the dashboard.
-
+      
       await pb.collection('report_files').create(f);
       toast.success("Rapport opgeslagen in archief");
       setCurrentView('dashboard');
@@ -695,7 +664,7 @@ export function Reports(_props: ReportsProps) {
                       </div>
                       <div className="flex flex-col gap-0.5 text-[10px]">
                         <span className="text-slate-400 font-bold uppercase tracking-wider">Periode</span>
-                        <span className="font-semibold text-slate-600 italic truncate">"{settings.selectedPeriod || 'N.v.t.'}"</span>
+                        <span className="font-semibold text-slate-600 italic truncate">{formatPeriodLabel(settings.selectedPeriod || 'Alles overtijd')}</span>
                       </div>
                       {p.auto_generate && (
                         <div className="flex flex-col gap-0.5 text-[10px]">
@@ -744,28 +713,18 @@ export function Reports(_props: ReportsProps) {
                     {/* Dedicated Column for Period Chips */}
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.period }} className="py-3">
                       {(() => {
+                        if (r.title) {
+                          return (
+                            <div className="flex flex-row items-center gap-1.5 overflow-hidden">
+                              <span className="text-xs font-bold text-slate-700 truncate">{r.title}</span>
+                            </div>
+                          );
+                        }
                         const parsed = parseReportFileInfo(r.file);
                         if (!parsed) return <span className="text-slate-300 italic text-[10px]">Geen info</span>;
                         return (
                           <div className="flex flex-row items-center gap-1.5 overflow-hidden">
-                            <Badge variant="outline" className="bg-indigo-50/50 text-indigo-700 border-indigo-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                              {parsed.year}
-                            </Badge>
-                            {parsed.type === 'day' && (
-                              <Badge variant="outline" className="bg-blue-50/50 text-blue-700 border-blue-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                {parsed.date}
-                              </Badge>
-                            )}
-                            {parsed.type === 'week' && (
-                              <Badge variant="outline" className="bg-emerald-50/50 text-emerald-700 border-emerald-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                {parsed.week}
-                              </Badge>
-                            )}
-                            {parsed.type === 'month' && (
-                              <Badge variant="outline" className="bg-orange-50/50 text-orange-700 border-orange-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                Maand {parsed.month}
-                              </Badge>
-                            )}
+                            <span className="text-[11px] font-medium text-slate-500 truncate">{parsed.periodLabel}</span>
                           </div>
                         );
                       })()}
@@ -1224,7 +1183,19 @@ export function Reports(_props: ReportsProps) {
               <div className="flex flex-col items-center gap-3"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Preview wordt gegenereerd...</span></div>
             ) : activeConfig.export_types.includes('taken') ? (
               <PDFViewer width="100%" height="100%" className="border-none">
-                <MaintenanceReportPDF tasks={tasks} reportTitle={reportTitle} selectedPress={selectedPress} selectedPeriod={selectedPeriod} selectedStatus={selectedStatus} generatedAt={formatDisplayDate(new Date())} columns={visibleColumns} fontSize={fontSize} marginH={marginH} marginV={marginV} columnWidths={activeConfig.columnWidths} />
+                <MaintenanceReportPDF
+                  tasks={tasks}
+                  reportTitle={resolveTitleVariables(reportTitle, selectedPeriod)}
+                  selectedPress={selectedPress}
+                  selectedPeriod={formatPeriodLabel(selectedPeriod)}
+                  selectedStatus={selectedStatus}
+                  columns={visibleColumns}
+                  fontSize={fontSize}
+                  marginH={marginH}
+                  marginV={marginV}
+                  columnWidths={activeConfig.columnWidths}
+                  generatedAt={formatDisplayDateTime(new Date())}
+                />
               </PDFViewer>
             ) : (
               <div className="text-center p-8"><FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-400 font-medium">Layout voor "{activeConfig.export_types.join(', ')}" volgt spoedig.</p></div>

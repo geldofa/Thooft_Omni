@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
     Users, Tags, Factory, Key, Tag as TagIcon, Shield,
     Calculator, Palette, Bell, CalendarClock, Settings,
-    Upload, Wrench, Database, Printer
+    Upload, Wrench, Database, Printer, Activity
 } from 'lucide-react';
 import { useAuth, pb, Operator, Ploeg, MaintenanceTask, Press, GroupedTask } from '../AuthContext';
 import { SettingsSidebar, SidebarGroup } from '../layout/SettingsSidebar';
@@ -17,16 +17,19 @@ import { PermissionManagement } from '../management/PermissionManagement';
 import { ThemeManagement } from '../management/ThemeManagement';
 import { Reports } from '../Reports';
 import { MaintenanceChecklist } from '../MaintenanceChecklist';
+import { ProductionAnalytics } from '../ProductionAnalytics';
 import { SystemTasks } from '../SystemTasks';
 import { ToolboxContent } from '../Toolbox';
 
 const ParameterManagement = lazy(() => import('../management/ParameterManagement').then(m => ({ default: m.ParameterManagement })));
 const NotificationManagement = lazy(() => import('../management/NotificationManagement').then(m => ({ default: m.NotificationManagement })));
 const DrukwerkenReports = lazy(() => import('../DrukwerkenReports').then(m => ({ default: m.DrukwerkenReports })));
+const TickerSettingsPage = lazy(() => import('../management/TickerSettingsPage').then(m => ({ default: m.TickerSettingsPage })));
+const MaintenanceAnalytics = lazy(() => import('../MaintenanceAnalytics').then(m => ({ default: m.MaintenanceAnalytics })));
 
 export function UnifiedSettingsLayout() {
     const { hasPermission } = useAuth();
-    const { subtab } = useParams<{ subtab: string }>();
+    const { subtab, subsubtab } = useParams<{ subtab: string, subsubtab?: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const [prevPath, setPrevPath] = useState(location.pathname);
@@ -187,7 +190,8 @@ export function UnifiedSettingsLayout() {
     }, [tasks]);
 
     const activeArea = location.pathname.split('/')[1]; // 'Beheer', 'Toolbox', or 'Analyses'
-    const activeTab = subtab || (
+    const fullTabPath = subsubtab ? `${subtab}/${subsubtab}` : subtab;
+    const activeTab = fullTabPath || (
         activeArea === 'Analyses' ? 'Rapport' :
             activeArea === 'Toolbox' ? 'Tools' : 'Personeel'
     );
@@ -198,11 +202,20 @@ export function UnifiedSettingsLayout() {
     if (activeArea === 'Analyses') {
         sidebarGroups = [
             {
-                label: 'Analyses & Overzichten',
+                label: 'PDF Rapporten',
                 items: [
-                    ...(hasPermission('reports_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'Onderhoud statistieken' }] : []),
-                    ...(hasPermission('drukwerken_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'Productie overzicht' }] : []),
-                    ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Periodieke checks' }] : []),
+                    ...(hasPermission('reports_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'PDF hub voor onderhoud' }] : []),
+                    ...(hasPermission('drukwerken_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'PDF hub voor drukwerken' }] : []),
+                    ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Checklist voor onderhoud aanmaken' }] : []),
+                ]
+            },
+            {
+                label: 'Statistieken',
+                items: [
+                    ...(hasPermission('reports_view') ? [
+                        { value: 'statistieken/onderhoud', label: 'Onderhoud', icon: Activity, description: 'Onderhoud statistieken' },
+                        { value: 'statistieken/productie', label: 'Productie', icon: Activity, description: 'Productie data & uptime' }
+                    ] : []),
                 ]
             }
         ];
@@ -211,11 +224,11 @@ export function UnifiedSettingsLayout() {
             {
                 label: 'Organisatie',
                 items: [
-                    ...(hasPermission('manage_personnel') ? [{ value: 'Personeel', label: 'Personeel', icon: Users, description: 'Teams & Operatoren' }] : []),
+                    ...(hasPermission('manage_personnel') ? [{ value: 'Personeel', label: 'Personeel', icon: Users, description: 'Operatoren,Ploegen & Externen' }] : []),
                     ...(hasPermission('manage_categories') ? [{ value: 'Categorie', label: 'Categorieën', icon: Tags, description: 'Taak groepering' }] : []),
                     ...(hasPermission('manage_tags') ? [{ value: 'Tags', label: 'Tags', icon: TagIcon, description: 'Highlights & Labels' }] : []),
-                    ...(hasPermission('manage_presses') ? [{ value: 'Persen', label: 'Persen', icon: Factory, description: 'Machine beheer' }] : []),
-                    ...(hasPermission('manage_parameters') ? [{ value: 'Parameters', label: 'Parameters', icon: Calculator, description: 'Productie waarden' }] : []),
+                    ...(hasPermission('manage_presses') ? [{ value: 'Persen', label: 'Persen', icon: Factory, description: 'Machine park' }] : []),
+                    ...(hasPermission('manage_parameters') ? [{ value: 'Parameters', label: 'Parameters', icon: Calculator, description: 'Productie berekening' }] : []),
                 ]
             },
             {
@@ -231,6 +244,7 @@ export function UnifiedSettingsLayout() {
                 items: [
                     ...(hasPermission('manage_notifications') ? [{ value: 'Notificaties', label: 'Notificaties', icon: Bell, description: 'Meldingen beheer' }] : []),
                     ...(hasPermission('manage_system_tasks') ? [{ value: 'Taken', label: 'Systeem Taken', icon: CalendarClock, description: 'Geplande jobs' }] : []),
+                    { value: 'Ticker', label: 'Activiteit Ticker', icon: Activity, description: 'Header activiteit' },
                     ...(hasPermission('toolbox_access') ? [
                         { value: 'Tools', label: 'Tools', icon: Settings, description: 'Algemene tools' },
                         { value: 'Import', label: 'Import', icon: Upload, description: 'Data importeren' },
@@ -246,7 +260,7 @@ export function UnifiedSettingsLayout() {
 
     const onSelect = (value: string) => {
         const isToolboxValue = ['Tools', 'Import', 'Fixes', 'Backup'].includes(value);
-        const isAnalysesValue = ['Rapport', 'Checklist', 'Drukwerken', 'Extern'].includes(value);
+        const isAnalysesValue = ['Rapport', 'Checklist', 'Drukwerken', 'Extern', 'statistieken/onderhoud', 'statistieken/productie'].includes(value);
         const prefix = isAnalysesValue ? 'Analyses' : isToolboxValue ? 'Toolbox' : 'Beheer';
         startTransition(() => navigate(`/${prefix}/${value}`));
     };
@@ -288,6 +302,7 @@ export function UnifiedSettingsLayout() {
                             <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><NotificationManagement /></div>
                         )}
                         {activeTab === 'Taken' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><SystemTasks /></div>}
+                        {activeTab === 'Ticker' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><TickerSettingsPage /></div>}
                         {activeTab === 'Rapport' && <div className="w-full h-full absolute inset-0 p-2 sm:p-3 lg:p-4"><Reports tasks={flattenedTasks} /></div>}
                         {activeTab === 'Checklist' && <div className="w-full h-full absolute inset-0 p-2 sm:p-3 lg:p-4"><MaintenanceChecklist tasks={flattenedTasks} /></div>}
                         {activeTab === 'Drukwerken' && <div className="w-full h-full absolute inset-0 p-2 sm:p-3 lg:p-4"><DrukwerkenReports presses={presses} /></div>}
@@ -296,6 +311,8 @@ export function UnifiedSettingsLayout() {
                                 <ExternalTasks tasks={tasks} presses={presses} />
                             </div>
                         )}
+                        {activeTab === 'statistieken/onderhoud' && <div className="w-full h-full absolute inset-0 p-4 overflow-y-auto bg-slate-50/50"><MaintenanceAnalytics /></div>}
+                        {activeTab === 'statistieken/productie' && <div className="w-full h-full absolute inset-0 p-4 overflow-y-auto bg-slate-50/50"><ProductionAnalytics /></div>}
 
                         {/* Toolbox screens */}
                         {['Tools', 'Import', 'Fixes', 'Backup'].includes(activeTab) && (

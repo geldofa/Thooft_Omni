@@ -14,7 +14,8 @@ import {
   subWeeks,
   subMonths,
   subYears,
-  getISOWeek
+  getISOWeek,
+  getDay
 } from 'date-fns';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -47,6 +48,13 @@ import { generatePresetReport, type ReportPreset as SharedReportPreset } from '.
 import { toast } from 'sonner';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import { formatDisplayDateTime } from '../utils/dateUtils';
+import { 
+  detectPeriodType, 
+  formatPeriodLabel, 
+  resolveTitleVariables,
+  NL_MONTH_NAMES,
+  NL_DAY_NAMES
+} from '../utils/reportUtils';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -162,14 +170,6 @@ function getNextRunDate(p: ReportPreset): Date | null {
   return null;
 }
 
-function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
-  if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
-  if (['Deze Week', 'Vorige Week'].includes(selectedPeriod)) return 'week';
-  if (['Deze Maand', 'Vorige Maand'].includes(selectedPeriod)) return 'month';
-  if (['Dit Jaar', 'Vorig Jaar'].includes(selectedPeriod)) return 'year';
-  return 'week';
-}
-
 function buildReportFilename(pressName: string, periodType: 'day' | 'week' | 'month' | 'year', presetName?: string): string {
   const now = new Date();
   const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
@@ -185,14 +185,51 @@ function buildReportFilename(pressName: string, periodType: 'day' | 'week' | 'mo
 
 function parseReportFileInfo(filename: string | undefined) {
   if (!filename) return null;
-  let match = filename.match(/_(\\d{4})_(\\d{2})_(\\d{2})(?:_[a-zA-Z0-9]+)?\\.pdf$/i);
-  if (match) return { type: 'day', year: match[1], date: `${match[3]}/${match[2]}/${match[1]}` };
-  match = filename.match(/_(\\d{4})_W(\\d{2})(?:_[a-zA-Z0-9]+)?\\.pdf$/i);
-  if (match) return { type: 'week', year: match[1], week: `W${match[2]}` };
-  match = filename.match(/_(\\d{4})_(\\d{2})(?:_[a-zA-Z0-9]+)?\\.pdf$/i);
-  if (match) return { type: 'month', year: match[1], month: match[2] };
-  match = filename.match(/_(\\d{4})(?:_[a-zA-Z0-9]+)?\\.pdf$/i);
-  if (match) return { type: 'year', year: match[1] };
+  
+  // Day: _2026_03_18.pdf
+  let match = filename.match(/_(\d{4})_(\d{2})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) {
+    const d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+    const dayName = NL_DAY_NAMES[getDay(d)];
+    const dateFormatted = `${match[3]}/${match[2]}/${match[1]}`;
+    return { 
+      type: 'day', 
+      year: match[1], 
+      date: dateFormatted,
+      periodLabel: `${dayName} ${dateFormatted}`
+    };
+  }
+  
+  // Week: _2026_W01.pdf
+  match = filename.match(/_(\d{4})_W(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { 
+    type: 'week', 
+    year: match[1], 
+    week: `W${match[2]}`,
+    periodLabel: `${match[1]} - W${match[2]}`
+  };
+  
+  // Month: _2026_03.pdf
+  match = filename.match(/_(\d{4})_(\d{2})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) {
+    const monthIndex = parseInt(match[2]) - 1;
+    const monthName = NL_MONTH_NAMES[monthIndex];
+    return { 
+      type: 'month', 
+      year: match[1], 
+      month: match[2],
+      periodLabel: `${match[1]} - ${monthName}`
+    };
+  }
+  
+  // Year: _2026.pdf
+  match = filename.match(/_(\d{4})(?:_[a-zA-Z0-9]+)?\.pdf$/i);
+  if (match) return { 
+    type: 'year', 
+    year: match[1],
+    periodLabel: match[1]
+  };
+  
   return null;
 }
 
@@ -453,8 +490,8 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
     try {
       const b = await pdf(
         <DrukwerkenPDF
-          reportTitle={selectedPress === 'Alle persen' ? activeConfig.name : `${activeConfig.name} - ${selectedPress}`}
-          selectedPeriod={selectedPeriod}
+          reportTitle={resolveTitleVariables(selectedPress === 'Alle persen' ? activeConfig.name : `${activeConfig.name} - ${selectedPress}`, selectedPeriod)}
+          selectedPeriod={formatPeriodLabel(selectedPeriod)}
           tasks={tasks}
           fontSize={activeConfig.settings.fontSize}
           marginH={activeConfig.settings.marginH}
@@ -462,11 +499,17 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
           generatedAt={formatDisplayDateTime(new Date())}
         />
       ).toBlob();
-      const periodType = detectPeriodType(selectedPeriod);
+      const periodType = detectPeriodType(selectedPeriod) || 'day';
       const filename = buildReportFilename(selectedPress, periodType, activeConfig.name);
       const f = new FormData();
       f.append('file', b, filename);
       if (activePreset) f.append('maintenance_report', activePreset.id);
+
+      // Save formatted title for archive display
+      const formattedPeriod = formatPeriodLabel(selectedPeriod);
+      const jobsCount = tasks.length;
+      f.append('title', `${formattedPeriod}: ${jobsCount} jobs`);
+
       f.append('generated_at', new Date().toISOString());
       f.append('trigger', 'manual');
       f.append('created_by', user?.name || user?.username || 'Onbekend');
@@ -534,7 +577,7 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
                       </div>
                       <div className="flex flex-col gap-0.5 text-[10px]">
                         <span className="text-slate-400 font-bold uppercase tracking-wider">Periode</span>
-                        <span className="font-semibold text-slate-600 italic truncate">"{settings.selectedPeriod || 'N.v.t.'}"</span>
+                        <span className="font-semibold text-slate-600 italic truncate">{settings.selectedPeriod ? formatPeriodLabel(settings.selectedPeriod) : 'N.v.t.'}</span>
                       </div>
                       {p.auto_generate && (
                         <div className="flex flex-col gap-0.5 text-[10px] col-span-2">
@@ -582,28 +625,18 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
 
                     <TableCell style={{ width: ARCHIVE_COL_WIDTHS.period }} className="py-3">
                       {(() => {
+                        if (r.title) {
+                          return (
+                            <div className="flex flex-row items-center gap-1.5 overflow-hidden">
+                              <span className="text-xs font-bold text-slate-700 truncate">{r.title}</span>
+                            </div>
+                          );
+                        }
                         const parsed = parseReportFileInfo(r.file);
                         if (!parsed) return <span className="text-slate-300 italic text-[10px]">Geen info</span>;
                         return (
                           <div className="flex flex-row items-center gap-1.5 overflow-hidden">
-                            <Badge variant="outline" className="bg-sky-50/50 text-sky-700 border-sky-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                              {parsed.year}
-                            </Badge>
-                            {parsed.type === 'day' && (
-                              <Badge variant="outline" className="bg-blue-50/50 text-blue-700 border-blue-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                {parsed.date}
-                              </Badge>
-                            )}
-                            {parsed.type === 'week' && (
-                              <Badge variant="outline" className="bg-emerald-50/50 text-emerald-700 border-emerald-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                {parsed.week}
-                              </Badge>
-                            )}
-                            {parsed.type === 'month' && (
-                              <Badge variant="outline" className="bg-orange-50/50 text-orange-700 border-orange-100 text-[9px] px-1.5 py-0 h-4 font-bold shrink-0">
-                                Maand {parsed.month}
-                              </Badge>
-                            )}
+                            <span className="text-xs font-medium text-slate-500 truncate">{parsed.periodLabel}</span>
                           </div>
                         );
                       })()}
@@ -978,8 +1011,8 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
             ) : tasks.length > 0 ? (
               <PDFViewer width="100%" height="100%" className="border-none">
                 <DrukwerkenPDF
-                  reportTitle={selectedPress === 'Alle persen' ? activeConfig.name : `${activeConfig.name} - ${selectedPress}`}
-                  selectedPeriod={selectedPeriod}
+                  reportTitle={resolveTitleVariables(selectedPress === 'Alle persen' ? activeConfig.name : `${activeConfig.name} - ${selectedPress}`, selectedPeriod)}
+                  selectedPeriod={formatPeriodLabel(selectedPeriod)}
                   tasks={tasks}
                   fontSize={activeConfig.settings.fontSize}
                   marginH={activeConfig.settings.marginH}

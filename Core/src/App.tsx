@@ -751,6 +751,7 @@ function MainApp() {
 
                 <Route path="/Analyses" element={<Navigate to="/Analyses/Rapport" replace />} />
                 <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses/:subtab/:subsubtab" element={(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
                 <Route path="/Rapport" element={<Navigate to="/Analyses/Rapport" replace />} />
                 <Route path="/Checklist" element={<Navigate to="/Analyses/Checklist" replace />} />

@@ -13,13 +13,18 @@ import {
   subWeeks,
   subMonths,
   subYears,
-  addDays,
-  isBefore,
-  getISOWeek
+  addDays
 } from 'date-fns';
 import { MaintenanceReportPDF, type MaintenanceTask, type ColumnDef } from '../components/pdf/MaintenanceReportPDF';
-import { pb } from '../lib/pocketbase';
+import { pb } from '../components/AuthContext';
 import { getStatusInfo } from './StatusUtils';
+import {
+  detectPeriodType,
+  formatPeriodLabel,
+  resolveTitleVariables,
+  buildReportFilename,
+  matchesStatus
+} from './reportUtils';
 import { formatDisplayDate, formatDisplayDateTime } from './dateUtils';
 import { DrukwerkenPDF, type DrukwerkTask } from '../components/pdf/DrukwerkenPDF';
 
@@ -85,45 +90,14 @@ function buildPeriodFilter(period: string, status: string): string {
   return '';
 }
 
-function matchesStatus(nextDate: Date | null, status: string): boolean {
-  const todayStart = startOfDay(new Date());
-  if (status === 'Nu Nodig') return !!nextDate && isBefore(nextDate, todayStart);
-  if (status === 'Binnenkort') return !!nextDate && !isBefore(nextDate, todayStart);
-  return true;
-}
-
 function formatInterval(val: number, unit: string) {
   if (!val) return '-';
   return `${val} ${unit}`;
 }
 
 
-export function detectPeriodType(selectedPeriod: string): 'day' | 'week' | 'month' | 'year' {
-  if (['Vandaag', 'Gisteren'].includes(selectedPeriod)) return 'day';
-  if (['Deze Week', 'Vorige Week'].includes(selectedPeriod)) return 'week';
-  if (['Deze Maand', 'Vorige Maand', '14 Dagen'].includes(selectedPeriod)) return 'month';
-  if (['Dit Jaar', 'Vorig Jaar'].includes(selectedPeriod)) return 'year';
-  return 'day';
-}
+// Main export
 
-function buildReportFilename(
-  pressName: string,
-  reportType: string,
-  periodType: 'day' | 'week' | 'month' | 'year',
-  presetName?: string
-): string {
-  const now = new Date();
-  const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
-  const prefix = presetName ? sanitize(presetName) : `${sanitize(pressName)}_${sanitize(reportType)}`;
-  const yyyy = format(now, 'yyyy');
-
-  switch (periodType) {
-    case 'day': return `${prefix}_${yyyy}_${format(now, 'MM')}_${format(now, 'dd')}.pdf`;
-    case 'week': return `${prefix}_${yyyy}_W${String(getISOWeek(now)).padStart(2, '0')}.pdf`;
-    case 'month': return `${prefix}_${yyyy}_${format(now, 'MM')}.pdf`;
-    case 'year': return `${prefix}_${yyyy}.pdf`;
-  }
-}
 
 // ─── Main export: generate a PDF for a given preset ─────────────────────────
 
@@ -188,17 +162,17 @@ export async function generatePresetReport(
     }
 
     // 3. Generate PDF
-    const periodType = (preset.period as 'day' | 'week' | 'month' | 'year') || detectPeriodType(s.selectedPeriod);
+    const periodType = (preset.period as 'day' | 'week' | 'month' | 'year') || detectPeriodType(s.selectedPeriod) || 'day';
     const filename = buildReportFilename(s.selectedPress || 'AllePersen', 'Taken', periodType, preset.name);
     const selectedColumnIds: string[] = s.selectedColumns || ALL_COLUMNS.map(c => c.id);
     const visibleColumns = ALL_COLUMNS.filter(c => selectedColumnIds.includes(c.id));
 
     const blob = await pdf(
       <MaintenanceReportPDF
-        reportTitle={preset.name}
+        reportTitle={resolveTitleVariables(preset.name, s.selectedPeriod)}
         tasks={mapped as any}
         selectedPress={s.selectedPress}
-        selectedPeriod={s.selectedPeriod}
+        selectedPeriod={formatPeriodLabel(s.selectedPeriod)}
         selectedStatus={s.selectedStatus}
         generatedAt={formatDisplayDateTime(new Date())}
         columns={visibleColumns}
@@ -213,6 +187,12 @@ export async function generatePresetReport(
     const fd = new FormData();
     fd.append('file', blob, filename);
     fd.append('maintenance_report', preset.id);
+
+    // Save formatted title for archive display
+    const formattedPeriod = formatPeriodLabel(s.selectedPeriod);
+    const tasksCount = mapped.length;
+    fd.append('title', `${formattedPeriod}: ${tasksCount} taken`);
+
     fd.append('generated_at', new Date().toISOString());
     fd.append('trigger', trigger);
     fd.append('created_by', createdBy);
@@ -276,13 +256,13 @@ export async function generatePresetReport(
     }));
 
     // 2. Generate PDF
-    const periodType = detectPeriodType(s.selectedPeriod);
+    const periodType = detectPeriodType(s.selectedPeriod) || 'day';
     const filename = buildReportFilename(s.selectedPress || 'AllePersen', 'Drukwerken', periodType, preset.name);
     
     const blob = await pdf(
       <DrukwerkenPDF
-        reportTitle={preset.name}
-        selectedPeriod={s.selectedPeriod}
+        reportTitle={resolveTitleVariables(preset.name, s.selectedPeriod)}
+        selectedPeriod={formatPeriodLabel(s.selectedPeriod)}
         tasks={mapped}
         generatedAt={formatDisplayDateTime(new Date())}
         fontSize={s.fontSize || 8}
@@ -295,6 +275,12 @@ export async function generatePresetReport(
     const fd = new FormData();
     fd.append('file', blob, filename);
     fd.append('maintenance_report', preset.id);
+
+    // Save formatted title for archive display
+    const formattedPeriod = formatPeriodLabel(s.selectedPeriod);
+    const jobsCount = mapped.length;
+    fd.append('title', `${formattedPeriod}: ${jobsCount} jobs`);
+
     fd.append('generated_at', new Date().toISOString());
     fd.append('trigger', trigger);
     fd.append('created_by', createdBy);
