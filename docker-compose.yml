@@ -19,23 +19,6 @@ services:
     restart: unless-stopped
     container_name: thooft_omni
 
-  app_legacy:
-    image: docker.io/geldofa/thooft_omni:v1.7.3
-    ports:
-      - "8081:80"
-    networks:
-      default:
-        aliases:
-          - OMNIlegacy
-    environment:
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-    depends_on:
-      db:
-        condition: service_started
-    restart: unless-stopped
-    container_name: thooft_omni_legacy
-
   db_init:
     image: docker.io/geldofa/thooft_omni:latest
     command: ["sync"]
