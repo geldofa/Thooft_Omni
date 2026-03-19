@@ -1120,29 +1120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!username || !password) return false;
 
-      let identity = username;
-
-      // 1. Try to find the user record first
+      // authWithPassword accepts both username and email as identity directly —
+      // no pre-lookup needed (and it avoids needing list-auth on the users collection).
       try {
-        const records = await pb.collection('users').getList(1, 1, {
-          filter: `username = "${username}" || email = "${username}"`
-        });
-
-        if (records.totalItems > 0) {
-          const record = records.items[0];
-          // Use the record's email if it's a valid-looking email, otherwise use username
-          identity = (record.email && record.email.includes('@') && record.email !== 'undefined')
-            ? record.email
-            : (record.username || username);
-          console.log(`[Auth] Found user record, using identity: ${identity}`);
-        }
-      } catch (findError) {
-        console.warn("[Auth] Pre-auth lookup failed:", findError);
-      }
-
-      // 2. Perform the actual authentication
-      try {
-        const authData = await pb.collection('users').authWithPassword(identity, password);
+        console.log(`[Auth] Authenticating with identity: ${username}`);
+        const authData = await pb.collection('users').authWithPassword(username, password);
         if (pb.authStore.isValid && authData.record) {
           setUser({
             id: authData.record.id,
