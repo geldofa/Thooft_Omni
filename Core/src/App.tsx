@@ -544,37 +544,28 @@ function MainApp() {
         return new Date(d1).getTime() === new Date(d2).getTime();
       };
 
-      if (!datesEqual(oldTask.lastMaintenance, task.lastMaintenance)) {
-        changes.push('laatste onderhoud');
-        oldVals.push(`Laatste onderhoud: ${formatDateForLog(oldTask.lastMaintenance)}`);
-        newVals.push(`Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`);
-      }
+      if (!datesEqual(oldTask.lastMaintenance, task.lastMaintenance)) changes.push('laatste onderhoud');
+      if (!datesEqual(oldTask.nextMaintenance, task.nextMaintenance)) changes.push('volgend onderhoud');
+      
+      const oldAssignedIds = Array.isArray(oldTask.assignedToIds) ? [...oldTask.assignedToIds].sort().join(',') : '';
+      const newAssignedIds = Array.isArray(task.assignedToIds) ? [...task.assignedToIds].sort().join(',') : '';
+      if (oldAssignedIds !== newAssignedIds) changes.push('toewijzing');
+      
+      if (oldTask.opmerkingen !== task.opmerkingen) changes.push('opmerkingen');
 
-      if (!datesEqual(oldTask.nextMaintenance, task.nextMaintenance)) {
-        changes.push('volgend onderhoud');
-        oldVals.push(`Volgend onderhoud: ${formatDateForLog(oldTask.nextMaintenance)}`);
-        newVals.push(`Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`);
-      }
-
-      if (oldTask.maintenanceInterval !== task.maintenanceInterval || oldTask.maintenanceIntervalUnit !== task.maintenanceIntervalUnit) {
-        changes.push('interval');
-        oldVals.push(`Interval: ${formatIntervalForLog(oldTask.maintenanceInterval, oldTask.maintenanceIntervalUnit)}`);
-        newVals.push(`Interval: ${formatIntervalForLog(task.maintenanceInterval, task.maintenanceIntervalUnit)}`);
-      }
-
-      const oldAssigned = Array.isArray(oldTask.assignedToIds) ? [...oldTask.assignedToIds].sort().join(',') : '';
-      const newAssigned = Array.isArray(task.assignedToIds) ? [...task.assignedToIds].sort().join(',') : '';
-      if (oldAssigned !== newAssigned) {
-        changes.push('toewijzing');
-        oldVals.push(`Toegewezen aan: ${oldTask.assignedTo || 'Niemand'}`);
-        newVals.push(`Toegewezen aan: ${task.assignedTo || 'Niemand'}`);
-      }
-
-      if (oldTask.opmerkingen !== task.opmerkingen) {
-        changes.push('opmerkingen');
-        oldVals.push(`Opmerkingen: ${oldTask.opmerkingen || '(leeg)'}`);
-        newVals.push(`Opmerkingen: ${task.opmerkingen || '(leeg)'}`);
-      }
+      // Always populate core fields to ensure ActivityLog tables are complete
+      // (Excluding Interval per user request as it rarely changes during quick edits)
+      oldVals.push(`Laatste onderhoud: ${formatDateForLog(oldTask.lastMaintenance)}`);
+      newVals.push(`Laatste onderhoud: ${formatDateForLog(task.lastMaintenance)}`);
+      
+      oldVals.push(`Volgend onderhoud: ${formatDateForLog(oldTask.nextMaintenance)}`);
+      newVals.push(`Volgend onderhoud: ${formatDateForLog(task.nextMaintenance)}`);
+      
+      oldVals.push(`Operators: ${oldTask.assignedTo || 'Niemand'}`);
+      newVals.push(`Operators: ${task.assignedTo || 'Niemand'}`);
+      
+      oldVals.push(`Opmerkingen: ${oldTask.opmerkingen || '(leeg)'}`);
+      newVals.push(`Opmerkingen: ${task.opmerkingen || '(leeg)'}`);
 
       addActivityLog({
         user: user?.name || user?.username || 'Onbekend',

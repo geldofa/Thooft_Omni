@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Search, CheckCircle, AlertTriangle, ShieldCheck, Database, Wrench, Info, Loader2, User, MessageSquare } from 'lucide-react';
+import { Search, CheckCircle, AlertTriangle, ShieldCheck, Database, Wrench, Info, Loader2, User, MessageSquare, EyeOff } from 'lucide-react';
 import { pb, useAuth } from '../AuthContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import { Button } from '../ui/button';
@@ -38,6 +38,7 @@ interface Discrepancy {
 export function DataChecker() {
     const { user, addActivityLog } = useAuth();
     const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
+    const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
     const [isScanning, setIsScanning] = useState(false);
     const [isFixing, setIsFixing] = useState(false);
 
@@ -79,12 +80,16 @@ export function DataChecker() {
                 for (const part of parts) {
                     if (part.startsWith('Laatste onderhoud: ')) {
                         logDateStr = part.replace('Laatste onderhoud: ', '').trim();
-                    } else if (part.startsWith('Toegewezen aan: ')) {
-                        logOperators = part.replace('Toegewezen aan: ', '').trim();
+                    } else if (part.startsWith('Toegewezen aan: ') || part.startsWith('Operators: ')) {
+                        logOperators = part.replace('Toegewezen aan: ', '').replace('Operators: ', '').trim();
                     } else if (part.startsWith('Opmerkingen: ')) {
                         logComment = part.replace('Opmerkingen: ', '').trim();
                     }
                 }
+
+                if (!logOperators || logOperators === '-') logOperators = 'Niemand';
+                if (!logComment || logComment === '-') logComment = 'Geen opmerking';
+                if (logComment === '(leeg)') logComment = 'Geen opmerking';
 
                 if (!logDateStr || logDateStr === '-') continue;
 
@@ -92,24 +97,35 @@ export function DataChecker() {
                 const [d, m, y] = logDateStr.split('/').map(Number);
                 const logDate = new Date(y, m - 1, d);
                 const dbDate = task.last_date ? new Date(task.last_date) : null;
-                const logISO = logDate.toISOString().split('T')[0];
-                const dbISO = dbDate ? dbDate.toISOString().split('T')[0] : 'EMPTY';
-                const hasDateMismatch = logISO !== dbISO;
+                // 1. Check Date Mismatch - robust component comparison
+                const hasDateMismatch = !dbDate || 
+                    logDate.getFullYear() !== dbDate.getFullYear() || 
+                    logDate.getMonth() !== dbDate.getMonth() || 
+                    logDate.getDate() !== dbDate.getDate();
 
                 // 2. Check Operator Mismatch
                 const dbOpsList = [
                     ...(task.expand?.assigned_operator?.map((o: any) => o.naam) || []),
                     ...(task.expand?.assigned_team?.map((t: any) => t.name) || [])
                 ].sort();
-                const dbOperators = dbOpsList.join(', ');
-                const sortedLogOps = logOperators.split(',').map(s => s.trim()).sort().join(', ');
-                const hasOperatorMismatch = logOperators !== '' && sortedLogOps !== dbOperators;
+                const dbOperators = dbOpsList.join(', ') || 'Niemand';
+                const sortedLogOps = logOperators.split(',').map(s => s.trim()).sort().filter(Boolean).join(', ') || 'Niemand';
+                
+                // Only count as operator mismatch if log has actual names
+                // If log is 'Niemand', it's likely a logging artifact we should ignore
+                const hasOperatorMismatch = logOperators !== 'Niemand' && sortedLogOps !== dbOperators;
 
                 // 3. Check Comment Mismatch
-                const dbComment = task.opmerkingen || '(leeg)';
-                const hasCommentMismatch = logComment !== '' && logComment !== dbComment;
+                let dbComment = task.opmerkingen || 'Geen opmerking';
+                if (dbComment === '(leeg)') dbComment = 'Geen opmerking';
+                
+                const hasCommentMismatch = logComment !== 'Geen opmerking' && logComment !== dbComment;
 
-                if (hasDateMismatch || hasOperatorMismatch || hasCommentMismatch) {
+                // Automatically ignore same-day updates where log has "Niemand" but DB has a name
+                // This handles the previous bug where log updates accidentally cleared operators
+                const isNiemandBug = !hasDateMismatch && logOperators === 'Niemand' && dbOperators !== 'Niemand';
+
+                if ((hasDateMismatch || hasOperatorMismatch || hasCommentMismatch) && !isNiemandBug) {
                     // Recalculate next date
                     const next = new Date(logDate);
                     const interval = task.interval || 0;
@@ -196,6 +212,23 @@ export function DataChecker() {
 
                 await pb.collection('onderhoud').update(disc.id, updateData);
 
+                const formatDate = (d: Date) => {
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const yyyy = d.getFullYear();
+                    return `${dd}/${mm}/${yyyy}`;
+                };
+
+                const logDateFormatted = formatDate(disc.logDate);
+                const nextDateFormatted = formatDate(disc.suggestedNextDate);
+
+                const newValueStr = [
+                    `Laatste onderhoud: ${logDateFormatted}`,
+                    `Volgend onderhoud: ${nextDateFormatted}`,
+                    `Operators: ${disc.logOperators}`,
+                    `Opmerkingen: ${disc.logComment === '(leeg)' ? 'Geen opmerking' : disc.logComment}`
+                ].join('|||');
+
                 addActivityLog({
                     user: user?.name || user?.username || 'Onbekend',
                     action: 'Updated',
@@ -205,7 +238,7 @@ export function DataChecker() {
                     details: `Data Checker: ${details.join(', ')} op basis van logboek`,
                     press: disc.press,
                     oldValue: 'Mismatch hersteld',
-                    newValue: 'Corrected'
+                    newValue: newValueStr
                 });
                 
                 setDiscrepancies(prev => prev.map((d: Discrepancy) => d.id === disc.id ? { ...d, status: 'fixed' as const } : d));
@@ -225,7 +258,19 @@ export function DataChecker() {
     };
 
     const fixAll = () => {
-        applyFixes(discrepancies.filter(d => d.status === 'pending'));
+        applyFixes(discrepancies.filter(d => d.status === 'pending' && !ignoredIds.has(d.id)));
+    };
+
+    const toggleIgnore = (id: string) => {
+        setIgnoredIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
     };
 
     return (
@@ -285,102 +330,137 @@ export function DataChecker() {
                             )}
                         </div>
                     ) : (
-                        <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-4 py-3 min-w-[300px]">Taak Informatie</th>
-                                        <th className="px-4 py-3">Onderhoud</th>
-                                        <th className="px-4 py-3">Operators</th>
-                                        <th className="px-4 py-3">Opmerkingen</th>
-                                        <th className="px-4 py-3 text-right">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {discrepancies.map((disc) => (
-                                        <tr key={disc.id} className="hover:bg-slate-50/80 transition-colors group">
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-col gap-1">
-                                                    <div className="flex items-baseline gap-2">
-                                                        <span className="font-semibold text-slate-900">{disc.taskName}</span>
-                                                        <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">{disc.taskSubtext}</span>
-                                                    </div>
-                                                    <div className="flex items-baseline gap-2 pl-2 border-l-2 border-slate-100 italic">
-                                                        <span className="text-slate-700">{disc.subtaskName}</span>
-                                                        <span className="text-[11px] text-slate-400">{disc.subtaskSubtext}</span>
-                                                    </div>
-                                                    <Badge variant="outline" className="w-fit mt-1 text-[10px] bg-slate-100 text-slate-600 border-none px-1.5 py-0">
-                                                        {disc.press}
-                                                    </Badge>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                                                        <span className="text-emerald-700 font-medium">{formatDisplayDate(disc.logDate)}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <AlertTriangle className={`w-3.5 h-3.5 ${disc.hasDateMismatch ? 'text-red-500' : 'text-slate-300'}`} />
-                                                        <span className={disc.hasDateMismatch ? 'text-red-600 line-through' : 'text-slate-400'}>
-                                                            {formatDisplayDate(disc.dbDate)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-col gap-1.5 max-w-[250px]">
-                                                    <div className="flex items-start gap-2">
-                                                        <User className="w-3.5 h-3.5 mt-0.5 text-emerald-500" />
-                                                        <span className="text-emerald-700 text-xs line-clamp-2">{disc.logOperators}</span>
-                                                    </div>
-                                                    <div className="flex items-start gap-2">
-                                                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 ${disc.hasOperatorMismatch ? 'text-red-500' : 'text-slate-300'}`} />
-                                                        <span className={`${disc.hasOperatorMismatch ? 'text-red-600 line-through' : 'text-slate-400'} text-xs line-clamp-2`}>
-                                                            {disc.dbOperators}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-col gap-1.5 max-w-[300px]">
-                                                    <div className="flex items-start gap-2">
-                                                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 text-emerald-500" />
-                                                        <span className="text-emerald-700 text-xs italic line-clamp-2">{disc.logComment}</span>
-                                                    </div>
-                                                    <div className="flex items-start gap-2">
-                                                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 ${disc.hasCommentMismatch ? 'text-red-500' : 'text-slate-300'}`} />
-                                                        <span className={`${disc.hasCommentMismatch ? 'text-red-600 line-through' : 'text-slate-400'} text-xs italic line-clamp-2`}>
-                                                            {disc.dbComment}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 text-right">
-                                                {disc.status === 'fixed' ? (
-                                                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 px-2">
-                                                        <ShieldCheck className="w-3 h-3" /> Hersteld
-                                                    </Badge>
-                                                ) : (
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                                            Mismatch
-                                                        </Badge>
-                                                        <Button
-                                                            size="sm"
-                                                            className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-3 gap-1"
-                                                            onClick={() => applyFixes([disc])}
-                                                        >
-                                                            <Wrench className="w-3 h-3" />
-                                                            FIX
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                <div className="space-y-12">
+                            {Array.from(new Set(discrepancies.filter(d => !ignoredIds.has(d.id)).map(d => d.press))).sort().map(press => {
+                                const pressDiscrepancies = discrepancies
+                                    .filter(d => d.press === press && !ignoredIds.has(d.id))
+                                    .sort((a, b) => {
+                                        if (a.status === 'fixed' && b.status === 'pending') return 1;
+                                        if (a.status === 'pending' && b.status === 'fixed') return -1;
+                                        return 0;
+                                    });
+                                return (
+                                    <div key={press} className="space-y-3">
+                                        <div className="flex items-center gap-3 px-1">
+                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                <div className="w-2 h-6 bg-blue-500 rounded-full" />
+                                                {press}
+                                            </h3>
+                                            <Badge variant="outline" className="bg-slate-100/50 text-slate-500 border-slate-200">
+                                                {pressDiscrepancies.length} issues
+                                            </Badge>
+                                        </div>
+                                        
+                                        <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm overflow-x-auto bg-white">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="px-4 py-3 min-w-[300px]">Taak Informatie</th>
+                                                        <th className="px-4 py-3">Onderhoud</th>
+                                                        <th className="px-4 py-3">Operators</th>
+                                                        <th className="px-4 py-3">Opmerkingen</th>
+                                                        <th className="px-4 py-3 text-right">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {pressDiscrepancies.map((disc) => (
+                                                        <tr key={disc.id} className="hover:bg-slate-50/80 transition-colors group">
+                                                            <td className="px-4 py-4">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <div className="flex items-baseline gap-2">
+                                                                        <span className="font-semibold text-slate-900">{disc.taskName}</span>
+                                                                        <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">{disc.taskSubtext}</span>
+                                                                    </div>
+                                                                    <div className="flex items-baseline gap-2 pl-2 border-l-2 border-slate-100 italic">
+                                                                        <span className="text-slate-700">{disc.subtaskName}</span>
+                                                                        <span className="text-[11px] text-slate-400">{disc.subtaskSubtext}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4">
+                                                                <div className="flex flex-col gap-1.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                                                        <span className="text-emerald-700 font-medium">{formatDisplayDate(disc.logDate)}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <AlertTriangle className={`w-3.5 h-3.5 ${disc.hasDateMismatch ? 'text-red-500' : 'text-slate-300'}`} />
+                                                                        <span className={disc.hasDateMismatch ? 'text-red-600 line-through' : 'text-slate-400'}>
+                                                                            {formatDisplayDate(disc.dbDate)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4">
+                                                                <div className="flex flex-col gap-1.5 max-w-[250px]">
+                                                                    <div className="flex items-start gap-2">
+                                                                        <User className={`w-3.5 h-3.5 mt-0.5 ${disc.logOperators === 'Niemand' ? 'text-slate-300' : 'text-emerald-500'}`} />
+                                                                        <span className={`text-xs line-clamp-2 ${disc.logOperators === 'Niemand' ? 'text-slate-400 italic' : 'text-emerald-700 font-medium'}`}>{disc.logOperators}</span>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 ${disc.hasOperatorMismatch ? 'text-red-500' : 'text-slate-300'}`} />
+                                                                        <span className={`text-xs line-clamp-2 ${
+                                                                            disc.hasOperatorMismatch 
+                                                                                ? 'text-red-600 line-through' 
+                                                                                : (disc.logOperators === 'Niemand' ? 'text-emerald-600 font-medium' : 'text-slate-400')
+                                                                        }`}>
+                                                                            {disc.dbOperators}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4">
+                                                                <div className="flex flex-col gap-1.5 max-w-[300px]">
+                                                                    <div className="flex items-start gap-2">
+                                                                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 text-emerald-500" />
+                                                                        <span className="text-emerald-700 text-xs italic line-clamp-2">{disc.logComment === '(leeg)' ? 'Geen opmerking' : disc.logComment}</span>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 ${disc.hasCommentMismatch ? 'text-red-500' : 'text-slate-300'}`} />
+                                                                        <span className={`${disc.hasCommentMismatch ? 'text-red-600 line-through' : 'text-slate-400'} text-xs italic line-clamp-2`}>
+                                                                            {disc.dbComment === '(leeg)' ? 'Geen opmerking' : disc.dbComment}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4 text-right">
+                                                                {disc.status === 'fixed' ? (
+                                                                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 px-2">
+                                                                        <ShieldCheck className="w-3 h-3" /> Hersteld
+                                                                    </Badge>
+                                                                ) : (
+                                                                    <div className="flex items-center justify-end gap-2">
+                                                                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                                                            Mismatch
+                                                                        </Badge>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-8 text-slate-400 hover:text-slate-600 px-2"
+                                                                            title="Negeren"
+                                                                            onClick={() => toggleIgnore(disc.id)}
+                                                                        >
+                                                                            <EyeOff className="w-3.5 h-3.5" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-3 gap-1"
+                                                                            onClick={() => applyFixes([disc])}
+                                                                        >
+                                                                            <Wrench className="w-3 h-3" />
+                                                                            FIX
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </CardContent>

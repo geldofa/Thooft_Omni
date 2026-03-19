@@ -166,6 +166,8 @@ export function MaintenanceTable({ tasks, onEdit, onDelete, onUpdate, onEditGrou
     maintenanceInterval: subtask.maintenanceInterval,
     maintenanceIntervalUnit: subtask.maintenanceIntervalUnit,
     assignedTo: subtask.assignedTo,
+    assignedToIds: subtask.assignedToIds || [],
+    assignedToTypes: subtask.assignedToTypes || [],
     opmerkingen: subtask.comment,
     commentDate: subtask.commentDate,
     sort_order: subtask.sort_order || 0,

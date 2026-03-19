@@ -118,7 +118,7 @@ export function QuickEditDialog({
       setOpmerkingen(task.opmerkingen);
 
       // Initialize selected assignments from task data
-      if (task.assignedToIds && task.assignedToTypes) {
+      if (field !== 'lastMaintenance' && task.assignedToIds && task.assignedToTypes) {
         const assignments = task.assignedToIds.map((id, index) => ({
           id,
           type: (task.assignedToTypes?.[index] || 'operator') as 'ploeg' | 'operator' | 'external'
