@@ -6,4 +6,3 @@ export const APP_VERSION = 'v 1.9.1';
 export const APP_NAME = "T'HOOFT OMNI";
 export const APP_TITLE = `OMNI`;
 export const APP_URL = ''
-export const APP_LOGO =
