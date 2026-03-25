@@ -149,8 +149,8 @@ export function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void
     const handleAuthorizeCloudSync = async () => {
         setIsLinkingCloud(true);
         // Construct the URL to our backend auth endpoint — credentials are now server-side
-        const baseUrl = window.location.origin.replace('8080', '8090');
-        const authUrl = `${baseUrl}/api/cloud-sync/auth/gdrive?token=${encodeURIComponent(pb.authStore.token)}&app_origin=${encodeURIComponent(window.location.origin)}`;
+        const baseUrl = window.location.origin.replace('8080', '8090').replace(/\/$/, '');
+        const authUrl = `${baseUrl}/api/cloud-sync/auth/gdrive?token=${encodeURIComponent(pb.authStore.token)}&app_origin=${encodeURIComponent(window.location.origin.replace(/\/$/, ''))}`;
 
         // Redirect the whole page to the auth flow
         window.location.href = authUrl;
@@ -658,7 +658,7 @@ export function ToolboxContent({ onNavigateHome }: { onNavigateHome?: () => void
                                                             const toastId = toast.loading("Verbinding testen...");
                                                             try {
                                                                 // Use the new synchronous test endpoint
-                                                                const res = await fetch(pb.baseUrl + '/api/cloud-sync/test-connection?token=' + encodeURIComponent(pb.authStore.token), { method: 'POST' });
+                                                                const res = await fetch(pb.baseUrl.replace(/\/$/, '') + '/api/cloud-sync/test-connection?token=' + encodeURIComponent(pb.authStore.token), { method: 'POST' });
                                                                 const data = await res.json();
 
                                                                 if (res.ok) {

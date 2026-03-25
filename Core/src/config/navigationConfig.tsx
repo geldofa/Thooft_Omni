@@ -4,8 +4,10 @@ import {
     FileBarChart,
     Users,
     FileText,
-    MessageSquare
+    MessageSquare,
+    Radio
 } from 'lucide-react';
+
 import { Permission, Press } from '../components/AuthContext';
 
 export interface SubtabConfig {
@@ -101,5 +103,15 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         description: 'Bekijk feedback en suggesties',
         permission: 'feedback_view',
         color: 'bg-pink-600'
+    },
+    {
+        id: '/Overzicht',
+        label: 'Overzicht',
+        icon: Radio,
+        description: 'Live productie monitoring dashboard',
+        permission: 'osint_view',
+        color: 'bg-green-600'
     }
 ];
+
+

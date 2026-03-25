@@ -366,39 +366,82 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
 
                                     {/* Berekening */}
                                     <View style={[styles.colMaxGross, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.max_bruto).toLocaleString('nl-BE')}</Text></View>
-                                    <View style={[styles.colGreen, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.groen).toLocaleString('nl-BE')}</Text></View>
+                                    <View style={[styles.colGreen, styles.borderR, task.groen < task.netto_oplage ? { backgroundColor: '#fef2f2' } : {}]}>
+                                        <Text style={[
+                                            styles.tableCell, 
+                                            { fontSize }, 
+                                            styles.textRight,
+                                            task.groen < task.netto_oplage ? { color: '#dc2626', fontFamily: 'Helvetica-Bold', textDecoration: 'underline' } : {}
+                                        ]}>
+                                            {Math.round(task.groen).toLocaleString('nl-BE')}
+                                        </Text>
+                                    </View>
                                     <View style={[styles.colRed, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.rood).toLocaleString('nl-BE')}</Text></View>
 
                                     {/* Prestatie */}
-                                    <View style={[styles.colDelta, styles.borderR]}>
-                                        <Text style={[
-                                            styles.tableCell,
-                                            { fontSize },
-                                            styles.textRight,
-                                            task.delta > 0 ? styles.bold : {}
-                                        ]}>
-                                            {Math.round(task.delta).toLocaleString('nl-BE')}
-                                        </Text>
-                                    </View>
-                                    <View style={[styles.colDeltaPercent, styles.borderRBlack]}>
-                                        <Text style={[
-                                            styles.tableCell,
-                                            { fontSize },
-                                            styles.textRight,
-                                            (() => {
-                                                const dp = task.delta_percent;
-                                                if (dp > 1.05) return { color: '#dc2626', fontFamily: 'Helvetica-Bold' }; // Red & Bold
-                                                if (dp > 1.02) return { color: '#ea580c', fontFamily: 'Helvetica-Bold' }; // Darker Orange & Bold
-                                                if (dp > 1.00) return { color: '#fb923c' }; // Orange
-                                                if (dp < 0.95) return { color: '#166534' }; // Dark green
-                                                if (dp < 0.98) return { color: '#15803d' }; // Green
-                                                if (dp < 1.00) return { color: '#22c55e' }; // Lighter green
-                                                return {};
-                                            })()
-                                        ]}>
-                                            {(task.delta_percent * 100).toFixed(1)}%
-                                        </Text>
-                                    </View>
+                                    {(() => {
+                                        let dp = task.delta_percent;
+                                        if (dp > 0.5) dp -= 1;
+                                        const absDp = Math.abs(dp);
+                                        const absVal = absDp * 100;
+                                        
+                                        if (absVal <= 1) {
+                                            return (
+                                                <>
+                                                    <View style={[styles.colDelta, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{Math.round(task.delta).toLocaleString('nl-BE')}</Text></View>
+                                                    <View style={[styles.colDeltaPercent, styles.borderRBlack]}><Text style={[styles.tableCell, { fontSize }, styles.textRight]}>{`0.0%`}</Text></View>
+                                                </>
+                                            );
+                                        }
+
+                                        let ramp = 1;
+                                        if (absVal > 8) ramp = 5;
+                                        else if (absVal > 6) ramp = 4;
+                                        else if (absVal > 4) ramp = 3;
+                                        else if (absVal > 2) ramp = 2;
+
+                                        const bgRed = ['#fef2f2', '#fee2e2', '#fecaca', '#fca5a5', '#f87171'];
+                                        const bgGreen = ['#f0fdf4', '#dcfce7', '#bbf7d0', '#86efac', '#4ade80'];
+                                        const bgColor = dp > 0 ? bgRed[ramp - 1] : bgGreen[ramp - 1];
+                                        
+                                        return (
+                                            <>
+                                                <View style={[styles.colDelta, styles.borderR, { backgroundColor: bgColor }]}>
+                                                    <Text style={[
+                                                        styles.tableCell,
+                                                        { fontSize },
+                                                        styles.textRight
+                                                    ]}>
+                                                        {Math.round(task.delta).toLocaleString('nl-BE')}
+                                                    </Text>
+                                                </View>
+                                                <View style={[styles.colDeltaPercent, styles.borderRBlack, { backgroundColor: bgColor }]}>
+                                                    <Text style={[
+                                                        styles.tableCell,
+                                                        { fontSize },
+                                                        styles.textRight,
+                                                        (() => {
+                                                            if (dp > 0.01) {
+                                                                const textReds = ['#dc2626', '#b91c1c', '#991b1b', '#7f1d1d', '#450a0a'];
+                                                                return { 
+                                                                    color: textReds[ramp - 1], 
+                                                                    fontFamily: 'Helvetica-Bold', 
+                                                                    textDecoration: dp > 0.05 ? 'underline' : 'none' 
+                                                                };
+                                                            } else if (dp < -0.01) {
+                                                                const textGreens = ['#16a34a', '#15803d', '#166534', '#14532d', '#064e3b'];
+                                                                return { color: textGreens[ramp - 1], fontFamily: 'Helvetica' };
+                                                            } else {
+                                                                return { color: '#6b7280', fontFamily: 'Helvetica' };
+                                                            }
+                                                        })()
+                                                    ]}>
+                                                        {`${dp > 0 ? '+' : ''}${(dp * 100).toFixed(1)}%`}
+                                                    </Text>
+                                                </View>
+                                            </>
+                                        );
+                                    })()}
                                 </View>
                             );
                         })}

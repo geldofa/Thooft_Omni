@@ -85,7 +85,6 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
   const navItems = useMemo<NavItemConfig[]>(() => {
     return NAVIGATION_CONFIG.filter(item => {
-      if (item.id === '/Taken') return true;
       return hasPermission(item.permission);
     });
   }, [hasPermission]);

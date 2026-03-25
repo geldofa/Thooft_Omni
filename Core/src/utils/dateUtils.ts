@@ -48,6 +48,18 @@ export function formatDisplayDate(date: Date | string | null | undefined): strin
 }
 
 /**
+ * Formats a given Date, ISO string, or European date string to 'WII dd/MM/yyyy'.
+ * Example: 'W52 25/12/2026'
+ */
+export function formatDisplayDateWithWeek(date: Date | string | null | undefined): string {
+    const parsed = typeof date === 'string' ? parseEuropeanDate(date) : date;
+    if (!parsed || !(parsed instanceof Date) || isNaN(parsed.getTime())) {
+        return '—';
+    }
+    return `W${format(parsed, 'II')} ${format(parsed, 'dd/MM/yyyy')}`;
+}
+
+/**
  * Formats a given Date, ISO string, or European date string to 'dd/MM/yyyy HH:mm'.
  * Example: '25/12/2026 14:30'
  */

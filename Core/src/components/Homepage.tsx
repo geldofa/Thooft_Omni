@@ -83,17 +83,17 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
     if (!user) return null;
 
     const filteredItems = NAVIGATION_CONFIG.filter((item: any) => {
-        // Special case for Taken (always show if logged in, but permission checked inside)
-        if (item.id === '/Taken') return true;
+        // Respect permissions for all sections, including Taken
+        if (!hasPermission(item.permission)) return false;
 
-        // Admin/Meestergast restricted sections
+        // Sections restricted to specific administrative/observation roles
         const isAdminSection = ['/Analyses', '/Beheer', '/Toolbox'].some(path => item.id.startsWith(path));
         if (isAdminSection) {
-            if (user.role !== 'admin' && user.role !== 'meestergast') return false;
-            return hasPermission(item.permission);
+            const allowedRoles: (string | null)[] = ['admin', 'meestergast', 'waarnemer'];
+            return allowedRoles.includes(user.role);
         }
 
-        return hasPermission(item.permission);
+        return true;
     });
 
     const greeting = (() => {

@@ -387,11 +387,15 @@ export function ImportToolDrukwerken({ onComplete, minimal = false, initialFile,
 
                 if (target.systemField === 'delta_percent' && val) {
                     const s = val.toString().trim();
+                    let ratio = 0;
                     if (s.endsWith('%')) {
-                        val = (parseFloat(s.replace('%', '').replace(',', '.')) || 0) / 100;
+                        ratio = (parseFloat(s.replace('%', '').replace(',', '.')) || 0) / 100;
                     } else {
-                        val = parseFloat(s.replace(',', '.')) || 0;
+                        ratio = parseFloat(s.replace(',', '.')) || 0;
                     }
+                    // Smart conversion: if ratio > 0.5, it's likely old 100-centered logic (1.17 -> 0.17)
+                    if (ratio > 0.5) ratio -= 1;
+                    val = ratio;
                 }
 
                 if (target.systemField === 'opstart') {

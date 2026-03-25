@@ -31,7 +31,7 @@ export function ScrollToTop() {
             {isVisible && (
                 <Button
                     onClick={scrollToTop}
-                    className="fixed bottom-6 right-6 z-50 rounded-full w-10 h-10 p-0 shadow-lg"
+                    className="fixed bottom-20 right-6 z-50 rounded-full w-10 h-10 p-0 shadow-lg"
                     size="icon"
                     aria-label="Scroll to top"
                 >

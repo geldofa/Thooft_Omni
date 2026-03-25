@@ -104,7 +104,7 @@ export function SystemTasks() {
             const [presets, archiveFiles, backupsRes] = await Promise.all([
                 pb.collection('maintenance_reports').getFullList({ sort: 'name' }),
                 pb.collection('report_files').getFullList({ sort: '-generated_at' }),
-                fetch(`${pb.baseUrl}/api/backups`, {
+                fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/backups`, {
                     headers: { 'Authorization': pb.authStore.token }
                 }).then(res => res.ok ? res.json() : [])
             ]);
@@ -168,7 +168,7 @@ export function SystemTasks() {
         try {
             if (task.type === 'backup') {
                 // Trigger PocketBase Backup
-                const res = await fetch(`${pb.baseUrl}/api/backups`, {
+                const res = await fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/backups`, {
                     method: 'POST',
                     headers: {
                         'Authorization': pb.authStore.token,

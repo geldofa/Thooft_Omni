@@ -54,9 +54,9 @@ export interface Werkorder {
 const COL_WIDTHS = {
     version: '400px',
     press: '50px',
-    date: '55px',
+    date: '70px',
     orderNr: '45px',
-    orderName: '250px',
+    orderName: '220px',
     pages: '40px',
     exOmw: '40px',
     netRun: '55px',
@@ -94,7 +94,9 @@ const FormulaResultWithTooltip = ({
     outputConversions = {},
     pressMap = {},
     suffix = '',
-    hideTooltip = false
+    prefix = '',
+    hideTooltip = false,
+    bold = false
 }: {
     formula: string;
     job: FinishedPrintJob | Omit<FinishedPrintJob, 'id'> | Katern;
@@ -105,8 +107,10 @@ const FormulaResultWithTooltip = ({
     variant?: 'maxGross' | 'delta' | 'default';
     outputConversions?: Record<string, Record<string, number>>;
     pressMap?: Record<string, string>;
+    prefix?: string;
     suffix?: string;
     hideTooltip?: boolean;
+    bold?: boolean;
 }) => {
     const pressName = (job as any).pressName || (activePresses.length > 0 ? activePresses[0] : '');
     const pressId = pressMap[pressName] || '';
@@ -132,8 +136,8 @@ const FormulaResultWithTooltip = ({
     const totalUnits = numericRawResult;
     const machineCycles = numericRawResult / divider;
 
-    const formattedTotal = `${formatNumber(totalUnits, decimals)}${suffix}`;
-    const formattedCycles = formatNumber(machineCycles, decimals);
+    const formattedTotal = `${prefix}${formatNumber(totalUnits, decimals)}${suffix}`;
+    const formattedCycles = `${prefix}${formatNumber(machineCycles, decimals)}`;
 
     // Final Tooltip Design: 1 Card per high-level Part (Netto, Marge, Opstart, Colors)
     const renderCalculationFlow = () => {
@@ -305,13 +309,19 @@ const FormulaResultWithTooltip = ({
                 </div>
             )}
             {hideTooltip ? (
-                <span className="whitespace-nowrap font-bold leading-none py-1">
+                <span className={cn(
+                    "whitespace-nowrap leading-none py-1",
+                    bold ? "font-bold" : "font-normal"
+                )}>
                     {formattedTotal}
                 </span>
             ) : (
                 <Tooltip delayDuration={300}>
                     <TooltipTrigger asChild>
-                        <span className="cursor-help border-b border-dashed border-gray-400 whitespace-nowrap font-bold leading-none py-1">
+                        <span className={cn(
+                            "cursor-help border-b border-dashed border-gray-400 whitespace-nowrap leading-none py-1",
+                            bold ? "font-bold" : "font-normal"
+                        )}>
                             {formattedTotal}
                         </span>
                     </TooltipTrigger>
@@ -460,7 +470,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         {
             id: 'delta-percentage-formula',
             name: 'Delta Percentage',
-            formula: '(green + red) / maxGross',
+            formula: '(green + red - maxGross) / maxGross',
             targetColumn: 'delta_percentage'
         }
     ]);
@@ -716,7 +726,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     ? (typeof evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses) === 'number'
                         ? evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses)
                         : Number(String(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobWithMaxGrossAndScaledGreenRed, parameters, activePresses)).replace(/\./g, '').replace(',', '.')))
-                    : (Number(maxGrossVal) - (Number(greenActual) + Number(redActual)));
+                    : ((Number(greenActual) + Number(redActual)) - Number(maxGrossVal));
 
                 return {
                     ...katern,
@@ -770,7 +780,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 let record;
                 if (processedKatern.originalId) {
                     record = await pb.collection('drukwerken').update(processedKatern.originalId, pbData);
-                    
+
                     // Fetch old record for diffing
                     const oldRecord = await pb.collection('drukwerken').getOne(processedKatern.originalId);
 
@@ -1067,9 +1077,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         return currentYear;
     });
 
+    const [weekFilter, setWeekFilter] = useState('all');
+    const [monthFilter, setMonthFilter] = useState('all');
+
     useEffect(() => {
         if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('drukwerken_pressFilter', pressFilter);
     }, [pressFilter]);
+
+    // Reset week/month filters when year filter changes
+    useEffect(() => {
+        setWeekFilter('all');
+        setMonthFilter('all');
+    }, [yearFilter]);
 
     const effectivePress = useMemo(() => {
         // For press users, use their assigned press name
@@ -1131,6 +1150,84 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         return options;
     }, [finishedJobs]);
 
+    const weekOptions = useMemo(() => {
+        const weeks = new Set<string>();
+        const years = new Set<string>();
+
+        finishedJobs.forEach(job => {
+            if (!job.date) return;
+            const d = new Date(job.date);
+            if (isNaN(d.getTime())) return;
+            years.add(d.getFullYear().toString());
+        });
+
+        const showYear = yearFilter === 'all' && years.size > 1;
+
+        finishedJobs.forEach(job => {
+            if (!job.date) return;
+            const d = new Date(job.date);
+            if (isNaN(d.getTime())) return;
+
+            const weekNum = format(d, 'II');
+            const yearStr = d.getFullYear().toString();
+
+            // Filter by selected year if active
+            if (yearFilter !== 'all' && yearStr !== yearFilter) return;
+
+            // Generate label based on user preference
+            const label = showYear ? `${yearStr} W${weekNum}` : `W${weekNum}`;
+            const value = `${yearStr}-W${weekNum}`;
+
+            weeks.add(JSON.stringify({ label, value }));
+        });
+
+        const options = Array.from(weeks).map(w => JSON.parse(w));
+        // Sort by value (YYYY-Wxx) descending
+        options.sort((a, b) => b.value.localeCompare(a.value));
+
+        return [{ label: 'Alle Weken', value: 'all' }, ...options];
+    }, [finishedJobs, yearFilter]);
+
+    const monthOptions = useMemo(() => {
+        const months = new Set<string>();
+        const years = new Set<string>();
+        const monthNames = ['Januari', 'Februari', 'Maart', 'April', 'Mei', 'Juni', 'Juli', 'Augustus', 'September', 'Oktober', 'November', 'December'];
+        
+        finishedJobs.forEach(job => {
+            if (!job.date) return;
+            const d = new Date(job.date);
+            if (isNaN(d.getTime())) return;
+            years.add(d.getFullYear().toString());
+        });
+
+        const showYear = yearFilter === 'all' && years.size > 1;
+
+        finishedJobs.forEach(job => {
+            if (!job.date) return;
+            const d = new Date(job.date);
+            if (isNaN(d.getTime())) return;
+            
+            const yearStr = d.getFullYear().toString();
+            // Filter by selected year if active
+            if (yearFilter !== 'all' && yearStr !== yearFilter) return;
+
+            const monthIdx = d.getMonth();
+            const monthName = monthNames[monthIdx];
+            
+            // Generate label based on user preference
+            const label = showYear ? `${yearStr} ${monthName}` : monthName;
+            const value = `${yearStr}-${(monthIdx + 1).toString().padStart(2, '0')}`;
+            
+            months.add(JSON.stringify({ label, value }));
+        });
+
+        const options = Array.from(months).map(m => JSON.parse(m));
+        // Sort by value (YYYY-MM) descending
+        options.sort((a, b) => b.value.localeCompare(a.value));
+
+        return [{ label: 'Alle Maanden', value: 'all' }, ...options];
+    }, [finishedJobs, yearFilter]);
+
     const filteredJobs = useMemo(() => {
         return finishedJobs.filter(job => {
             // Year filter
@@ -1145,6 +1242,24 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 if (job.pressName !== pressFilter) return false;
             }
 
+            // Month filter
+            if (monthFilter !== 'all') {
+                if (!job.date) return false;
+                const d = new Date(job.date);
+                if (isNaN(d.getTime())) return false;
+                const monthVal = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+                if (monthVal !== monthFilter) return false;
+            }
+
+            // Week filter
+            if (weekFilter !== 'all') {
+                if (!job.date) return false;
+                const d = new Date(job.date);
+                if (isNaN(d.getTime())) return false;
+                const weekVal = `${d.getFullYear()}-W${format(d, 'II')}`;
+                if (weekVal !== weekFilter) return false;
+            }
+
             if (!searchQuery) return true;
             const query = searchQuery.toLowerCase();
             if (searchField === 'all') {
@@ -1152,7 +1267,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             }
             return String(job[searchField as keyof FinishedPrintJob]).toLowerCase().includes(query);
         });
-    }, [finishedJobs, yearFilter, pressFilter, searchQuery, searchField, hasPermission]);
+    }, [finishedJobs, yearFilter, weekFilter, monthFilter, pressFilter, searchQuery, searchField, hasPermission]);
 
     const sortedJobs = useMemo(() => {
         if (!sortConfig) return filteredJobs;
@@ -1326,7 +1441,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
         const delta_numberVal = getFormulaForColumn('delta_number')
             ? Number(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobForDelta, parameters, activePresses))
-            : (maxGrossVal - (greenActual + redActual));
+            : ((greenActual + redActual) - maxGrossVal);
 
         const delta_percentageVal = (() => {
             const f = getFormulaForColumn('delta_percentage');
@@ -1602,19 +1717,58 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                         </div>
                                     )}
 
-                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                                        <Select value={pressFilter} onValueChange={setPressFilter}>
-                                            <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
-                                                <SelectValue placeholder="Alle Persen" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all" className="text-xs">Alle Persen</SelectItem>
-                                                {activePresses.filter(press => press && press.trim() !== '').map(press => (
-                                                    <SelectItem key={press} value={press} className="text-xs">{press}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    )}
+                                    <div className="flex gap-2">
+                                        {activeTab === 'Gedrukt' && (
+                                            <>
+                                                <Select
+                                                    value={weekFilter}
+                                                    onValueChange={(v) => {
+                                                        setWeekFilter(v);
+                                                        if (v !== 'all') setMonthFilter('all');
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
+                                                        <SelectValue placeholder="Alle Weken" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {weekOptions.map(opt => (
+                                                            <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <Select
+                                                    value={monthFilter}
+                                                    onValueChange={(v) => {
+                                                        setMonthFilter(v);
+                                                        if (v !== 'all') setWeekFilter('all');
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
+                                                        <SelectValue placeholder="Alle Maanden" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {monthOptions.map(opt => (
+                                                            <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </>
+                                        )}
+                                        {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                            <Select value={pressFilter} onValueChange={setPressFilter}>
+                                                <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
+                                                    <SelectValue placeholder="Alle Persen" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all" className="text-xs">Alle Persen</SelectItem>
+                                                    {activePresses.filter(press => press && press.trim() !== '').map(press => (
+                                                        <SelectItem key={press} value={press} className="text-xs">{press}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
 
                                     {activeTab === 'Gedrukt' && (
                                         <div className="relative">
@@ -2018,7 +2172,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         {job.pressName || '-'}
                                                     </TableCell>
                                                 )}
-                                                <TableCell className={cn("py-1 px-2 text-center", borderClass)}>{formatDisplayDate(job.date)}</TableCell>
+                                                <TableCell className={cn("py-1 px-2 text-center whitespace-nowrap", borderClass)}>
+                                                    {(() => {
+                                                        const d = new Date(job.date);
+                                                        if (isNaN(d.getTime())) return formatDisplayDate(job.date);
+                                                        return (
+                                                            <>
+                                                                <span className="text-gray-500 mr-2">W{format(d, 'II')}</span>
+                                                                <span>{formatDisplayDate(job.date)}</span>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </TableCell>
                                                 <TableCell className={cn("py-1 px-2 text-center", borderClass)}>DT {job.orderNr}</TableCell>
                                                 <TableCell className={cn("py-1 px-2", borderClass)}>
                                                     <span className="font-medium mr-2">{job.orderName}</span>
@@ -2054,12 +2219,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         );
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className={cn("py-1 px-1 text-right", borderClass)}>
+                                                <TableCell className={cn("py-1 px-1 text-right", borderClass, (() => {
+                                                    const pressId = pressMap[job.pressName || ''] || '';
+                                                    const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
+                                                    const units = (Number(job.green) || 0) * divider;
+                                                    return units < Number(job.netRun) ? "bg-red-50/80" : "";
+                                                })())}>
                                                     {(() => {
                                                         const pressId = pressMap[job.pressName || ''] || '';
                                                         const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
                                                         const cycles = Number(job.green) || 0;
                                                         const units = cycles * divider;
+                                                        const isLow = units < Number(job.netRun);
                                                         return (
                                                             <div className={`flex flex-col items-end min-h-[36px] ${divider > 1 ? 'justify-end' : 'justify-center'}`}>
                                                                 {divider > 1 && (
@@ -2068,7 +2239,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                     </div>
                                                                 )}
                                                                 <div className="flex items-center py-1">
-                                                                    <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                                    <span className={cn("font-normal leading-none", isLow ? "text-red-600 underline decoration-dotted" : "")}>
+                                                                        {formatNumber(units)}
+                                                                    </span>
                                                                 </div>
                                                             </div>
                                                         );
@@ -2088,58 +2261,91 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                                     </div>
                                                                 )}
                                                                 <div className="flex items-center py-1">
-                                                                    <span className="font-bold leading-none">{formatNumber(units)}</span>
+                                                                    <span className="font-normal leading-none">{formatNumber(units)}</span>
                                                                 </div>
                                                             </div>
                                                         );
                                                     })()}
                                                 </TableCell>
-                                                <TableCell className={cn("text-right py-1 px-1", borderClass)}>
-                                                    {(() => {
-                                                        const formula = getFormulaForColumn('delta_number');
-                                                        const delta = Number(job.delta_number) || 0;
+                                                {(() => {
+                                                    const f = getFormulaForColumn('delta_percentage');
+                                                    let dp = Number(job.delta_percentage) || 0;
+                                                    if (dp > 0.5) dp -= 1;
+                                                    const perc = dp * 100;
+                                                    
+                                                    let colorClass = "text-gray-500";
+                                                    let bgClass = "";
+                                                    const absDp = Math.abs(dp);
+                                                    
+                                                    if (absDp > 0.01) {
+                                                        const absVal = absDp * 100;
+                                                        let ramp = 1;
+                                                        if (absVal > 8) ramp = 5;
+                                                        else if (absVal > 6) ramp = 4;
+                                                        else if (absVal > 4) ramp = 3;
+                                                        else if (absVal > 2) ramp = 2;
 
-                                                        return formula
-                                                            ? (
-                                                                <FormulaResultWithTooltip
-                                                                    formula={formula.formula}
-                                                                    job={job}
-                                                                    parameters={parameters}
-                                                                    activePresses={activePresses}
-                                                                    variant="delta"
-                                                                    result={delta}
-                                                                    outputConversions={outputConversions}
-                                                                    pressMap={pressMap}
-                                                                />
-                                                            ) : (
-                                                                <div className={`flex flex-col items-end min-h-[36px] justify-center`}>
-                                                                    <span className="font-bold py-1 leading-none">{formatNumber(delta, 0)}</span>
-                                                                </div>
-                                                            );
-                                                    })()}
-                                                </TableCell>
-                                                <TableCell className={cn("text-right py-1 px-1 border-r border-black", borderClass)}>
-                                                    {(() => {
-                                                        const f = getFormulaForColumn('delta_percentage');
-                                                        if (f) {
-                                                            return (
-                                                                <FormulaResultWithTooltip
-                                                                    formula={f.formula}
-                                                                    job={job}
-                                                                    parameters={parameters}
-                                                                    activePresses={activePresses}
-                                                                    decimals={2}
-                                                                    result={(Number(job.delta_percentage) || 0) * 100}
-                                                                    outputConversions={outputConversions}
-                                                                    pressMap={pressMap}
-                                                                    suffix="%"
-                                                                    hideTooltip={true}
-                                                                />
-                                                            );
+                                                        if (dp > 0) {
+                                                            const reds = ["text-red-500", "text-red-600", "text-red-700", "text-red-800", "text-red-900"];
+                                                            const bgs = ["bg-red-50/70", "bg-red-100/40", "bg-red-100/70", "bg-red-200/40", "bg-red-200/70"];
+                                                            colorClass = `${reds[ramp - 1]} font-bold underline-offset-2${absVal > 5 ? ' underline decoration-1' : ''}`;
+                                                            bgClass = bgs[ramp - 1];
+                                                        } else {
+                                                            const greens = ["text-green-600", "text-green-700", "text-green-800", "text-green-800", "text-green-950"];
+                                                            const bgs = ["bg-green-50/70", "bg-green-100/40", "bg-green-100/70", "bg-green-200/40", "bg-green-200/70"];
+                                                            colorClass = `${greens[ramp - 1]} font-normal`;
+                                                            bgClass = bgs[ramp - 1];
                                                         }
-                                                        return `${formatNumber((Number(job.delta_percentage) || 0) * 100, 2)}%`;
-                                                    })()}
-                                                </TableCell>
+                                                    }
+
+                                                    return (
+                                                        <>
+                                                            <TableCell className={cn("text-right py-1 px-1", borderClass, bgClass)}>
+                                                                {(() => {
+                                                                    const formula = getFormulaForColumn('delta_number');
+                                                                    const delta = Number(job.delta_number) || 0;
+
+                                                                    return formula
+                                                                        ? (
+                                                                            <FormulaResultWithTooltip
+                                                                                formula={formula.formula}
+                                                                                job={job}
+                                                                                parameters={parameters}
+                                                                                activePresses={activePresses}
+                                                                                variant="delta"
+                                                                                result={delta}
+                                                                                outputConversions={outputConversions}
+                                                                                pressMap={pressMap}
+                                                                                bold={false}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className={`flex flex-col items-end min-h-[36px] justify-center`}>
+                                                                                <span className="font-normal py-1 leading-none">{formatNumber(delta, 0)}</span>
+                                                                            </div>
+                                                                        );
+                                                                })()}
+                                                            </TableCell>
+                                                            <TableCell className={cn("text-right py-1 px-1 border-r border-black", borderClass, bgClass)}>
+                                                                <div className={colorClass}>
+                                                                    <FormulaResultWithTooltip
+                                                                        formula={f?.formula || ''}
+                                                                        job={job}
+                                                                        parameters={parameters}
+                                                                        activePresses={activePresses}
+                                                                        decimals={2}
+                                                                        result={perc}
+                                                                        outputConversions={outputConversions}
+                                                                        pressMap={pressMap}
+                                                                        prefix={dp > 0 ? '+' : ''}
+                                                                        suffix="%"
+                                                                        hideTooltip={true}
+                                                                        bold={dp > 0.01}
+                                                                    />
+                                                                </div>
+                                                            </TableCell>
+                                                        </>
+                                                    );
+                                                })()}
                                                 <TableCell className={cn("py-1 px-1 border-r border-black", borderClass)}>
                                                     <div className="flex gap-1 justify-center">
                                                         {(() => {

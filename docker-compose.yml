@@ -51,7 +51,7 @@ services:
     volumes:
       - ./pb_data:/pb/pb_data
       - pb_migrations_relay:/pb/pb_migrations:ro
-      - pb_hooks_relay:/pb_hooks_relay:ro
+      - pb_hooks_relay:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}

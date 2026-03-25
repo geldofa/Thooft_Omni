@@ -42,12 +42,12 @@ function timeAgo(date: Date): string {
 /* ─── main component ─── */
 
 export function HeaderActivityTicker() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPermission } = useAuth();
+  const canView = hasPermission('activity_ticker_view');
 
   // Re-read settings from localStorage on mount (updated via Beheer > Ticker page)
   const [settings] = useState(loadTickerSettings);
-  const { currentEvent } = useActivityFeed(isAdmin, settings);
+  const { currentEvent } = useActivityFeed(canView, settings);
 
   const [visible, setVisible] = useState(false);
   const [displayEvent, setDisplayEvent] = useState<ActivityEvent | null>(null);
@@ -71,7 +71,7 @@ export function HeaderActivityTicker() {
     }
   }, [currentEvent]);
 
-  if (!isAdmin || !displayEvent) return null;
+  if (!canView || !displayEvent) return null;
 
   return (
     <div

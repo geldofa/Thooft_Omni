@@ -213,8 +213,10 @@ export function UnifiedSettingsLayout() {
             {
                 label: 'Statistieken',
                 items: [
-                    ...(hasPermission('reports_view') ? [
-                        { value: 'statistieken/onderhoud', label: 'Onderhoud', icon: Activity, description: 'Onderhoud statistieken' },
+                    ...(hasPermission('maintenance_analytics_view') ? [
+                        { value: 'statistieken/onderhoud', label: 'Onderhoud', icon: Activity, description: 'Onderhoud statistieken' }
+                    ] : []),
+                    ...(hasPermission('production_analytics_view') ? [
                         { value: 'statistieken/productie', label: 'Productie', icon: Activity, description: 'Productie data & uptime' }
                     ] : []),
                 ]
@@ -245,11 +247,17 @@ export function UnifiedSettingsLayout() {
                 items: [
                     ...(hasPermission('manage_notifications') ? [{ value: 'Notificaties', label: 'Notificaties', icon: Bell, description: 'Meldingen beheer' }] : []),
                     ...(hasPermission('manage_system_tasks') ? [{ value: 'Taken', label: 'Systeem Taken', icon: CalendarClock, description: 'Geplande jobs' }] : []),
-                    { value: 'Ticker', label: 'Activiteit Ticker', icon: Activity, description: 'Header activiteit' },
+                    ...(hasPermission('manage_ticker') ? [
+                        { value: 'Ticker', label: 'Activiteit Ticker', icon: Activity, description: 'Header activiteit' },
+                    ] : []),
                     ...(hasPermission('toolbox_access') ? [
                         { value: 'Tools', label: 'Tools', icon: Settings, description: 'Algemene tools' },
                         { value: 'Import', label: 'Import', icon: Upload, description: 'Data importeren' },
+                    ] : []),
+                    ...(hasPermission('data_checker_view') ? [
                         { value: 'Fixes', label: 'Data Checker', icon: ShieldCheck, description: 'Logboek vs Database' },
+                    ] : []),
+                    ...(hasPermission('toolbox_access') ? [
                         { value: 'Backup', label: 'Backup & Herstel', icon: Database, description: 'Cloud & snapshots' },
                     ] : []),
                 ]

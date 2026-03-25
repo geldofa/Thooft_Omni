@@ -69,7 +69,7 @@ export interface MaintenanceTask {
   updated: string;
 }
 
-export type UserRole = 'admin' | 'press' | 'meestergast' | null;
+export type UserRole = 'admin' | 'press' | 'meestergast' | 'waarnemer' | null;
 export type PressType = string;
 
 export type Permission =
@@ -96,7 +96,14 @@ export type Permission =
   | 'feedback_manage'
   | 'manage_themes'
   | 'manage_notifications'
-  | 'manage_system_tasks';
+  | 'manage_system_tasks'
+  | 'production_analytics_view'
+  | 'maintenance_analytics_view'
+  | 'manage_ticker'
+  | 'data_checker_view'
+  | 'activity_ticker_view'
+  | 'osint_view';
+
 
 export interface RolePermissions {
   role: UserRole;
@@ -403,27 +410,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const mapDbRoleToUi = (dbRole: string): UserRole => {
+    if (!dbRole) return 'press';
     const lowerRole = dbRole.toLowerCase();
-    if (lowerRole === 'admin') return 'admin';
-    if (lowerRole === 'meestergast') return 'meestergast';
-    if (lowerRole === 'operator' || lowerRole === 'press') return 'press';
-    return 'press'; // Default fallback
+    let result: UserRole = 'press';
+    
+    if (lowerRole === 'admin') result = 'admin';
+    else if (lowerRole === 'meestergast') result = 'meestergast';
+    else if (lowerRole === 'waarnemer' || lowerRole === 'observer') result = 'waarnemer';
+    else if (lowerRole === 'operator' || lowerRole === 'press') result = 'press';
+    
+    // console.log(`[Auth] role map: "${dbRole}" -> "${result}"`);
+    return result;
   };
 
   const mapUiRoleToDb = (uiRole: UserRole): string => {
-    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator' };
+    const roleMap: Record<string, string> = { 
+      'admin': 'Admin', 
+      'meestergast': 'Meestergast', 
+      'press': 'Operator',
+      'waarnemer': 'Waarnemer'
+    };
     return roleMap[uiRole || 'press'] || 'Operator';
   };
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     if (!user) return false;
-    // Admins have all permissions by default as a safety net
-    if (user.role === 'admin') return true;
+    // Admins always have access to manage permissions to prevent lockout
+    if (user.role === 'admin' && (permission === 'manage_permissions' || permission === 'management_access')) return true;
 
-    const roleData = rolePermissions.find(rp => rp.role === user.role);
-    if (!roleData) return false;
+    const roleData = rolePermissions.find(rp => 
+      rp.role?.toLowerCase() === (user.role as string)?.toLowerCase()
+    );
+    
+    // Fallback to coded defaults if no DB record found
+    if (!roleData) {
+      const codedDefaults: Record<string, Permission[]> = {
+        'admin': [
+          'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
+          'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
+          'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
+          'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
+          'manage_themes', 'manage_notifications', 'manage_system_tasks',
+          'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view'
+        ],
+        'meestergast': [
+          'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
+          'extern_view', 'logs_view', 'feedback_view', 'osint_view'
+        ],
+        'press': ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view'],
+        'waarnemer': [
+          'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+          'extern_view', 'logs_view', 'feedback_view', 'production_analytics_view',
+          'maintenance_analytics_view', 'activity_ticker_view', 'osint_view'
+        ]
+      };
 
-    return roleData.permissions.includes(permission);
+      const defaultPerms = codedDefaults[(user.role as string)?.toLowerCase()] || [];
+      if (defaultPerms.includes(permission)) return true;
+
+      // Also support hierarchy in defaults
+      if (permission === 'tasks_view' && defaultPerms.includes('tasks_edit')) return true;
+      if (permission === 'drukwerken_view' && (defaultPerms.includes('drukwerken_view_all') || defaultPerms.includes('drukwerken_create'))) return true;
+
+      if (user.role && Math.random() < 0.05) {
+        console.warn(`[Auth] Using coded fallbacks for role: "${user.role}" (DB missing data)`);
+      }
+      return false;
+    }
+
+    // Direct match
+    if (roleData.permissions.includes(permission)) return true;
+
+    // Hierarchy: If you have a "stronger" permission, you get the "weaker" one
+    if (permission === 'tasks_view' && roleData.permissions.includes('tasks_edit')) return true;
+    if (permission === 'drukwerken_view' && (roleData.permissions.includes('drukwerken_view_all') || roleData.permissions.includes('drukwerken_create'))) return true;
+    if (permission === 'logs_view' && roleData.permissions.includes('logs_view_all')) return true;
+    if (permission === 'feedback_view' && roleData.permissions.includes('feedback_manage')) return true;
+    if (permission === 'reports_view' && (
+      roleData.permissions.includes('maintenance_analytics_view') || 
+      roleData.permissions.includes('production_analytics_view') ||
+      roleData.permissions.includes('checklist_view')
+    )) return true;
+    if (permission === 'management_access' && (
+      roleData.permissions.includes('manage_personnel') || 
+      roleData.permissions.includes('manage_accounts') ||
+      roleData.permissions.includes('manage_permissions')
+    )) return true;
+
+    return false;
   }, [user, rolePermissions]);
 
   // --- Data Fetching ---
@@ -525,7 +599,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchActivityLogs = useCallback(async () => {
     try {
-      const records = await pb.collection('activity_logs').getFullList();
+      const records = await pb.collection('activity_logs').getFullList({
+        sort: '-created',
+      });
       records.sort((a: any, b: any) => new Date(b.created).getTime() - new Date(a.created).getTime());
       setActivityLogs(records.map((r: any) => ({
         id: r.id,
@@ -583,79 +659,149 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchPermissions = useCallback(async () => {
+    console.log("[Auth] --- fetchPermissions diagnostic ---");
+    console.log("[Auth] Current user:", user?.id, "Role:", user?.role);
+    console.log("[Auth] PB Auth state:", pb.authStore.isValid ? "VALID" : "INVALID", "Token present:", !!pb.authStore.token);
     try {
-      const records = await pb.collection('role_permissions').getFullList();
-      if (records.length === 0) {
-        // Initialize defaults if empty (Fallback)
-        const defaults = [
-          {
-            role: 'Admin',
-            permissions: [
-              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
-              'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
-              'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
-              'toolbox_access', 'logs_view', 'feedback_view', 'feedback_manage'
-            ]
-          },
-          {
-            role: 'Meestergast',
-            permissions: [
-              'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
-              'extern_view', 'logs_view', 'feedback_view'
-            ]
-          },
-          {
-            role: 'Operator',
-            permissions: ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view']
-          }
-        ];
+      let records = await pb.collection('role_permissions').getFullList();
+      console.log(`[Auth] fetchPermissions: Got ${records.length} records.`, records.map(r => r.role));
+      
+      const defaults = [
+        {
+          role: 'Admin',
+          permissions: [
+            'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
+            'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
+            'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
+            'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
+            'manage_themes', 'manage_notifications', 'manage_system_tasks',
+            'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view'
+          ]
 
-        // Try to seed initial roles
-        for (const def of defaults) {
+        },
+        {
+          role: 'Meestergast',
+          permissions: [
+            'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
+            'extern_view', 'logs_view', 'feedback_view', 'osint_view'
+          ]
+        },
+        {
+          role: 'Operator',
+          permissions: ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view']
+        },
+        {
+          role: 'Waarnemer',
+          permissions: [
+            'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+            'extern_view', 'logs_view', 'feedback_view', 'production_analytics_view',
+            'maintenance_analytics_view', 'activity_ticker_view', 'osint_view'
+          ]
+        }
+      ];
+
+      const dbRoles = records.map(r => r.role);
+      const missingRoles = defaults.filter(d => !dbRoles.includes(d.role));
+
+      if (missingRoles.length > 0 && user?.role === 'admin') {
+        console.log("[Auth] Admin detected missing roles, seeding...", missingRoles.map(m => m.role));
+        for (const def of missingRoles) {
           try {
             await pb.collection('role_permissions').create(def);
           } catch (e) {
             console.warn(`Failed to seed ${def.role}:`, e);
           }
         }
-        const mappedDefaults = defaults.map(d => ({
-          role: mapDbRoleToUi(d.role),
-          permissions: d.permissions as Permission[]
-        }));
-        setRolePermissions(mappedDefaults);
-        return;
+        // Refetch after seeding
+        records = await pb.collection('role_permissions').getFullList();
       }
 
-      setRolePermissions(records.map((r: any) => ({
+      // Update state
+      const mapped = records.map((r: any) => ({
         role: mapDbRoleToUi(r.role),
         permissions: r.permissions as Permission[]
-      })));
+      }));
+      setRolePermissions(mapped);
+
+      // Auto-repair for Admins: if a default role is empty, populate it
+      if (user?.role === 'admin' && records.length > 0) {
+        let needsRefetch = false;
+        for (const record of records) {
+          const def = defaults.find(d => d.role === record.role);
+          if (def && (!record.permissions || record.permissions.length === 0)) {
+            console.log(`[Auth] Admin repairing empty permissions for: ${record.role}`);
+            try {
+              await pb.collection('role_permissions').update(record.id, { permissions: def.permissions });
+              needsRefetch = true;
+            } catch (e) {
+              console.warn(`[Auth] Failed to repair ${record.role}:`, e);
+            }
+          }
+        }
+        if (needsRefetch) {
+          const fresh = await pb.collection('role_permissions').getFullList();
+          setRolePermissions(fresh.map((r: any) => ({
+            role: mapDbRoleToUi(r.role),
+            permissions: r.permissions as Permission[]
+          })));
+        }
+      }
     } catch (e) {
       console.error("Fetch permissions failed:", e);
     }
-  }, []);
+  }, [user?.role]);
+
+  // Set up real-time subscription for permissions
+  useEffect(() => {
+    fetchPermissions();
+    let isSubscribed = false;
+    const subscribe = async () => {
+      try {
+        await pb.collection('role_permissions').subscribe('*', (e) => {
+          console.log("[Auth] Role permissions changed, refetching...", e.action);
+          fetchPermissions();
+        });
+        isSubscribed = true;
+      } catch (err) {
+        console.error("Role permissions subscription failed:", err);
+      }
+    };
+    
+    subscribe();
+    return () => {
+      if (isSubscribed) {
+        pb.collection('role_permissions').unsubscribe('*').catch(() => {});
+      }
+    };
+  }, [fetchPermissions]);
 
   const updateRolePermissions = async (role: UserRole, permissions: Permission[]) => {
+    const dbRole = mapUiRoleToDb(role);
     try {
-      const dbRole = mapUiRoleToDb(role);
-      const record = await pb.collection('role_permissions').getFirstListItem(`role="${dbRole}"`);
+      let record;
+      try {
+        record = await pb.collection('role_permissions').getFirstListItem(`role="${dbRole}"`);
+      } catch (e: any) {
+        if (e.status === 404) {
+          // Record missing, create it
+          await pb.collection('role_permissions').create({ role: dbRole, permissions });
+          setRolePermissions(prev => {
+            const exists = prev.some(rp => rp.role === role);
+            if (exists) return prev.map(rp => rp.role === role ? { ...rp, permissions } : rp);
+            return [...prev, { role, permissions }];
+          });
+          toast.success(`Rechten aangemaakt voor ${role}`);
+          return;
+        }
+        throw e;
+      }
+
       await pb.collection('role_permissions').update(record.id, { permissions });
       setRolePermissions(prev => prev.map(rp => rp.role === role ? { ...rp, permissions } : rp));
       toast.success(`Rechten bijgewerkt voor ${role}`);
     } catch (e: any) {
-      console.error("Update permissions failed:", e);
-      try {
-        const dbRole = mapUiRoleToDb(role);
-        await pb.collection('role_permissions').create({ role: dbRole, permissions });
-        setRolePermissions(prev => {
-          const exists = prev.some(rp => rp.role === role);
-          if (exists) return prev.map(rp => rp.role === role ? { ...rp, permissions } : rp);
-          return [...prev, { role, permissions }];
-        });
-        toast.success(`Rechten aangemaakt voor ${role}`);
-      } catch (err: any) {
-        toast.error(`Kon rechten niet bijwerken: ${err.message}`);
-      }
+      console.error("Update permissions fully failed:", e);
+      toast.error(`Kon rechten niet bijwerken: ${e.message}`);
     }
   };
 
@@ -695,7 +841,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // The requirement says "admin only ... warning".
     // We'll let the context store the state, and UI decides to show it.
     try {
-      const response = await fetch(`${pb.baseUrl}/api/custom/update/check`);
+      const response = await fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/custom/update/check`);
       if (response.ok) {
         const data = await response.json();
         // data.latestVersion comes from GitHub tag (e.g. "v1.4.0")
@@ -729,7 +875,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // But PB JS SDK doesn't have a generic "send" for custom endpoints easily accessible via collection methods
       // We can use fetch with pb.authStore.token
 
-      const response = await fetch(`${pb.baseUrl}/api/custom/update/apply`, {
+      const response = await fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/custom/update/apply`, {
         method: 'POST',
         headers: {
           'Authorization': pb.authStore.token,
@@ -794,7 +940,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Also backup rclone config alongside database
       try {
-        await fetch(`${pb.baseUrl}/api/config-backup/save`, {
+        await fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/config-backup/save`, {
           method: 'POST',
           body: JSON.stringify({ backupName: cleanName }),
           headers: {

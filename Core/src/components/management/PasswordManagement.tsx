@@ -39,12 +39,12 @@ export function PasswordManagement() {
   const [isLoading, setIsLoading] = useState(false);
 
   const mapDbRoleToUi = (dbRole: string): UserRole => {
-    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press' };
+    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press', 'Waarnemer': 'waarnemer' };
     return roleMap[dbRole] || 'press';
   };
 
   const mapUiRoleToDb = (uiRole: UserRole): string => {
-    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator' };
+    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator', 'waarnemer': 'Waarnemer' };
     return roleMap[uiRole || 'press'] || 'Operator';
   };
 
@@ -400,8 +400,8 @@ export function PasswordManagement() {
                 <TableCell className="font-medium">{account.username}</TableCell>
                 <TableCell>{account.name || '-'}</TableCell>
                 <TableCell>
-                  <Badge variant={account.role === 'admin' ? 'default' : account.role === 'meestergast' ? 'secondary' : 'outline'}>
-                    {account.role === 'admin' ? 'Admin' : account.role === 'meestergast' ? 'Meestergast' : 'Pers'}
+                  <Badge variant={account.role === 'admin' ? 'default' : account.role === 'meestergast' ? 'secondary' : account.role === 'waarnemer' ? 'outline' : 'outline'}>
+                    {account.role === 'admin' ? 'Admin' : account.role === 'meestergast' ? 'Meestergast' : account.role === 'waarnemer' ? 'Waarnemer' : 'Pers'}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -501,6 +501,7 @@ export function PasswordManagement() {
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="meestergast">Meestergast</SelectItem>
                   <SelectItem value="press">Pers (Press Operator)</SelectItem>
+                  <SelectItem value="waarnemer">Waarnemer</SelectItem>
                 </SelectContent>
               </Select>
             </div>

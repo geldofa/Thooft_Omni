@@ -26,7 +26,9 @@ const Drukwerken = lazy(() => import('./components/Drukwerken').then(m => ({ def
 const UnifiedSettingsLayout = lazy(() => import('./components/layout/UnifiedSettingsLayout').then(m => ({ default: m.UnifiedSettingsLayout })));
 const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
 const ExternalTasks = lazy(() => import('./components/ExternalTasks').then(m => ({ default: m.ExternalTasks })));
+const Overzicht = lazy(() => import('./components/Overzicht').then(m => ({ default: m.Overzicht })));
 import { Homepage } from './components/Homepage';
+
 
 function MainApp() {
   const navigate = useNavigate();
@@ -669,7 +671,9 @@ function MainApp() {
             <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
               <Routes>
                 <Route path="/" element={<Homepage setActiveTab={setActiveTab} activePresses={activePresses} />} />
+                <Route path="/Overzicht" element={<Overzicht />} />
                 <Route path="/Taken" element={activePresses.length > 0 ? <Navigate to={`/Taken/${encodeURIComponent(activePresses[0].name)}`} replace /> : <Navigate to="/" replace />} />
+
                 <Route path="/Taken/*" element={hasPermission('tasks_view') ? (
                   <div className="space-y-6">
                     <div className={`flex flex-col sm:flex-row ${((activePresses.length + (hasPermission('extern_view') ? 1 : 0)) > 1) ? 'justify-between' : 'justify-center'} items-start sm:items-center gap-4 mb-2 mt-2`}>

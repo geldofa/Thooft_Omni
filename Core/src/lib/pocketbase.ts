@@ -7,7 +7,7 @@ import { APP_URL } from '../config';
 const isLocalDev = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const URL = APP_URL || import.meta.env.VITE_POCKETBASE_URL || (isLocalDev ? 'http://127.0.0.1:8090' : '/');
+const URL = APP_URL || import.meta.env.VITE_POCKETBASE_URL || (isLocalDev ? 'http://127.0.0.1:8090' : (typeof window !== 'undefined' ? window.location.origin : '/'));
 
 console.log(`[PocketBase] Connecting to: ${URL} (origin: ${typeof window !== 'undefined' ? window.location.origin : 'unknown'})`);
 

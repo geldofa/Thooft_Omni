@@ -54,9 +54,13 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
         label: 'Analyse',
         icon: BarChart2,
         permissions: [
-            { key: 'reports_view', label: 'Rapporten', description: 'Toegang tot de Rapportage sectie.' },
+            { key: 'reports_view', label: 'PDF Rapporten', description: 'Toegang tot de Rapportage sectie (PDF hubs).' },
             { key: 'checklist_view', label: 'Checklist', description: 'Toegang tot de Checklist sectie.' },
+            { key: 'maintenance_analytics_view', label: 'Onderhoud Statistieken', description: 'Interactieve charts voor onderhoud.' },
+            { key: 'production_analytics_view', label: 'Productie Statistieken', description: 'Interactieve charts voor productie.' },
+            { key: 'osint_view', label: 'OSINT Live Command', description: 'Toegang tot het real-time productie dashboard.' },
         ]
+
     },
     {
         id: 'beheer',
@@ -71,7 +75,10 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'manage_parameters', label: 'Parameters', description: 'Beheer parameters en formules.' },
             { key: 'manage_accounts', label: 'Accounts', description: 'Beheer gebruikersaccounts.' },
             { key: 'manage_permissions', label: 'Rechten', description: 'Beheer van rollen en rechten.' },
-            { key: 'toolbox_access', label: 'Toolbox', description: 'Toegang tot de Toolbox sectie.' },
+            { key: 'manage_ticker', label: 'Activiteit Ticker Settings', description: 'Instellingen voor de ticker in de header.' },
+            { key: 'activity_ticker_view', label: 'Activiteit Ticker Zien', description: 'Mogelijkheid om de ticker te zien in de header.' },
+            { key: 'data_checker_view', label: 'Data Checker', description: 'Toegang tot de Data Checker tool.' },
+            { key: 'toolbox_access', label: 'Toolbox', description: 'Toegang tot de Toolbox sectie (Import/Tools/Backup).' },
         ]
     },
     {
@@ -108,6 +115,7 @@ const ROLES: { key: UserRole; label: string }[] = [
     { key: 'admin', label: 'Admin' },
     { key: 'meestergast', label: 'Meestergast' },
     { key: 'press', label: 'Operator' },
+    { key: 'waarnemer', label: 'Waarnemer' },
 ];
 
 // Permissions that are always locked for admins
