@@ -18,7 +18,9 @@ import {
   Search,
   Calendar,
   Printer,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 import { cn } from './ui/utils';
@@ -65,6 +67,7 @@ interface OsintCounterData {
 
 interface YearlyStats {
   jobsCount: number;
+  versionsCount: number;
   totalNetto: number;
   pressJobs: PressMetric[];
   pressNetto: PressMetric[];
@@ -85,9 +88,9 @@ interface ActivityEvent {
 }
 
 interface MaintenanceStatsData {
-  overdueThisWeek: { count: number; pressBreakdown: PressMetric[] };
+  overdueInRange: { count: number; pressBreakdown: PressMetric[] };
   alreadyOverdue: { count: number; pressBreakdown: PressMetric[] };
-  completedThisWeek: { count: number; pressBreakdown: PressMetric[] };
+  completedInRange: { count: number; pressBreakdown: PressMetric[] };
 }
 
 // Press breakdown text component (standardized)
@@ -105,6 +108,16 @@ const PressBreakdownText = ({ metrics, isLarge = false, showPercent = false }: {
   );
 };
 
+// --- CONFIGURATION CONSTANTS ---
+// EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
+const LOG_CONFIG = {
+  columnWidths: {
+    netto: '82px',
+    groen: '82px',
+    rood: '72px'
+  }
+};
+
 
 
 export function Overzicht() {
@@ -113,15 +126,16 @@ export function Overzicht() {
   const [selectedLog, setSelectedLog] = useState<ActivityEvent | null>(null);
   const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [counters, setCounters] = useState<OsintCounterData[]>([]);
   const [yearlyStats, setYearlyStats] = useState<YearlyStats>({
-    jobsCount: 0, totalNetto: 0, pressJobs: [], pressNetto: []
+    jobsCount: 0, versionsCount: 0, totalNetto: 0, pressJobs: [], pressNetto: []
   });
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
   const [maintenanceStats, setMaintenanceStats] = useState<MaintenanceStatsData>({
-    overdueThisWeek: { count: 0, pressBreakdown: [] },
+    overdueInRange: { count: 0, pressBreakdown: [] },
     alreadyOverdue: { count: 0, pressBreakdown: [] },
-    completedThisWeek: { count: 0, pressBreakdown: [] }
+    completedInRange: { count: 0, pressBreakdown: [] }
   });
 
   useEffect(() => {
@@ -167,18 +181,21 @@ export function Overzicht() {
         rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
       } else {
         const dow = today.getDay();
-        rangeStart.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+        rangeStart.setDate(today.getDate() - dow);
       }
       const rangeStr = format(rangeStart, 'yyyy-MM-dd');
 
       const rangeFilter = `(date >= "${rangeStr}" || created >= "${rangeStr}")`;
       const yearFilter = `(date >= "${yearStr}" || created >= "${yearStr}")`;
 
-      const [rangeJobs, logs, yearJobs] = await Promise.all([
+      const [rangeJobsRaw, logs, yearJobsRaw] = await Promise.all([
         pb.collection('drukwerken').getFullList({ filter: rangeFilter, sort: '-created', expand: 'pers' }),
-        pb.collection('activity_logs').getList(1, 150, { sort: '-created' }),
+        pb.collection('activity_logs').getList(1, 500, { filter: rangeFilter.replace('date', 'created'), sort: '-created' }),
         pb.collection('drukwerken').getFullList({ filter: yearFilter, expand: 'pers' })
       ]);
+
+      const rangeJobs = rangeJobsRaw.filter(item => (item.groen || 0) !== 0 || (item.rood || 0) !== 0);
+      const yearJobs = yearJobsRaw.filter(item => (item.groen || 0) !== 0 || (item.rood || 0) !== 0);
 
       processProduction(rangeJobs);
       processActivities(logs.items);
@@ -202,7 +219,7 @@ export function Overzicht() {
         rangeEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
       } else {
         const dow = today.getDay();
-        rangeStart.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+        rangeStart.setDate(today.getDate() - dow);
         rangeEnd = new Date(rangeStart);
         rangeEnd.setDate(rangeStart.getDate() + 6);
         rangeEnd.setHours(23, 59, 59, 999);
@@ -245,9 +262,9 @@ export function Overzicht() {
       };
 
       setMaintenanceStats({
-        overdueThisWeek: { count: overdueThisRange.length, pressBreakdown: getPressBreakdown(overdueThisRange) },
+        overdueInRange: { count: overdueThisRange.length, pressBreakdown: getPressBreakdown(overdueThisRange) },
         alreadyOverdue: { count: alreadyOverdue.length, pressBreakdown: getPressBreakdown(alreadyOverdue) },
-        completedThisWeek: { count: completedThisRange.length, pressBreakdown: getPressBreakdown(completedThisRange) }
+        completedInRange: { count: completedThisRange.length, pressBreakdown: getPressBreakdown(completedThisRange) }
       });
     } catch (err) {
       console.error("OSINT Maintenance fetch failed:", err);
@@ -284,11 +301,20 @@ export function Overzicht() {
     const deltaPercentage = totalPlanned > 0 ? (totalDelta / totalPlanned) : 0;
     const deltaPercentageText = (deltaPercentage * 100).toFixed(1);
     const displayDelta = Number(deltaPercentageText) > 0 ? `+${deltaPercentageText}%` : `${deltaPercentageText}%`;
+
+    // Modified Productie calculation: count Netto if Groen > 0
+    let totalProdNetto = 0;
+    items.forEach(item => {
+      if ((item.groen || 0) > 0) {
+        totalProdNetto += (item.netto_oplage || 0);
+      }
+    });
+
     const lossPercentage = totalGreen > 0 ? (totalRed / totalGreen * 100).toFixed(1) : '0.0';
 
     setCounters([
       {
-        label: 'Productie', mainValue: totalGreen.toLocaleString(),
+        label: 'Productie', mainValue: totalProdNetto.toLocaleString(),
         pressBreakdown: pressGreen,
         status: totalGreen < totalPlanned ? 'warning' : 'nominal',
         icon: AlertCircle
@@ -314,8 +340,12 @@ export function Overzicht() {
     const orderByPress: Record<string, Set<string>> = {};
     const nettoMap: Record<string, number> = {};
     let totalNetto = 0;
+    let versionsCount = 0;
 
     items.forEach(item => {
+      const groen = item.groen || 0;
+      if (groen <= 0) return;
+
       const press = item.expand?.pers?.naam || item.pers || 'Onbekend';
       const orderNum = item.order_nummer || item.id;
       orderNumbers.add(orderNum);
@@ -324,11 +354,13 @@ export function Overzicht() {
       const netto = (item.netto_oplage || 0);
       nettoMap[press] = (nettoMap[press] || 0) + netto;
       totalNetto += netto;
+      versionsCount++;
     });
 
     const totalJobs = orderNumbers.size;
     setYearlyStats({
       jobsCount: totalJobs,
+      versionsCount: versionsCount,
       totalNetto,
       pressJobs: sortPressMetrics(Object.entries(orderByPress).map(([press, orders]) => ({
         press, value: totalJobs > 0 ? Math.round((orders.size / totalJobs) * 100) : 0
@@ -362,12 +394,63 @@ export function Overzicht() {
     if (a.includes('creat') || a.includes('complet') || a.includes('finish')) return 'success';
     return 'info';
   };
+  const getOrderKey = (item: ActivityEvent) => {
+    if (item.newValue) {
+      const parts = item.newValue.split('|||');
+      const orderPart = parts.find(p => p.startsWith('Order:'));
+      if (orderPart) return orderPart.split(':')[1].trim();
+    }
+    const match = item.entityName?.match(/DT\s*(\d+)/i);
+    if (match) return match[1];
+    return item.entityName || 'Onbekend';
+  };
+
+  const getVersie = (item: ActivityEvent) => {
+    if (item.newValue) {
+      const parts = item.newValue.split('|||');
+      const vPart = parts.find(p => p.startsWith('Versie:'));
+      if (vPart) return vPart.split(':')[1].trim();
+    }
+    return '';
+  };
+
   // --- Split activities ---
-  const orderActivities = activities.filter(a => {
-    const e = a.entity?.toLowerCase() || '';
-    const d = a.details?.toLowerCase() || '';
-    return e.includes('job') || e.includes('druk') || d.includes('druk') || d.includes('order') || e === 'finishedjob';
-  });
+  const orderActivities = React.useMemo(() => {
+    const raw = activities.filter(a => {
+      const e = a.entity?.toLowerCase() || '';
+      const d = a.details?.toLowerCase() || '';
+      return e.includes('job') || e.includes('druk') || d.includes('druk') || d.includes('order') || e === 'finishedjob';
+    });
+
+    const latestPerJob = new Map<string, ActivityEvent>();
+    raw.forEach(a => {
+      const id = `${getOrderKey(a)}|${getVersie(a)}`;
+      if (!latestPerJob.has(id)) {
+        latestPerJob.set(id, a);
+      } else {
+        const existing = latestPerJob.get(id)!;
+        if (a.timestamp > existing.timestamp) {
+          latestPerJob.set(id, a);
+        }
+      }
+    });
+
+    return Array.from(latestPerJob.values()).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [activities]);
+
+  const groupedOrders = React.useMemo(() => {
+    const groups = new Map<string, ActivityEvent[]>();
+    orderActivities.forEach(a => {
+      const key = getOrderKey(a);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(a);
+    });
+    return Array.from(groups.entries()).sort((a, b) => {
+      const maxA = Math.max(...a[1].map(x => x.timestamp.getTime()));
+      const maxB = Math.max(...b[1].map(x => x.timestamp.getTime()));
+      return maxB - maxA;
+    });
+  }, [orderActivities]);
 
   const onderhoudActivities = activities.filter(a => {
     const e = a.entity?.toLowerCase() || '';
@@ -378,7 +461,7 @@ export function Overzicht() {
   // --- Helpers for log detail dialog ---
   const formatDateTime = (date: Date) => {
     const d = new Date(date);
-    return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
   const getActionBadge = (action: string) => {
@@ -396,13 +479,270 @@ export function Overzicht() {
     const oldMap = new Map<string, string>(); const newMap = new Map<string, string>();
     const parse = (part: string, map: Map<string, string>) => {
       const i = part.indexOf(': ');
-      if (i !== -1) { const f = part.substring(0, i); map.set(f, part.substring(i+2)); fieldNames.add(f); }
+      if (i !== -1) { const f = part.substring(0, i); map.set(f, part.substring(i + 2)); fieldNames.add(f); }
     };
     oldParts.forEach(p => parse(p, oldMap)); newParts.forEach(p => parse(p, newMap));
     return Array.from(fieldNames).map(f => ({ field: f, old: oldMap.get(f) || '-', new: newMap.get(f) || '-' }));
   };
 
-  // --- Activity Stream Renderer ---
+  // --- Order Stream Renderer ---
+  const renderOrderStream = (groupedItems: [string, ActivityEvent[]][]) => {
+    const flatList: React.ReactNode[] = [];
+    let lastDateStr: string | null = null;
+
+    groupedItems.forEach(([orderKey, events], groupIndex) => {
+      const latestEvent = events[0];
+      const itemDate = new Date(latestEvent.timestamp);
+      const itemDayStr = format(itemDate, 'yyyy-MM-dd');
+
+      if (itemDayStr !== lastDateStr) {
+        flatList.push(
+          <div key={`date-${itemDayStr}-${groupIndex}`} className="flex items-end gap-1 mt-3 mb-0.5 first:mt-0 opacity-50 select-none">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest whitespace-nowrap">
+              {format(itemDate, 'EEEE d MMM', { locale: nl }).toUpperCase()}
+            </span>
+            <div className="flex-1 border-b border-muted-foreground/30 h-[1.5px] mb-[1.5px] opacity-20"></div>
+          </div>
+        );
+        lastDateStr = itemDayStr;
+      }
+
+      const isExpanded = expandedOrders.has(orderKey);
+      const hasMultiple = events.length > 1;
+
+      const toggleOrder = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedOrders(prev => {
+          const next = new Set(prev);
+          if (next.has(orderKey)) next.delete(orderKey);
+          else next.add(orderKey);
+          return next;
+        });
+      };
+
+      const renderSingleItem = (item: ActivityEvent, isChild = false, customPrefix?: React.ReactNode) => {
+        let netto = 0, groen = 0, rood = 0, versie = '', typeLabel = '';
+        if (item.newValue) {
+          const parts = item.newValue.split('|||');
+          parts.forEach(p => {
+            const [f, v] = p.split(':').map(s => s.trim());
+            const numV = Number(v?.replace(/[.,]/g, '')) || 0;
+            if (f === 'Netto') netto = numV;
+            if (f === 'Groen') groen = numV;
+            if (f === 'Rood') rood = numV;
+            if (f === 'Versie') versie = v;
+            if (['4/4', '4/0', '1/0', '1/1', '4/1'].includes(f) && numV > 0) typeLabel = f;
+          });
+        }
+
+        let displayUser = item.user;
+        if (displayUser) {
+          if (/MAN Lithoman/i.test(displayUser)) displayUser = 'Lithoman';
+          else if (/KBA C818/i.test(displayUser)) displayUser = 'C818';
+          else if (/KBA C80/i.test(displayUser)) displayUser = 'C80';
+        }
+
+        let textStr = item.entityName || item.details || '';
+        const pMatchers = [{ prefix: 'MAN LITHOMAN' }, { prefix: 'LITHOMAN' }, { prefix: 'KBA C818' }, { prefix: 'C818' }, { prefix: 'C80' }];
+        for (const m of pMatchers) {
+          if (textStr.toUpperCase().startsWith(m.prefix)) {
+            textStr = textStr.slice(m.prefix.length).trim();
+            if (textStr.startsWith('- ')) textStr = textStr.slice(2);
+            break;
+          }
+        }
+
+        return (
+          <div
+            key={item.id}
+            className={cn(
+              "text-[11px] border-l-2 pl-2.5 py-0.5 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-r cursor-pointer group",
+              isChild ? "ml-6 border-muted/20" : "border-muted hover:border-primary"
+            )}
+            onClick={() => setSelectedLog(item)}
+          >
+            <span className="text-muted-foreground font-mono shrink-0 w-[42px] text-right">[{format(item.timestamp, 'HH:mm')}]</span>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!isChild ? <div className="w-3.5 h-3.5" /> : null}
+              <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", isChild ? "bg-muted-foreground/30" : "bg-primary")}></span>
+            </div>
+
+            {!isChild && (
+              <div className="w-[92px] shrink-0 flex items-center">
+                <span className="px-1.5 py-0.5 rounded-md bg-muted/60 text-[9px] font-black text-muted-foreground uppercase tracking-tight shadow-sm border border-muted/30 whitespace-nowrap">{displayUser}</span>
+              </div>
+            )}
+
+            <div className="flex flex-1 items-center min-w-0">
+              {customPrefix}
+              <span className={cn(
+                "text-muted-foreground truncate group-hover:text-foreground transition-colors",
+                isChild && "ml-[148px]"
+              )}>
+                {isChild ? (versie || textStr) : textStr}
+              </span>
+              {!isChild && versie && versie !== '-' && (
+                <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-widest text-primary/70 bg-primary/10 border border-primary/20 shrink-0">{versie}</span>
+              )}
+            </div>
+
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              {typeLabel && (
+                <div className="px-1.5 py-0.5 rounded bg-gray-100 text-[9px] font-bold text-gray-600 border border-gray-200">
+                  {typeLabel}
+                </div>
+              )}
+
+              <div
+                className="flex justify-between shrink-0 text-blue-700 bg-blue-500/15 px-1.5 py-0.5 rounded font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.netto }}
+              >
+                <span className="opacity-70 text-[9px]">N:</span><span className="font-bold text-[10px]">{netto > 0 ? fmtNum(netto.toString()) : '0'}</span>
+              </div>
+
+              <div
+                className="flex justify-between shrink-0 text-emerald-700 bg-emerald-500/15 px-1.5 py-0.5 rounded font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.groen }}
+              >
+                <span className="opacity-70 text-[9px]">G:</span><span className="font-bold text-[10px]">{groen > 0 ? fmtNum(groen.toString()) : '0'}</span>
+              </div>
+
+              <div
+                className="flex justify-between shrink-0 text-red-700 bg-red-500/15 px-1.5 py-0.5 rounded font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.rood }}
+              >
+                <span className="opacity-70 text-[9px]">R:</span><span className="font-bold text-[10px]">{rood > 0 ? fmtNum(rood.toString()) : '0'}</span>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      if (!hasMultiple) {
+        flatList.push(renderSingleItem(latestEvent));
+      } else {
+        // Parent row logic
+        let totalNetto = 0, totalGroen = 0, totalRood = 0;
+        const typeCounts: Record<string, number> = {};
+
+        // Deduplicate events by version to get the latest state of each version
+        const latestVersionLogs = new Map<string, ActivityEvent>();
+        events.forEach(item => {
+          let versie = '-';
+          if (item.newValue) {
+            const vPart = item.newValue.split('|||').find(p => p.startsWith('Versie:'));
+            if (vPart) versie = vPart.split(':')[1].trim();
+          }
+          if (!latestVersionLogs.has(versie)) {
+            latestVersionLogs.set(versie, item);
+          }
+        });
+
+        latestVersionLogs.forEach(item => {
+          if (item.newValue) {
+            const parts = item.newValue.split('|||');
+            parts.forEach(p => {
+              const [f, v] = p.split(':').map(s => s.trim());
+              const numV = Number(v?.replace(/[.,]/g, '')) || 0;
+              if (f === 'Netto') totalNetto += numV;
+              if (f === 'Groen') totalGroen += numV;
+              if (f === 'Rood') totalRood += numV;
+              if (['4/4', '4/0', '1/0', '1/1', '4/1'].includes(f) && numV > 0) {
+                typeCounts[f] = (typeCounts[f] || 0) + 1;
+              }
+            });
+          }
+        });
+
+        const parentText = latestEvent.entityName; // Use full name (ordernr - ordername)
+        const pMatchers = [{ prefix: 'MAN LITHOMAN' }, { prefix: 'LITHOMAN' }, { prefix: 'KBA C818' }, { prefix: 'C818' }, { prefix: 'C80' }];
+        let displayTitle = parentText;
+        for (const m of pMatchers) {
+          if (displayTitle.toUpperCase().startsWith(m.prefix)) {
+            displayTitle = displayTitle.slice(m.prefix.length).trim();
+            if (displayTitle.startsWith('- ')) displayTitle = displayTitle.slice(2);
+            break;
+          }
+        }
+
+        flatList.push(
+          <div
+            key={`parent-${orderKey}`}
+            className="text-[11px] border-l-2 border-primary/40 pl-2.5 py-1 flex items-center gap-3 bg-primary/5 hover:bg-primary/10 transition-colors rounded-r cursor-pointer group mb-0.5"
+            onClick={toggleOrder}
+          >
+            <span className="text-muted-foreground font-mono shrink-0 w-[42px] text-right">[{format(latestEvent.timestamp, 'HH:mm')}]</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-primary" /> : <ChevronRight className="w-3.5 h-3.5 text-primary" />}
+              <span className={cn("w-1.5 h-1.5 rounded-full", "bg-primary")}></span>
+            </div>
+
+            <div className="w-[92px] shrink-0 flex items-center">
+              {(() => {
+                let displayUser = latestEvent.user;
+                if (displayUser) {
+                  if (/MAN Lithoman/i.test(displayUser)) displayUser = 'Lithoman';
+                  else if (/KBA C818/i.test(displayUser)) displayUser = 'C818';
+                  else if (/KBA C80/i.test(displayUser)) displayUser = 'C80';
+                }
+                return <span className="px-1.5 py-0.5 rounded-md bg-muted/60 text-[9px] font-black text-muted-foreground uppercase tracking-tight shadow-sm border border-muted/30 whitespace-nowrap">{displayUser}</span>;
+              })()}
+            </div>
+
+            <div className="flex flex-1 items-center min-w-0">
+              <span className="text-foreground/80 truncate">{displayTitle}</span>
+              <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded text-gray-600 border border-gray-200 uppercase tracking-tighter shrink-0 flex items-center gap-1 shadow-sm">
+                <Layers className="w-2.5 h-2.5" /> {events.length} VERSIES
+              </span>
+            </div>
+
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              {/* Type summary cards */}
+              <div className="flex gap-1 mr-2">
+                {Object.entries(typeCounts).map(([type, count]) => (
+                  <div key={type} className="px-1.5 py-0.5 rounded bg-white shadow-sm border border-primary/20 text-[9px] font-bold text-primary italic">
+                    {count}x {type}
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="flex justify-between shrink-0 text-blue-700 bg-blue-700/10 px-1.5 py-0.5 rounded border border-blue-200 font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.netto }}
+              >
+                <span className="opacity-70 text-[9px]">ΣN:</span><span className="font-black text-[10px]">{totalNetto > 0 ? fmtNum(totalNetto.toString()) : '0'}</span>
+              </div>
+
+              <div
+                className="flex justify-between shrink-0 text-emerald-700 bg-emerald-700/10 px-1.5 py-0.5 rounded border border-emerald-200 font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.groen }}
+              >
+                <span className="opacity-70 text-[9px]">ΣG:</span><span className="font-black text-[10px]">{totalGroen > 0 ? fmtNum(totalGroen.toString()) : '0'}</span>
+              </div>
+
+              <div
+                className="flex justify-between shrink-0 text-red-700 bg-red-700/10 px-1.5 py-0.5 rounded border border-red-200 font-mono"
+                style={{ width: LOG_CONFIG.columnWidths.rood }}
+              >
+                <span className="opacity-70 text-[9px]">ΣR:</span><span className="font-black text-[10px]">{totalRood > 0 ? fmtNum(totalRood.toString()) : '0'}</span>
+              </div>
+            </div>
+          </div>
+        );
+
+        if (isExpanded) {
+          events.forEach(child => {
+            flatList.push(renderSingleItem(child, true));
+          });
+        }
+      }
+    });
+
+    return flatList;
+  };
+
+  // --- Maintenance Activity Stream Renderer ---
   const renderActivityStream = (items: ActivityEvent[]) => {
     return items.reduce((acc: React.ReactNode[], item, index, array) => {
       const itemDate = new Date(item.timestamp);
@@ -432,7 +772,7 @@ export function Overzicht() {
           if (p.startsWith('Rood:')) rood = p.split(':')[1].trim();
           if (p.startsWith('Versie:')) versie = p.split(':')[1].trim();
         });
-        
+
         if (versie && versie !== '-') {
           versieBadge = <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-widest text-primary/70 bg-primary/10 border border-primary/20 shrink-0">{versie}</span>;
         }
@@ -440,35 +780,24 @@ export function Overzicht() {
         if (netto || groen || rood) {
           prodData = (
             <div className="flex items-center gap-1.5 ml-auto text-[10px] font-mono shrink-0">
-              {netto ? (
-                <div className="flex justify-between w-[82px] shrink-0 text-blue-700 bg-blue-500/15 px-1.5 py-0.5 rounded">
-                  <span className="opacity-70">N:</span><span className="font-bold">{fmtNum(netto)}</span>
-                </div>
-              ) : <div className="w-[82px] shrink-0"></div>}
-              {groen ? (
-                (() => {
-                  const gVal = Number(groen.replace(/[.,]/g, '')) || 0;
-                  const nVal = Number(netto.replace(/[.,]/g, '')) || 0;
-                  const dVal = (gVal / nVal) - 1;
-                  const isSignificant = Math.abs(dVal) > 0.01;
-
-                  return (
-                    <div className={cn(
-                      "flex justify-between w-[82px] shrink-0 px-1.5 py-0.5 rounded",
-                      gVal < nVal
-                        ? "text-red-900 bg-red-500/20 font-normal underline decoration-dotted"
-                        : isSignificant ? "text-emerald-900 bg-emerald-500/20" : "text-gray-600 bg-gray-500/10"
-                    )}>
-                      <span className="opacity-70">G:</span><span className="font-bold">{fmtNum(groen)}</span>
-                    </div>
-                  );
-                })()
-              ) : <div className="w-[82px] shrink-0"></div>}
-              {rood ? (
-                <div className="flex justify-between w-[72px] shrink-0 text-red-700 bg-red-500/15 px-1.5 py-0.5 rounded">
-                  <span className="opacity-70">R:</span><span className="font-bold">{fmtNum(rood)}</span>
-                </div>
-              ) : <div className="w-[72px] shrink-0"></div>}
+              <div
+                className="flex justify-between shrink-0 text-blue-700 bg-blue-500/15 px-1.5 py-0.5 rounded"
+                style={{ width: LOG_CONFIG.columnWidths.netto }}
+              >
+                <span className="opacity-70">N:</span><span className="font-bold">{netto ? fmtNum(netto) : '0'}</span>
+              </div>
+              <div
+                className="flex justify-between shrink-0 px-1.5 py-0.5 rounded text-emerald-900 bg-emerald-500/20"
+                style={{ width: LOG_CONFIG.columnWidths.groen }}
+              >
+                <span className="opacity-70">G:</span><span className="font-bold">{groen ? fmtNum(groen) : '0'}</span>
+              </div>
+              <div
+                className="flex justify-between shrink-0 text-red-700 bg-red-500/15 px-1.5 py-0.5 rounded"
+                style={{ width: LOG_CONFIG.columnWidths.rood }}
+              >
+                <span className="opacity-70">R:</span><span className="font-bold">{rood ? fmtNum(rood) : '0'}</span>
+              </div>
             </div>
           );
         }
@@ -646,8 +975,11 @@ export function Overzicht() {
                 <Layers className="w-5 h-5 text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs dit jaar</div>
-                <div className="text-lg font-black leading-tight">{yearlyStats.jobsCount.toLocaleString()}</div>
+                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs ({new Date().getFullYear()})</div>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-lg font-black leading-tight">{yearlyStats.jobsCount.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">{yearlyStats.versionsCount} versies</div>
+                </div>
                 <PressBreakdownText metrics={yearlyStats.pressJobs} showPercent />
               </div>
             </div>
@@ -658,7 +990,7 @@ export function Overzicht() {
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Netto Oplages</div>
+                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Netto {new Date().getFullYear()}</div>
                 <div className="text-lg font-black leading-tight">{yearlyStats.totalNetto.toLocaleString()}</div>
                 <PressBreakdownText metrics={yearlyStats.pressNetto} isLarge showPercent />
               </div>
@@ -687,8 +1019,8 @@ export function Overzicht() {
           <div className="grid grid-cols-3 gap-4">
             <MaintenanceCard
               title={timeRange === 'week' ? "Vervalt deze week" : "Vervalt deze maand"}
-              count={maintenanceStats.overdueThisWeek.count}
-              breakdown={maintenanceStats.overdueThisWeek.pressBreakdown}
+              count={maintenanceStats.overdueInRange.count}
+              breakdown={maintenanceStats.overdueInRange.pressBreakdown}
               colorScheme="amber"
             />
             <MaintenanceCard
@@ -699,8 +1031,8 @@ export function Overzicht() {
             />
             <MaintenanceCard
               title={timeRange === 'week' ? "Afgerond deze week" : "Afgerond deze maand"}
-              count={maintenanceStats.completedThisWeek.count}
-              breakdown={maintenanceStats.completedThisWeek.pressBreakdown}
+              count={maintenanceStats.completedInRange.count}
+              breakdown={maintenanceStats.completedInRange.pressBreakdown}
               colorScheme="green"
             />
           </div>
@@ -715,10 +1047,10 @@ export function Overzicht() {
             <Activity className="w-3.5 h-3.5 text-primary" />
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Orders</span>
           </div>
-          <div className="flex-1 p-3 overflow-y-auto min-h-0">
+          <div className="flex-1 px-3 pt-0 pb-3 overflow-y-auto min-h-0">
             <div className="flex flex-col gap-y-0.5">
-              {renderActivityStream(orderActivities)}
-              {orderActivities.length === 0 && (
+              {renderOrderStream(groupedOrders)}
+              {groupedOrders.length === 0 && (
                 <div className="text-[11px] text-muted-foreground italic py-4 text-center">Geen recente order activiteit.</div>
               )}
             </div>
@@ -731,7 +1063,7 @@ export function Overzicht() {
             <Wrench className="w-3.5 h-3.5 text-primary" />
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Onderhoud</span>
           </div>
-          <div className="flex-1 p-3 overflow-y-auto min-h-0">
+          <div className="flex-1 px-3 pt-0 pb-3 overflow-y-auto min-h-0">
             <div className="flex flex-col gap-y-0.5">
               {renderActivityStream(onderhoudActivities)}
               {onderhoudActivities.length === 0 && (
@@ -787,9 +1119,9 @@ export function Overzicht() {
                       Afgewerkte Versies
                     </h3>
                     {selectedVersionIds.size > 0 && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="text-xs h-7 text-gray-500 hover:text-gray-900"
                         onClick={() => setSelectedVersionIds(new Set())}
                       >
@@ -802,21 +1134,21 @@ export function Overzicht() {
                     const mainChanges = parseChanges(latestStr, latestStr);
                     const getMainField = (name: string) => mainChanges.find(c => c.field.toLowerCase() === name.toLowerCase())?.new || '-';
                     const orderNr = getMainField('Order') !== '-' ? getMainField('Order') : (selectedLog.entityName.split(' - ')[0] || '-');
-                    
+
                     // Group logs by entityId to find unique versions
                     const versionLogs = activities.filter(l => l.entity === 'FinishedJob' && l.entityName.startsWith(orderNr));
                     const uniqueJobIds = Array.from(new Set(versionLogs.map(l => l.entityId)));
-                    
+
                     const aggregatedVersions = uniqueJobIds.map(jobId => {
                       const logsForJob = versionLogs.filter(l => l.entityId === jobId);
                       logsForJob.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                      
+
                       const firstLog = logsForJob[0];
                       const lastLog = logsForJob[logsForJob.length - 1];
-                      
+
                       const lastChanges = parseChanges(lastLog.newValue || lastLog.oldValue || '', lastLog.newValue || lastLog.oldValue || '');
                       const getField = (name: string) => lastChanges.find(c => c.field.toLowerCase() === name.toLowerCase())?.new || '-';
-                      
+
                       return {
                         id: jobId || '',
                         createdDate: firstLog.timestamp,
@@ -845,8 +1177,8 @@ export function Overzicht() {
                             {aggregatedVersions.map(v => {
                               const isSelected = selectedVersionIds.has(v.id);
                               return (
-                                <TableRow 
-                                  key={v.id} 
+                                <TableRow
+                                  key={v.id}
                                   className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/50 hover:bg-blue-50/80 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/50 border-l-2 border-l-transparent'}`}
                                   onClick={() => {
                                     const next = new Set(selectedVersionIds);
@@ -969,12 +1301,12 @@ export function Overzicht() {
                           .map((histLog) => {
                             const isCurrent = histLog.id === selectedLog.id;
                             const rowClass = isCurrent ? "bg-blue-50/30" : "";
-                            
+
                             if (histLog.entity === 'FinishedJob') {
                               // Drukwerken History Row
                               const changes = parseChanges(histLog.oldValue || '', histLog.newValue || '');
                               const diffs = changes.filter(c => c.old !== c.new);
-                              
+
                               const getFieldDiff = (name: string) => {
                                 const diff = diffs.find(c => c.field.toLowerCase() === name.toLowerCase());
                                 if (!diff) {
@@ -988,7 +1320,7 @@ export function Overzicht() {
                                   </div>
                                 );
                               };
-                              
+
                               const rawVersieObj = changes.find(c => c.field.toLowerCase() === 'versie');
                               const rawVersie = rawVersieObj?.new || '-';
 
@@ -1001,8 +1333,8 @@ export function Overzicht() {
                                     {getActionBadge(histLog.action)}
                                   </TableCell>
                                   <TableCell className="text-xs align-top font-medium">
-                                    {(changes.find(c => c.field.toLowerCase() === 'order')?.new || '-') === '-' 
-                                      ? histLog.entityName.split(' - ')[0] 
+                                    {(changes.find(c => c.field.toLowerCase() === 'order')?.new || '-') === '-'
+                                      ? histLog.entityName.split(' - ')[0]
                                       : getFieldDiff('Order')}
                                   </TableCell>
                                   <TableCell className="text-xs align-top">
@@ -1056,7 +1388,7 @@ export function Overzicht() {
                                 const f = c.field.toLowerCase();
                                 return f.includes('opmerking');
                               })?.new || '-';
-  
+
                               return (
                                 <TableRow key={histLog.id} className={rowClass}>
                                   <TableCell className="text-xs text-gray-500 whitespace-nowrap">

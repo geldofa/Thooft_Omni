@@ -116,8 +116,8 @@ function buildDrukwerkenPeriodFilter(period: string): string {
   switch (period) {
     case 'Vandaag': start = startOfDay(ref); end = endOfDay(ref); break;
     case 'Gisteren': start = startOfDay(subDays(ref, 1)); end = endOfDay(subDays(ref, 1)); break;
-    case 'Deze Week': start = startOfWeek(ref, { weekStartsOn: 1 }); end = endOfWeek(ref, { weekStartsOn: 1 }); break;
-    case 'Vorige Week': { const prev = subWeeks(ref, 1); start = startOfWeek(prev, { weekStartsOn: 1 }); end = endOfWeek(prev, { weekStartsOn: 1 }); break; }
+    case 'Deze Week': start = startOfWeek(ref, { weekStartsOn: 0 }); end = endOfWeek(ref, { weekStartsOn: 0 }); break;
+    case 'Vorige Week': { const prev = subWeeks(ref, 1); start = startOfWeek(prev, { weekStartsOn: 0 }); end = endOfWeek(prev, { weekStartsOn: 0 }); break; }
     case 'Deze Maand': start = startOfMonth(ref); end = endOfMonth(ref); break;
     case 'Vorige Maand': { const prev = subMonths(ref, 1); start = startOfMonth(prev); end = endOfMonth(prev); break; }
     case 'Dit Jaar': start = startOfYear(ref); end = endOfYear(ref); break;

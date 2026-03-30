@@ -19,12 +19,8 @@ export const getStatusInfo = (nextMaintenance: Date | string | null): StatusInfo
 
     if (daysUntil < 0) {
         return { key: 'Te laat', label: '!!!', color: 'bg-red-50', textColor: 'text-red-700', badgeClass: 'bg-red-500 hover:bg-red-600' };
-    } else if (daysUntil === 0) {
-        return { key: 'Deze Week', label: 'Vandaag!!', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
-    } else if (daysUntil === 1) {
-        return { key: 'Deze Week', label: 'Morgen!', color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
-    } else if (daysUntil <= 7) {
-        return { key: 'Deze Week', label: `${daysUntil} Dagen`, color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
+    } else if (daysUntil <= (6 - today.getDay())) {
+        return { key: 'Deze Week', label: daysUntil === 0 ? 'Vandaag!!' : daysUntil === 1 ? 'Morgen!' : `${daysUntil} Dagen`, color: 'bg-orange-50', textColor: 'text-orange-700', badgeClass: 'bg-orange-500 hover:bg-orange-600' };
     } else if (daysUntil <= 30) {
         // Note: Only "Te laat" and "Deze Week" are typically used for top-level keys in the filter logic seen in MaintenanceTable
         // but we preserve the full logic here.

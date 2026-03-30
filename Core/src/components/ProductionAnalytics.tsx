@@ -83,7 +83,7 @@ export function ProductionAnalytics() {
             
             pressSet.add(pressName);
             const recordDate = new Date(recordDateStr);
-            const weekStart = startOfWeek(recordDate, { weekStartsOn: 1 });
+            const weekStart = startOfWeek(recordDate, { weekStartsOn: 0 });
             const dateStr = format(weekStart, "'W'II", { locale: nl });
 
             // 1. Production Data
