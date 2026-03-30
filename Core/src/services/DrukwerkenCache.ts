@@ -283,6 +283,54 @@ class DrukwerkenCacheService {
         }
     }
 
+    async removeRecord(id: string) {
+        try {
+            await db.jobs.delete(id);
+            await this.notifyJobs();
+            console.log(`[DrukwerkenCache] Manually removed record from cache: ${id}`);
+        } catch (error) {
+            console.error("Error removing record from cache:", error);
+        }
+    }
+
+    async syncRecent(user: any, hasPermission: (perm: any) => boolean, days: number = 3) {
+        if (!user || this.isSyncing) return;
+        this.isSyncing = true;
+        this.notifyStatus({ loading: true, statusText: `Syncing last ${days} days...` });
+
+        try {
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+            const formattedDate = format(startDate, 'yyyy-MM-dd');
+
+            let filter = `date >= "${formattedDate}"`;
+            if (!hasPermission('drukwerken_view_all') && user?.press) {
+                const pressFilter = user.pressId ? `pers = "${user.pressId}"` : `pers.naam = "${user.press}"`;
+                filter = `(${pressFilter}) && ${filter}`;
+            }
+
+            const updates = await pb.collection('drukwerken').getFullList({
+                filter: filter,
+                expand: 'pers'
+            });
+
+            if (updates.length > 0) {
+                const jobs = updates.map(i => this.mapJob(i, user, hasPermission));
+                await db.jobs.bulkPut(jobs);
+                await this.notifyJobs();
+                this.notifyStatus({ statusText: `Updated ${updates.length} recent records` });
+            } else {
+                this.notifyStatus({ statusText: 'Recent data up to date' });
+            }
+        } catch (error) {
+            console.error("Sync recent failed:", error);
+            this.notifyStatus({ statusText: 'Sync recent failed' });
+        } finally {
+            this.isSyncing = false;
+            this.notifyStatus({ loading: false });
+        }
+    }
+
     async purge() {
         try {
             await db.jobs.clear();

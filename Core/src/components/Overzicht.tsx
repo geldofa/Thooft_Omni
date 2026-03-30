@@ -137,7 +137,7 @@ export function Overzicht() {
     alreadyOverdue: { count: 0, pressBreakdown: [] },
     completedInRange: { count: 0, pressBreakdown: [] }
   });
-  const [hideOldOrders, setHideOldOrders] = useState(false);
+  const [showOldOrders, setShowOldOrders] = useState(false);
   const [jobDates, setJobDates] = useState<Record<string, string>>({});
   const [currentRangeStart, setCurrentRangeStart] = useState<string>('');
 
@@ -452,8 +452,8 @@ export function Overzicht() {
   const groupedOrders = React.useMemo(() => {
     const groups = new Map<string, ActivityEvent[]>();
     orderActivities.forEach(a => {
-      // If hideOldOrders is on, check if the job production date is old
-      if (hideOldOrders && a.entityId && currentRangeStart) {
+      // If showOldOrders is false (OFF), check if the job production date is old and skip it
+      if (!showOldOrders && a.entityId && currentRangeStart) {
         const prodDate = jobDates[a.entityId];
         if (prodDate && prodDate < currentRangeStart) {
           return; // Skip old order
@@ -473,7 +473,7 @@ export function Overzicht() {
       const maxB = Math.max(...b[1].map(x => x.timestamp.getTime()));
       return maxB - maxA;
     });
-  }, [orderActivities, hideOldOrders, jobDates, currentRangeStart]);
+  }, [orderActivities, showOldOrders, jobDates, currentRangeStart]);
 
   const onderhoudActivities = activities.filter(a => {
     const e = a.entity?.toLowerCase() || '';
@@ -1075,15 +1075,15 @@ export function Overzicht() {
               <label className="flex items-center gap-1.5 cursor-pointer group">
                 <span className="text-[9px] font-bold text-muted-foreground group-hover:text-foreground transition-colors uppercase tracking-tighter">Aangepaste jobs</span>
                 <div
-                  onClick={() => setHideOldOrders(!hideOldOrders)}
+                  onClick={() => setShowOldOrders(!showOldOrders)}
                   className={cn(
                     "w-7 h-4 rounded-full transition-colors relative flex items-center px-0.5",
-                    hideOldOrders ? "bg-primary" : "bg-muted-foreground/30"
+                    showOldOrders ? "bg-primary" : "bg-muted-foreground/30"
                   )}
                 >
                   <div className={cn(
                     "w-3 h-3 bg-white rounded-full shadow-sm transition-transform",
-                    hideOldOrders ? "translate-x-3" : "translate-x-0"
+                    showOldOrders ? "translate-x-3" : "translate-x-0"
                   )} />
                 </div>
               </label>

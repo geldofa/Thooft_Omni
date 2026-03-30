@@ -1289,6 +1289,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 await Promise.all(deletedIds.map(async (id) => {
                     const oldRecord = await pb.collection('drukwerken').getOne(id);
                     await pb.collection('drukwerken').delete(id);
+                    await drukwerkenCache.removeRecord(id);
                     // Log deletion
                     await addActivityLog({
                         action: 'Deleted',
@@ -1347,6 +1348,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
                 if (isNew) {
                     const record = await pb.collection('drukwerken').create(pbData);
+                    await drukwerkenCache.putRecord(record, user, hasPermission);
                     // Log creation
                     await addActivityLog({
                         action: 'Created',
@@ -1371,7 +1373,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     });
                 } else {
                     const oldRecord = await pb.collection('drukwerken').getOne(job.id);
-                    await pb.collection('drukwerken').update(job.id, pbData);
+                    const record = await pb.collection('drukwerken').update(job.id, pbData);
+                    await drukwerkenCache.putRecord(record, user, hasPermission);
                     // Log update
                     await addActivityLog({
                         action: 'Updated',
@@ -1753,6 +1756,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-9 w-9 hover:bg-blue-50 text-blue-600 border border-transparent hover:border-gray-200 transition-all rounded-md"
+                                                    onClick={() => {
+                                                        const limit = getSystemSetting('drukwerken_edit_limit', 1);
+                                                        drukwerkenCache.syncRecent(user, hasPermission, Number(limit));
+                                                    }}
+                                                    title={`Synchroniseer laatste ${getSystemSetting('drukwerken_edit_limit', 1)} dagen`}
+                                                >
+                                                    <RefreshCw className={cn("w-4 h-4", cacheStatus.loading && "animate-spin")} />
+                                                </Button>
                                             </>
                                         )}
                                         {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
