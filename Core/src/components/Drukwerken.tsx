@@ -515,7 +515,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 orderName: '',
                 orderDate: new Date().toISOString().split('T')[0],
                 katernen: [
-                    { id: '1-1', version: '', pages: null, exOmw: '', netRun: 0, startup: false, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                    { id: '1-1', version: '', pages: null, exOmw: '', netRun: null, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
                 ]
             }
         ];
@@ -547,7 +547,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         pages: null,
         exOmw: '1',
         netRun: 0,
-        startup: false,
+        startup: true,
         c4_4: 0,
         c4_0: 0,
         c1_0: 0,
@@ -658,7 +658,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             orderName: '',
                             orderDate: new Date().toISOString().split('T')[0],
                             katernen: [
-                                { id: Date.now().toString() + '-1', version: '', pages: null, exOmw: '', netRun: 0, startup: false, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                                { id: Date.now().toString() + '-1', version: '', pages: null, exOmw: '', netRun: 0, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
                             ]
                         };
                     }
@@ -867,7 +867,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             orderName: '',
                             orderDate: new Date().toISOString().split('T')[0],
                             katernen: [
-                                { id: Date.now().toString() + '-1', version: '', pages: null, exOmw: '', netRun: 0, startup: false, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                                { id: Date.now().toString() + '-1', version: '', pages: null, exOmw: '', netRun: 0, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
                             ]
                         };
                     }
@@ -1192,7 +1192,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         const months = new Set<string>();
         const years = new Set<string>();
         const monthNames = ['Januari', 'Februari', 'Maart', 'April', 'Mei', 'Juni', 'Juli', 'Augustus', 'September', 'Oktober', 'November', 'December'];
-        
+
         finishedJobs.forEach(job => {
             if (!job.date) return;
             const d = new Date(job.date);
@@ -1206,18 +1206,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             if (!job.date) return;
             const d = new Date(job.date);
             if (isNaN(d.getTime())) return;
-            
+
             const yearStr = d.getFullYear().toString();
             // Filter by selected year if active
             if (yearFilter !== 'all' && yearStr !== yearFilter) return;
 
             const monthIdx = d.getMonth();
             const monthName = monthNames[monthIdx];
-            
+
             // Generate label based on user preference
             const label = showYear ? `${yearStr} ${monthName}` : monthName;
             const value = `${yearStr}-${(monthIdx + 1).toString().padStart(2, '0')}`;
-            
+
             months.add(JSON.stringify({ label, value }));
         });
 
@@ -2272,11 +2272,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     let dp = Number(job.delta_percentage) || 0;
                                                     if (dp > 0.5) dp -= 1;
                                                     const perc = dp * 100;
-                                                    
+
                                                     let colorClass = "text-gray-500";
                                                     let bgClass = "";
                                                     const absDp = Math.abs(dp);
-                                                    
+
                                                     if (absDp > 0.01) {
                                                         const absVal = absDp * 100;
                                                         let ramp = 1;

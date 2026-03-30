@@ -137,6 +137,9 @@ export function Overzicht() {
     alreadyOverdue: { count: 0, pressBreakdown: [] },
     completedInRange: { count: 0, pressBreakdown: [] }
   });
+  const [hideOldOrders, setHideOldOrders] = useState(false);
+  const [jobDates, setJobDates] = useState<Record<string, string>>({});
+  const [currentRangeStart, setCurrentRangeStart] = useState<string>('');
 
   useEffect(() => {
     fetchData();
@@ -200,6 +203,14 @@ export function Overzicht() {
       processProduction(rangeJobs);
       processActivities(logs.items);
       processYearlyStats(yearJobs);
+
+      // Track production dates for all jobs in range
+      const dates: Record<string, string> = {};
+      rangeJobsRaw.forEach(j => {
+        if (j.date) dates[j.id] = j.date.split(' ')[0];
+      });
+      setJobDates(dates);
+      setCurrentRangeStart(rangeStr);
     } catch (err) {
       console.error("OSINT fetch failed:", err);
     }
@@ -441,6 +452,18 @@ export function Overzicht() {
   const groupedOrders = React.useMemo(() => {
     const groups = new Map<string, ActivityEvent[]>();
     orderActivities.forEach(a => {
+      // If hideOldOrders is on, check if the job production date is old
+      if (hideOldOrders && a.entityId && currentRangeStart) {
+        const prodDate = jobDates[a.entityId];
+        if (prodDate && prodDate < currentRangeStart) {
+          return; // Skip old order
+        }
+        // If it's a FinishedJob but not in jobDates, it's likely outside our range
+        if (a.entity === 'FinishedJob' && !prodDate) {
+          return;
+        }
+      }
+
       const key = getOrderKey(a);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(a);
@@ -450,7 +473,7 @@ export function Overzicht() {
       const maxB = Math.max(...b[1].map(x => x.timestamp.getTime()));
       return maxB - maxA;
     });
-  }, [orderActivities]);
+  }, [orderActivities, hideOldOrders, jobDates, currentRangeStart]);
 
   const onderhoudActivities = activities.filter(a => {
     const e = a.entity?.toLowerCase() || '';
@@ -1043,9 +1066,28 @@ export function Overzicht() {
       <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
         {/* Orders Stream (left) */}
         <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0">
-          <div className="py-2 px-4 border-b flex items-center gap-2 shrink-0">
-            <Activity className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Orders</span>
+          <div className="py-2 px-4 border-b flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Orders</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 cursor-pointer group">
+                <span className="text-[9px] font-bold text-muted-foreground group-hover:text-foreground transition-colors uppercase tracking-tighter">Aangepaste jobs</span>
+                <div
+                  onClick={() => setHideOldOrders(!hideOldOrders)}
+                  className={cn(
+                    "w-7 h-4 rounded-full transition-colors relative flex items-center px-0.5",
+                    hideOldOrders ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <div className={cn(
+                    "w-3 h-3 bg-white rounded-full shadow-sm transition-transform",
+                    hideOldOrders ? "translate-x-3" : "translate-x-0"
+                  )} />
+                </div>
+              </label>
+            </div>
           </div>
           <div className="flex-1 px-3 pt-0 pb-3 overflow-y-auto min-h-0">
             <div className="flex flex-col gap-y-0.5">
