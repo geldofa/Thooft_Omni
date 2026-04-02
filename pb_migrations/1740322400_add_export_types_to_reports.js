@@ -3,9 +3,8 @@ migrate((app) => {
     const collection = app.findCollectionByNameOrId("maintenance_reports");
 
     // Add export_types field
-    collection.fields.add(new Field({
+    collection.fields.add(new JSONField({
         name: "export_types",
-        type: "json",
         required: false,
         presentable: false,
         system: false
@@ -13,7 +12,7 @@ migrate((app) => {
 
     return app.save(collection);
 }, (app) => {
-    const collection = app.findCollectionByNameOrId("pbc_3361522781");
+    const collection = app.findCollectionByNameOrId("maintenance_reports");
 
     collection.fields.removeByName("export_types");
 
