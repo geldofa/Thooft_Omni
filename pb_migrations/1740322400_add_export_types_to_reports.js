@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
-    const collection = app.findCollectionByNameOrId("pbc_3361522781");
+    const collection = app.findCollectionByNameOrId("maintenance_reports");
 
     // Add export_types field
     collection.fields.add(new Field({
