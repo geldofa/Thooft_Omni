@@ -5,18 +5,22 @@ export interface Katern {
     version: string;
     pages: number | null;
     exOmw: string;
-    netRun: number;
+    netRun: number | null;
     startup: boolean;
-    c4_4: number;
-    c4_0: number;
-    c1_0: number;
-    c1_1: number;
-    c4_1: number;
-    maxGross: number;
+    c4_4: number | null;
+    c4_0: number | null;
+    c1_0: number | null;
+    c1_1: number | null;
+    c4_1: number | null;
+    maxGross: number | null;
     green: number | null;
     red: number | null;
-    delta: number;
-    deltaPercentage: number;
+    delta: number | null;
+    deltaPercentage: number | null;
+    is_finished?: boolean;
+    locked?: boolean;
+    dbGreen?: number | null; // Last saved green value in PB (for 50% deviation check)
+    dbRed?: number | null;   // Last saved red value in PB
 }
 
 export interface FinishedPrintJob {
@@ -35,17 +39,19 @@ export interface FinishedPrintJob {
     c1_0: number | null;
     c1_1: number | null;
     c4_1: number | null;
-    maxGross: number;
+    maxGross: number | null;
     green: number | null;
     red: number | null;
-    delta_number: number;
-    delta_percentage: number;
+    delta_number: number | null;
+    delta_percentage: number | null;
     opmerkingen?: string;
-    delta: number;
+    delta: number | null;
     performance: string;
     pressId?: string;
     pressName?: string;
     created?: string;
+    is_finished?: boolean;
+    locked?: boolean;
 }
 
 export interface CalculatedField {

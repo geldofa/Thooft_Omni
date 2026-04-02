@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { DrukwerkRow } from './DrukwerkRow';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PressType, useAuth, pb } from './AuthContext';
 import { drukwerkenCache, CacheStatus } from '../services/DrukwerkenCache';
@@ -16,11 +17,11 @@ import { cn } from './ui/utils';
 import { TableVirtuoso } from 'react-virtuoso';
 import { formatNumber } from '../utils/formatNumber';
 import { format, differenceInDays } from 'date-fns';
-import { Checkbox } from './ui/checkbox';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
 import { Switch } from './ui/switch';
-import { FormattedNumberInput } from './ui/FormattedNumberInput';
+
 
 import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
 import { ConfirmationModal } from './ui/ConfirmationModal';
@@ -83,7 +84,7 @@ const FONT_SIZES = {
 
 
 // Component to render formula result with tooltip
-const FormulaResultWithTooltip = ({
+export const FormulaResultWithTooltip = ({
     formula,
     job,
     decimals = 0,
@@ -421,7 +422,12 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     const { subtab } = useParams<{ subtab: string }>();
     const navigate = useNavigate();
-    const activeTab = subtab?.toLowerCase() === 'gedrukt' ? 'Gedrukt' : 'Nieuw';
+    const activeTab = (() => {
+        const lower = subtab?.toLowerCase();
+        if (lower === 'gedrukt') return 'Gedrukt';
+        if (lower === 'prullenbak') return 'Prullenbak';
+        return 'Nieuw';
+    })() as 'Gedrukt' | 'Nieuw' | 'Prullenbak';
 
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
@@ -546,18 +552,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         version: '',
         pages: null,
         exOmw: '1',
-        netRun: 0,
+        netRun: null,
         startup: true,
-        c4_4: 0,
-        c4_0: 0,
-        c1_0: 0,
-        c1_1: 0,
-        c4_1: 0,
-        maxGross: 0,
+        c4_4: null,
+        c4_0: null,
+        c1_0: null,
+        c1_1: null,
+        c4_1: null,
+        maxGross: null,
         green: null,
         red: null,
-        delta: 0,
-        deltaPercentage: 0,
+        delta: null,
+        deltaPercentage: null,
     };
 
     const handleWerkorderSubmit = (werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
@@ -610,6 +616,23 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         );
     };
 
+    const handleAutoSaved = useCallback((werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null) => {
+        setWerkorders(prev => prev.map(wo => {
+            if (wo.id === werkorderId) {
+                return {
+                    ...wo,
+                    katernen: wo.katernen.map(k => {
+                        if (k.id === katernId) {
+                            return { ...k, originalId: pbRecordId, dbGreen: savedGreen, dbRed: savedRed };
+                        }
+                        return k;
+                    })
+                };
+            }
+            return wo;
+        }));
+    }, []);
+
     const handleWerkorderChange = (werkorderId: string, field: 'orderNr' | 'orderName', value: string) => {
         setWerkorders(prevWerkorders =>
             prevWerkorders.map(wo => {
@@ -646,7 +669,21 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         }
     };
 
-    const handleDeleteWerkorder = (werkorderId: string) => {
+    const handleDeleteWerkorder = async (werkorderId: string) => {
+        const order = werkorders.find(wo => wo.id === werkorderId);
+        if (order) {
+            // Delete all autosaved katernen from DB
+            for (const katern of order.katernen) {
+                if (katern.originalId) {
+                    try {
+                        await archiveAndDeleteJobById(katern.originalId, `Order verwijderd uit Geplande Orders: ${order.orderNr} - ${order.orderName}`);
+                    } catch (e) {
+                        console.error(`Failed to delete katern ${katern.id} from DB`, e);
+                    }
+                }
+            }
+        }
+
         setWerkorders(prev => {
             if (prev.length <= 1) {
                 // If it's the last one, reset it instead of deleting
@@ -681,6 +718,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         if (Object.keys(errors).length > 0) {
             setValidationErrors(prev => ({ ...prev, [werkorder.id]: errors }));
             toast.error("Niet alle verplichte velden zijn ingevuld (Ordernr en Naam).");
+            return;
+        }
+
+        // Validate all katernen have pages and netRun > 0
+        const invalidKatern = werkorder.katernen.find(k => (k.pages || 0) <= 0 || (k.netRun || 0) <= 0);
+        if (invalidKatern) {
+            toast.error(`Pagina's en Oplage moeten groter zijn dan 0 voor alle versies.`);
             return;
         }
 
@@ -1282,73 +1326,110 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         });
     }, [filteredJobs, sortConfig, parameters, calculatedFields]);
 
-    const handleBulkJobSubmit = async (jobs: FinishedPrintJob[], deletedIds: string[]) => {
+    const [trashJobs, setTrashJobs] = useState<any[]>([]);
+    const [isLoadingTrash, setIsLoadingTrash] = useState(false);
+
+    const fetchTrashJobs = useCallback(async () => {
+        if (!hasPermission('drukwerken_trash_view')) return;
+        setIsLoadingTrash(true);
         try {
-            // 1. Delete removed jobs
+            const records = await pb.collection('trashed_drukwerken').getFullList({
+                sort: '-created',
+            });
+            setTrashJobs(records);
+        } catch (error) {
+            console.error("Error fetching trash jobs:", error);
+        } finally {
+            setIsLoadingTrash(false);
+        }
+    }, [hasPermission]);
+
+    useEffect(() => {
+        if (activeTab === 'Prullenbak') {
+            fetchTrashJobs();
+        }
+    }, [activeTab, fetchTrashJobs]);
+
+    const handleRestoreJob = async (trashId: string) => {
+        try {
+            const trashRecord = await pb.collection('trashed_drukwerken').getOne(trashId);
+            const metadata = { ...trashRecord.metadata };
+            
+            // Strip system-managed fields to allow PB to generate new ones
+            delete metadata.id;
+            delete metadata.created;
+            delete metadata.updated;
+            delete metadata.collectionId;
+            delete metadata.collectionName;
+
+            // Re-create in main collection
+            const record = await pb.collection('drukwerken').create(metadata);
+            
+            // Delete from trash
+            await pb.collection('trashed_drukwerken').delete(trashId);
+            
+            // Log action
+            await addActivityLog({
+                action: 'Updated',
+                entity: 'FinishedJob',
+                entityId: record.id,
+                entityName: `${record.order_nummer} - ${record.klant_order_beschrijving}`,
+                details: `Drukwerk hersteld uit prullenbak`,
+                user: user?.username || 'System',
+                press: user?.press
+            });
+
+            toast.success("Drukwerk hersteld.");
+            fetchTrashJobs();
+            if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
+        } catch (error) {
+            console.error("Error restoring job:", error);
+            toast.error("Fout bij herstellen.");
+        }
+    };
+
+    const handleBulkJobSubmit = async (jobs: FinishedPrintJob[], deletedIds: string[] = []) => {
+        try {
+            // 1. Process deletions (Archive to trashed_drukwerken)
             if (deletedIds.length > 0) {
-                await Promise.all(deletedIds.map(async (id) => {
-                    const oldRecord = await pb.collection('drukwerken').getOne(id);
-                    await pb.collection('drukwerken').delete(id);
-                    await drukwerkenCache.removeRecord(id);
-                    // Log deletion
-                    await addActivityLog({
-                        action: 'Deleted',
-                        entity: 'FinishedJob',
-                        entityId: id,
-                        entityName: `${oldRecord.order_nummer} - ${oldRecord.klant_order_beschrijving}`,
-                        details: `Bulk bewerking: Drukwerk verwijderd (${oldRecord.order_nummer})`,
-                        oldValue: [
-                            `Order: ${oldRecord.order_nummer}`,
-                            `Naam: ${oldRecord.klant_order_beschrijving}`,
-                            `Versie: ${oldRecord.versie || '-'}`,
-                            `Blz: ${oldRecord.blz}`,
-                            `Ex/Omw: ${oldRecord.ex_omw}`,
-                            `Netto: ${oldRecord.netto_oplage}`,
-                            `Groen: ${oldRecord.groen}`,
-                            `Rood: ${oldRecord.rood}`,
-                            `Delta: ${oldRecord.delta}`,
-                            `Delta %: ${oldRecord.delta_percent}%`
-                        ].join('|||'),
-                        user: user?.username || 'System',
-                        press: user?.press
-                    });
-                }));
+                await Promise.all(deletedIds.map((id) => 
+                    archiveAndDeleteJobById(id, `Drukwerk verwijderd en gearchiveerd via snel bewerken`)
+                ));
             }
 
             // 2. Update or Create jobs
             await Promise.all(jobs.map(async (job) => {
                 const isNew = job.id.startsWith('temp-');
 
-                // Recalculate formulas for consistency using helper
-                const jobForFormulas = { ...job }; // Clone to avoid mutation issues
-                const processed = processJobFormulas(jobForFormulas);
-
-                const pbData: any = {
-                    order_nummer: parseInt(job.orderNr),
-                    klant_order_beschrijving: job.orderName,
-                    versie: job.version,
-                    blz: job.pages,
-                    ex_omw: parseFloat(job.exOmw) || 1,
-                    netto_oplage: job.netRun,
-                    opstart: job.startup,
-                    k_4_4: job.c4_4,
-                    k_4_0: job.c4_0,
-                    k_1_0: job.c1_0,
-                    k_1_1: job.c1_1,
-                    k_4_1: job.c4_1,
-                    max_bruto: processed.maxGross,
-                    groen: processed.green,
-                    rood: processed.red,
-                    delta: processed.delta_number || 0,
-                    delta_percent: processed.delta_percentage || 0,
-                    pers: processed.pressId || job.pressId || user?.pressId,
-                    // Assume opmerkingen handled if present
-                    opmerking: job.opmerkingen
-                };
-
                 if (isNew) {
+                    // Recalculate formulas for consistency using helper
+                    const processed = processJobFormulas(job);
+
+                    const pbData: any = {
+                        order_nummer: parseInt(job.orderNr),
+                        klant_order_beschrijving: job.orderName,
+                        versie: job.version,
+                        blz: job.pages,
+                        ex_omw: parseFloat(job.exOmw) || 1,
+                        netto_oplage: job.netRun,
+                        opstart: job.startup,
+                        k_4_4: job.c4_4,
+                        k_4_0: job.c4_0,
+                        k_1_0: job.c1_0,
+                        k_1_1: job.c1_1,
+                        k_4_1: job.c4_1,
+                        max_bruto: processed.maxGross,
+                        groen: processed.green,
+                        rood: processed.red,
+                        delta: processed.delta_number || 0,
+                        delta_percent: processed.delta_percentage || 0,
+                        pers: processed.pressId || job.pressId || user?.pressId,
+                        opmerking: job.opmerkingen
+                    };
+
                     const record = await pb.collection('drukwerken').create(pbData);
                     await drukwerkenCache.putRecord(record, user, hasPermission);
+                    
                     // Log creation
                     await addActivityLog({
                         action: 'Created',
@@ -1372,43 +1453,106 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         press: user?.press
                     });
                 } else {
-                    const oldRecord = await pb.collection('drukwerken').getOne(job.id);
-                    const record = await pb.collection('drukwerken').update(job.id, pbData);
-                    await drukwerkenCache.putRecord(record, user, hasPermission);
-                    // Log update
-                    await addActivityLog({
-                        action: 'Updated',
-                        entity: 'FinishedJob',
-                        entityId: job.id,
-                        entityName: `${job.orderNr} - ${job.orderName}`,
-                        details: `Bulk bewerking: Drukwerk bijgewerkt (${job.orderNr})`,
-                        oldValue: [
-                            `Order: ${oldRecord.order_nummer}`,
-                            `Naam: ${oldRecord.klant_order_beschrijving}`,
-                            `Versie: ${oldRecord.versie || '-'}`,
-                            `Blz: ${oldRecord.blz}`,
-                            `Ex/Omw: ${oldRecord.ex_omw}`,
-                            `Netto: ${oldRecord.netto_oplage}`,
-                            `Groen: ${oldRecord.groen}`,
-                            `Rood: ${oldRecord.rood}`,
-                            `Delta: ${oldRecord.delta}`,
-                            `Delta %: ${oldRecord.delta_percent}%`
-                        ].join('|||'),
-                        newValue: [
-                            `Order: ${pbData.order_nummer}`,
-                            `Naam: ${pbData.klant_order_beschrijving}`,
-                            `Versie: ${pbData.versie || '-'}`,
-                            `Blz: ${pbData.blz}`,
-                            `Ex/Omw: ${pbData.ex_omw}`,
-                            `Netto: ${pbData.netto_oplage}`,
-                            `Groen: ${pbData.groen}`,
-                            `Rood: ${pbData.rood}`,
-                            `Delta: ${pbData.delta}`,
-                            `Delta %: ${pbData.delta_percent}%`
-                        ].join('|||'),
-                        user: user?.username || 'System',
-                        press: user?.press
+                    // EXISTING JOB: Partial Update
+                    const originalJob = editingJobs.find(ej => ej.id === job.id);
+                    if (!originalJob) return; // Safeguard
+
+                    const partialPbData: any = {};
+                    let needsRecalc = false;
+
+                    // Map local field names to PocketBase field names
+                    const fieldMapping: Record<string, string> = {
+                        orderNr: 'order_nummer',
+                        orderName: 'klant_order_beschrijving',
+                        version: 'versie',
+                        pages: 'blz',
+                        exOmw: 'ex_omw',
+                        netRun: 'netto_oplage',
+                        startup: 'opstart',
+                        c4_4: 'k_4_4',
+                        c4_0: 'k_4_0',
+                        c1_0: 'k_1_0',
+                        c1_1: 'k_1_1',
+                        c4_1: 'k_4_1',
+                        green: 'groen',
+                        red: 'rood',
+                        opmerkingen: 'opmerking'
+                    };
+
+                    // Fields that trigger a formula recalculation (Max Bruto, Delta)
+                    const formulaTriggerFields = ['pages', 'exOmw', 'netRun', 'startup', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red'];
+
+                    Object.entries(fieldMapping).forEach(([localKey, pbKey]) => {
+                        const newVal = (job as any)[localKey];
+                        const oldVal = (originalJob as any)[localKey];
+
+                        if (newVal !== oldVal) {
+                            if (localKey === 'orderNr') {
+                                partialPbData[pbKey] = parseInt(newVal);
+                            } else if (localKey === 'exOmw') {
+                                partialPbData[pbKey] = parseFloat(newVal) || 1;
+                            } else if (localKey !== 'green' && localKey !== 'red') {
+                                // Green/Red are handled via processed object if needed
+                                partialPbData[pbKey] = newVal;
+                            }
+
+                            if (formulaTriggerFields.includes(localKey)) {
+                                needsRecalc = true;
+                            }
+                        }
                     });
+
+                    // Only update if something changed
+                    if (Object.keys(partialPbData).length > 0) {
+                        const processed = processJobFormulas(job);
+                        
+                        if (needsRecalc) {
+                            partialPbData.max_bruto = processed.maxGross;
+                            partialPbData.delta = processed.delta_number || 0;
+                            partialPbData.delta_percent = processed.delta_percentage || 0;
+                            partialPbData.groen = processed.green;
+                            partialPbData.rood = processed.red;
+                        }
+
+                        const oldRecord = await pb.collection('drukwerken').getOne(job.id);
+                        const record = await pb.collection('drukwerken').update(job.id, partialPbData);
+                        await drukwerkenCache.putRecord(record, user, hasPermission);
+
+                        // Log update with old vs new full snapshots (for better visibility in audit trail)
+                        await addActivityLog({
+                            action: 'Updated',
+                            entity: 'FinishedJob',
+                            entityId: job.id,
+                            entityName: `${job.orderNr} - ${job.orderName}`,
+                            details: `Bulk bewerking: Drukwerk bijgewerkt (${job.orderNr})`,
+                            oldValue: [
+                                `Order: ${oldRecord.order_nummer}`,
+                                `Naam: ${oldRecord.klant_order_beschrijving}`,
+                                `Versie: ${oldRecord.versie || '-'}`,
+                                `Blz: ${oldRecord.blz}`,
+                                `Ex/Omw: ${oldRecord.ex_omw}`,
+                                `Netto: ${oldRecord.netto_oplage}`,
+                                `Groen: ${oldRecord.groen}`,
+                                `Rood: ${oldRecord.red}`,
+                                `Delta: ${oldRecord.delta}`,
+                                `Delta %: ${oldRecord.delta_percent}%`
+                            ].join('|||'),
+                            newValue: [
+                                `Order: ${job.orderNr}`,
+                                `Naam: ${job.orderName}`,
+                                `Versie: ${job.version || '-'}`,
+                                `Blz: ${job.pages}`,
+                                `Ex/Omw: ${job.exOmw}`,
+                                `Netto: ${job.netRun}`,
+                                `Groen: ${processed.green}`,
+                                `Rood: ${processed.red}`,
+                                `Delta: ${processed.delta_number || 0}`,
+                                `Delta %: ${processed.delta_percentage || 0}%`
+                            ].join('|||'),
+                            user: user?.username || 'System',
+                            press: user?.press
+                        });
+                    }
                 }
             }));
 
@@ -1430,11 +1574,15 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         const divider = outputConversions[pressId]?.[String(job.exOmw)] || 1;
 
         // Formula evaluation using raw exOmw (returns undivided Actual Units)
-        const maxGrossVal = getFormulaForColumn('maxGross')
-            ? Number(evaluateFormula(getFormulaForColumn('maxGross')!.formula,
-                { ...job, pressName, pressId }, // Use original scaled exOmw for formula "like before"
-                parameters, activePresses))
-            : (Number(job.maxGross) || 0) * divider;
+        const maxGrossVal = (() => {
+            if (job.pages === null || job.netRun === null) return null;
+            const val = getFormulaForColumn('maxGross')
+                ? Number(evaluateFormula(getFormulaForColumn('maxGross')!.formula,
+                    { ...job, pressName, pressId }, // Use original scaled exOmw for formula "like before"
+                    parameters, activePresses))
+                : (Number(job.maxGross) || 0) * divider;
+            return Math.round(val);
+        })();
 
         // Scale inputs for Delta calculation
         const greenActual = (Number(job.green) || 0) * divider;
@@ -1442,28 +1590,35 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
         const jobForDelta = { ...job, pressName, pressId, maxGross: maxGrossVal, green: greenActual, red: redActual };
 
-        const delta_numberVal = getFormulaForColumn('delta_number')
-            ? Number(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobForDelta, parameters, activePresses))
-            : ((greenActual + redActual) - maxGrossVal);
+        const delta_numberVal = (() => {
+            if (maxGrossVal === null) return null;
+            const val = getFormulaForColumn('delta_number')
+                ? Number(evaluateFormula(getFormulaForColumn('delta_number')!.formula, jobForDelta, parameters, activePresses))
+                : ((greenActual + redActual) - maxGrossVal);
+            return Math.round(val);
+        })();
 
         const delta_percentageVal = (() => {
+            if (maxGrossVal === null || maxGrossVal === 0) return null;
             const f = getFormulaForColumn('delta_percentage');
+            let val = 0;
             if (f) {
-                return Number(evaluateFormula(f.formula, { ...jobForDelta, delta_number: delta_numberVal }, parameters, activePresses));
+                val = Number(evaluateFormula(f.formula, { ...jobForDelta, delta_number: delta_numberVal }, parameters, activePresses));
+            } else if (maxGrossVal > 0) {
+                val = (delta_numberVal || 0) / maxGrossVal;
             }
-            if (maxGrossVal > 0) return delta_numberVal / maxGrossVal;
-            return 0;
+            return Math.round(val * 10000) / 10000;
         })();
 
         return {
             ...job,
             maxGross: maxGrossVal,         // Actual Units (UNDIVIDED)
-            green: (Number(job.green) || 0), // Store as Input Values (Machine Cycles) in DB
-            red: (Number(job.red) || 0),     // Store as Input Values (Machine Cycles) in DB
+            green: job.green, // Preserve null for blank display
+            red: job.red,     // Preserve null for blank display
             delta: delta_numberVal,       // Actual Units (UNDIVIDED)
             delta_number: delta_numberVal,
             delta_percentage: delta_percentageVal,
-            performance: `${formatNumber(delta_percentageVal * 100, 2)}%`,
+            performance: delta_percentageVal !== null ? `${formatNumber(delta_percentageVal * 100, 2)}%` : '-',
             pressId: pressId,
             pressName: pressName
         };
@@ -1478,7 +1633,19 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         // Sort siblings naturally by version
         siblings.sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
 
-        setEditingJobs(siblings);
+        // Convert 0 to null for blank display in dialog
+        const sanitizedSiblings = siblings.map(j => ({
+            ...j,
+            pages: j.pages === 0 ? null : j.pages,
+            netRun: j.netRun === 0 ? null : j.netRun,
+            c4_4: j.c4_4 === 0 ? null : j.c4_4,
+            c4_0: j.c4_0 === 0 ? null : j.c4_0,
+            c1_0: j.c1_0 === 0 ? null : j.c1_0,
+            c1_1: j.c1_1 === 0 ? null : j.c1_1,
+            c4_1: j.c4_1 === 0 ? null : j.c4_1,
+        }));
+
+        setEditingJobs(sanitizedSiblings);
         setIsAddJobDialogOpen(true);
     };
 
@@ -1531,17 +1698,80 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         });
     };
 
+    const archiveAndDeleteJobById = async (id: string, logDetails?: string) => {
+        try {
+            const oldRecord = await pb.collection('drukwerken').getOne(id);
+
+            // Archive to trash collection safely
+            try {
+                await pb.collection('trashed_drukwerken').create({
+                    original_id: id,
+                    order_nummer: Number(oldRecord.order_nummer) || 0,
+                    klant_order_beschrijving: oldRecord.klant_order_beschrijving || '',
+                    versie: oldRecord.versie || '',
+                    deleted_by: user?.username || 'System',
+                    press: oldRecord.pers_name || oldRecord.pressName || user?.press || '',
+                    metadata: oldRecord // Full record for easy restore
+                });
+            } catch (archiveErr: any) {
+                console.error("Failed to archive job:", archiveErr);
+                toast.error(`Kon versie niet archiveren: ${archiveErr.message || 'Onbekende fout'}`);
+                throw archiveErr; // Prevent deletion if archiving fails
+            }
+
+            await pb.collection('drukwerken').delete(id);
+            await drukwerkenCache.removeRecord(id);
+
+            // Log deletion
+            await addActivityLog({
+                action: 'Deleted',
+                entity: 'FinishedJob',
+                entityId: id,
+                entityName: `${oldRecord.order_nummer} - ${oldRecord.klant_order_beschrijving}`,
+                details: logDetails || `Drukwerk verwijderd via lijst en gearchiveerd`,
+                oldValue: [
+                    `Order: ${oldRecord.order_nummer}`,
+                    `Naam: ${oldRecord.klant_order_beschrijving}`,
+                    `Versie: ${oldRecord.versie || '-'}`,
+                    `Blz: ${oldRecord.blz}`,
+                    `Ex/Omw: ${oldRecord.ex_omw}`,
+                    `Netto: ${oldRecord.netto_oplage}`,
+                    `Groen: ${oldRecord.groen}`,
+                    `Rood: ${oldRecord.rood}`,
+                    `Delta: ${oldRecord.delta}`,
+                    `Delta %: ${oldRecord.delta_percent}%`
+                ].join('|||'),
+                user: user?.username || 'System',
+                press: user?.press
+            });
+
+            return oldRecord;
+        } catch (error) {
+            console.error("Error archiving and deleting job:", error);
+            throw error;
+        }
+    };
+
     const confirmDelete = async () => {
         if (!deleteAction) return;
 
         if (deleteAction.type === 'werkorder') {
-            handleDeleteWerkorder(deleteAction.id);
+            await handleDeleteWerkorder(deleteAction.id);
         } else if (deleteAction.type === 'katern' && deleteAction.secondaryId) {
             // Check if it's the last katern to delete the whole order
             const order = werkorders.find(wo => wo.id === deleteAction.id);
             if (order && order.katernen.length <= 1) {
-                handleDeleteWerkorder(deleteAction.id);
+                await handleDeleteWerkorder(deleteAction.id);
             } else {
+                const katernToDelete = order?.katernen.find(k => k.id === deleteAction.secondaryId);
+                if (katernToDelete?.originalId) {
+                    try {
+                        await archiveAndDeleteJobById(katernToDelete.originalId, `Versie verwijderd uit Geplande Orders: ${order?.orderNr} - ${order?.orderName}`);
+                    } catch (e) {
+                        return; // Don't delete locally if DB delete failed
+                    }
+                }
+
                 setWerkorders(prev => prev.map(wo => {
                     if (wo.id === deleteAction.id) {
                         return {
@@ -1554,37 +1784,15 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             }
         } else if (deleteAction.type === 'job') {
             try {
-                const oldRecord = await pb.collection('drukwerken').getOne(deleteAction.id);
-                await pb.collection('drukwerken').delete(deleteAction.id);
-                // Log deletion
-                await addActivityLog({
-                    action: 'Deleted',
-                    entity: 'FinishedJob',
-                    entityId: deleteAction.id,
-                    entityName: `${oldRecord.order_nummer} - ${oldRecord.klant_order_beschrijving}`,
-                    details: `Drukwerk verwijderd via lijst`,
-                    oldValue: [
-                        `Order: ${oldRecord.order_nummer}`,
-                        `Naam: ${oldRecord.klant_order_beschrijving}`,
-                        `Versie: ${oldRecord.versie || '-'}`,
-                        `Blz: ${oldRecord.blz}`,
-                        `Ex/Omw: ${oldRecord.ex_omw}`,
-                        `Netto: ${oldRecord.netto_oplage}`,
-                        `Groen: ${oldRecord.groen}`,
-                        `Rood: ${oldRecord.rood}`,
-                        `Delta: ${oldRecord.delta}`,
-                        `Delta %: ${oldRecord.delta_percent}%`
-                    ].join('|||'),
-                    user: user?.username || 'System',
-                    press: user?.press
-                });
-
-                toast.success("Drukwerk verwijderd.");
+                await archiveAndDeleteJobById(deleteAction.id);
+                toast.success("Drukwerk verwijderd en verplaatst naar prullenbak.");
                 if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
                 fetchCalculatedFields();
             } catch (error) {
-                console.error("Error deleting job:", error);
-                toast.error("Fout bij verwijderen drukwerk.\n" + error);
+                // Error already toasted in helper if it was an archive error
+                if (!String(error).includes("archiveren")) {
+                    toast.error("Fout bij verwijderen drukwerk.\n" + error);
+                }
             }
         }
         setDeleteAction(null);
@@ -1642,7 +1850,10 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     {(() => {
                         const showWerkorders = user?.role === 'press';
                         const showFinished = (user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast' || (user?.role === 'press' && hasPermission('drukwerken_view')));
-                        const hasTabs = Number(showWerkorders) + Number(showFinished) > 1;
+                        const showTrash = hasPermission('drukwerken_trash_view');
+                        // Count visible tabs: Nieuw, Gedrukt, and Prullenbak
+                        const tabCount = [showWerkorders, showFinished, showTrash].filter(Boolean).length;
+                        const hasTabs = tabCount > 1;
 
                         return (
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2 mt-2">
@@ -1650,10 +1861,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     {hasTabs && (
                                         <TabsList className="tab-pill-list">
                                             {showWerkorders && (
-                                                <TabsTrigger value="Nieuw" className="tab-pill-trigger">Nieuw Order</TabsTrigger>
+                                                <TabsTrigger value="Nieuw" className="tab-pill-trigger">Geplande Orders</TabsTrigger>
                                             )}
                                             {showFinished && (
                                                 <TabsTrigger value="Gedrukt" className="tab-pill-trigger">Gedrukt</TabsTrigger>
+                                            )}
+                                            {hasPermission('drukwerken_trash_view') && (
+                                                <TabsTrigger value="Prullenbak" className="tab-pill-trigger">Prullenbak</TabsTrigger>
                                             )}
                                         </TabsList>
                                     )}
@@ -1690,6 +1904,20 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     {activeTab === 'Nieuw' && hasPermission('drukwerken_create') && (
                                         <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}>
                                             <Plus className="w-4 h-4 mr-2" /> Werkorder
+                                        </Button>
+                                    )}
+                                    {activeTab === 'Gedrukt' && (
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-9 w-9 hover:bg-blue-50 text-blue-600 border border-transparent hover:border-gray-200 transition-all rounded-md"
+                                            onClick={() => {
+                                                const limit = getSystemSetting('drukwerken_edit_limit', 1);
+                                                drukwerkenCache.syncRecent(user, hasPermission, Number(limit));
+                                            }}
+                                            title={`Synchroniseer laatste ${getSystemSetting('drukwerken_edit_limit', 1)} dagen`}
+                                        >
+                                            <RefreshCw className={cn("w-4 h-4", cacheStatus.loading && "animate-spin")} />
                                         </Button>
                                     )}
                                     {activeTab === 'Gedrukt' && (
@@ -1756,18 +1984,6 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-9 w-9 hover:bg-blue-50 text-blue-600 border border-transparent hover:border-gray-200 transition-all rounded-md"
-                                                    onClick={() => {
-                                                        const limit = getSystemSetting('drukwerken_edit_limit', 1);
-                                                        drukwerkenCache.syncRecent(user, hasPermission, Number(limit));
-                                                    }}
-                                                    title={`Synchroniseer laatste ${getSystemSetting('drukwerken_edit_limit', 1)} dagen`}
-                                                >
-                                                    <RefreshCw className={cn("w-4 h-4", cacheStatus.loading && "animate-spin")} />
-                                                </Button>
                                             </>
                                         )}
                                         {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
@@ -1896,180 +2112,29 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {wo.katernen.map((katern) => {
-                                                    const jobWithOrderInfo = {
-                                                        ...katern,
-                                                        orderNr: wo.orderNr,
-                                                        orderName: wo.orderName,
-                                                        pressName: effectivePress
-                                                    };
-                                                    const maxGrossVal = getFormulaForColumn('maxGross')
-                                                        ? evaluateFormula(getFormulaForColumn('maxGross')!.formula, jobWithOrderInfo, parameters, activePresses) as number
-                                                        : katern.maxGross;
-
-                                                    const divider = outputConversions[effectivePressId]?.[String(katern.exOmw)] || 1;
-                                                    const jobWithCalculatedMaxGross = {
-                                                        ...jobWithOrderInfo,
-                                                        maxGross: maxGrossVal,
-                                                        green: Number(katern.green) || 0,
-                                                        red: Number(katern.red) || 0
-                                                    };
-                                                    const jobForEvaluation = {
-                                                        ...jobWithCalculatedMaxGross,
-                                                        green: (Number(katern.green) || 0) * divider,
-                                                        red: (Number(katern.red) || 0) * divider
-                                                    };
-                                                    return (
-                                                        <TableRow key={katern.id} className="hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group">
-                                                            <TableCell>
-                                                                <Input value={katern.version} onChange={(e) => handleKaternChange(wo.id, katern.id, 'version', e.target.value)} className="h-9 px-2 bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                <FormattedNumberInput value={katern.pages} onChange={(val) => handleKaternChange(wo.id, katern.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <Select
-                                                                    value={String(katern.exOmw || '1')}
-                                                                    onValueChange={(val) => handleKaternChange(wo.id, katern.id, 'exOmw', val)}
-                                                                >
-                                                                    <SelectTrigger className="h-9 px-2 bg-white border-gray-200 text-center">
-                                                                        <SelectValue placeholder="Deler" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        {(() => {
-                                                                            const pressId = effectivePressId;
-                                                                            const pressExOmwKeys = Object.keys(outputConversions[pressId] || {}).sort((a, b) => Number(a) - Number(b));
-                                                                            // Fallback to 1,2,4 only when no conversions configured at all
-                                                                            const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
-                                                                            return options.map(val => (
-                                                                                <SelectItem key={val} value={val}>{val}</SelectItem>
-                                                                            ));
-                                                                        })()}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </TableCell>
-                                                            <TableCell className="text-right border-r border-black">
-                                                                <FormattedNumberInput value={katern.netRun} onChange={(val) => handleKaternChange(wo.id, katern.id, 'netRun', val || 0)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                            </TableCell>
-                                                            <TableCell className="text-center">
-                                                                <Checkbox checked={katern.startup} onCheckedChange={(checked) => handleKaternChange(wo.id, katern.id, 'startup', checked)} />
-                                                            </TableCell>
-                                                            <TableCell className="px-0">
-                                                                <FormattedNumberInput value={katern.c4_4} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_4', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="px-0">
-                                                                <FormattedNumberInput value={katern.c4_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="px-0">
-                                                                <FormattedNumberInput value={katern.c1_0} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_0', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="px-0">
-                                                                <FormattedNumberInput value={katern.c1_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c1_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="px-0 border-r border-black">
-                                                                <FormattedNumberInput value={katern.c4_1} onChange={(val) => handleKaternChange(wo.id, katern.id, 'c4_1', val || 0)} className="h-9 px-1 text-[10px] bg-white border-gray-200" />
-                                                            </TableCell>
-                                                            <TableCell className="text-right border-r border-black">
-                                                                <div className="flex flex-col items-center">
-                                                                    <FormulaResultWithTooltip
-                                                                        formula={getFormulaForColumn('maxGross')?.formula || ''}
-                                                                        job={jobWithOrderInfo}
-                                                                        variant="maxGross"
-                                                                        parameters={parameters}
-                                                                        activePresses={activePresses}
-                                                                        result={maxGrossVal}
-                                                                        outputConversions={outputConversions}
-                                                                        pressMap={pressMap}
-                                                                    />
-                                                                    {showComparison && (
-                                                                        <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
-                                                                            Rec: {formatNumber(katern.maxGross)}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                <div className="flex flex-col items-end">
-                                                                    <FormattedNumberInput value={katern.green} onChange={(val) => handleKaternChange(wo.id, katern.id, 'green', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                    {divider > 1 && (
-                                                                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                                                                            <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                                {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="text-right border-r border-black">
-                                                                <div className="flex flex-col items-end">
-                                                                    <FormattedNumberInput value={katern.red} onChange={(val) => handleKaternChange(wo.id, katern.id, 'red', val)} className="h-9 px-2 bg-white border-gray-200 text-right" />
-                                                                    {divider > 1 && (
-                                                                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                                                                            <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                                                                {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="text-right font-medium">
-                                                                {(() => {
-                                                                    const f = getFormulaForColumn('delta_number');
-                                                                    const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
-                                                                    const res = Number(resRaw) || 0;
-                                                                    return (
-                                                                        <FormulaResultWithTooltip
-                                                                            formula={f?.formula || ''}
-                                                                            job={jobWithCalculatedMaxGross}
-                                                                            parameters={parameters}
-                                                                            activePresses={activePresses}
-                                                                            variant="delta"
-                                                                            result={res}
-                                                                            outputConversions={outputConversions}
-                                                                            pressMap={pressMap}
-                                                                        />
-                                                                    );
-                                                                })()}
-                                                            </TableCell>
-                                                            <TableCell className="text-right font-medium border-r border-black">
-                                                                {(() => {
-                                                                    const f = getFormulaForColumn('delta_percentage');
-                                                                    if (f) {
-                                                                        const result = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
-                                                                        const numericValue = typeof result === 'number'
-                                                                            ? result
-                                                                            : parseFloat((result as string || '0').replace(/\./g, '').replace(',', '.'));
-                                                                        return (
-                                                                            <FormulaResultWithTooltip
-                                                                                formula={f.formula}
-                                                                                job={jobWithCalculatedMaxGross}
-                                                                                parameters={parameters}
-                                                                                activePresses={activePresses}
-                                                                                decimals={2}
-                                                                                result={numericValue * 100}
-                                                                                outputConversions={outputConversions}
-                                                                                pressMap={pressMap}
-                                                                                suffix="%"
-                                                                                hideTooltip={true}
-                                                                            />
-                                                                        );
-                                                                    }
-                                                                    return `${formatNumber(katern.deltaPercentage * 100, 2)}% `;
-                                                                })()}
-                                                            </TableCell>
-                                                            <TableCell className="border-r border-black">
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="ghost"
-                                                                    className="hover:bg-red-100 text-red-500"
-                                                                    onClick={() => requestDeleteKatern(wo.id, katern.id)}
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </Button>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    )
-                                                })}
+                                                {wo.katernen.map((katern) => (
+                                                    <DrukwerkRow
+                                                        key={katern.id}
+                                                        werkorderId={wo.id}
+                                                        katern={katern}
+                                                        orderNr={wo.orderNr}
+                                                        orderName={wo.orderName}
+                                                        effectivePress={effectivePress}
+                                                        effectivePressId={effectivePressId}
+                                                        parameters={parameters}
+                                                        activePresses={activePresses}
+                                                        outputConversions={outputConversions}
+                                                        pressMap={pressMap}
+                                                        showComparison={showComparison}
+                                                        calculatedFields={calculatedFields}
+                                                        onKaternChange={handleKaternChange}
+                                                        onDeleteKatern={requestDeleteKatern}
+                                                        onAutoSaved={handleAutoSaved}
+                                                        addActivityLog={addActivityLog}
+                                                        user={user}
+                                                        hasPermission={hasPermission}
+                                                    />
+                                                ))}
                                             </TableBody>
                                         </Table>
                                         <div className="flex justify-between items-center mt-2">
@@ -2423,6 +2488,72 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                         TableRow: (props: any) => <tr {...props} className="h-8 hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group" />
                                     }}
                                 />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="Prullenbak">
+                        <Card>
+                            <CardContent className="p-0">
+                                <Table className={`table-fixed w-full ${FONT_SIZES.body}`}>
+                                    <TableHeader>
+                                        <TableRow className="bg-gray-50 h-10">
+                                            <TableHead className="w-[120px] text-center border-r">Verwijderd op</TableHead>
+                                            <TableHead className="w-[100px] text-center border-r">Order Nr</TableHead>
+                                            <TableHead className="border-r">Order Naam</TableHead>
+                                            <TableHead className="w-[100px] text-center border-r">Versie</TableHead>
+                                            <TableHead className="w-[120px] text-center border-r">Pers</TableHead>
+                                            <TableHead className="w-[150px] text-center border-r">Door</TableHead>
+                                            <TableHead className="w-[120px] text-center">Acties</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoadingTrash ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-12">
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+                                                        <span className="text-sm text-gray-500">Laden...</span>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : trashJobs.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-12 text-gray-400">
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <Trash2 className="w-8 h-8 opacity-20" />
+                                                        <span className="italic">De prullenbak is leeg.</span>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            trashJobs.map((job) => (
+                                                <TableRow key={job.id} className="hover:bg-gray-50 h-10">
+                                                    <TableCell className="text-center border-r text-xs">
+                                                        {format(new Date(job.created), 'dd/MM/yyyy HH:mm')}
+                                                    </TableCell>
+                                                    <TableCell className="text-center border-r font-medium">DT {job.order_nummer}</TableCell>
+                                                    <TableCell className="border-r truncate" title={job.klant_order_beschrijving}>
+                                                        {job.klant_order_beschrijving}
+                                                    </TableCell>
+                                                    <TableCell className="text-center border-r">{job.versie || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r">{job.press || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r text-gray-500">{job.deleted_by}</TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="ghost" 
+                                                            className="h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-[11px] font-medium"
+                                                            onClick={() => handleRestoreJob(job.id)}
+                                                        >
+                                                            <RefreshCw className="w-3 h-3 mr-1" /> Terugzetten
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
                             </CardContent>
                         </Card>
                     </TabsContent>

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import changelog from 'virtual:changelog';
+
 import { useAuth, pb, FeedbackItem } from './AuthContext';
 import { PageHeader } from './layout/PageHeader';
 import { Rocket, Loader2, Check, Calendar, Bug, Construction, MessageSquare, Plus, Edit, Archive, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -137,37 +139,39 @@ export function Roadmap() {
 
     // Completed Groups: Grouped by version or month/year, sorted newest first
     const roadmapCompletedGroups = useMemo(() => {
-        const groups: { label: string, items: FeedbackItem[], date: number, isVersion: boolean }[] = [];
+        const groups: { label: string, items: any[], date: number, isVersion: boolean }[] = [];
 
-        const completedSorted = [...items]
-            .filter(i => i.status === 'completed' && !i.archived)
-            .sort((a, b) => {
-                const dateA = a.completed_at || a.created;
-                const dateB = b.completed_at || b.created;
-                return new Date(dateB).getTime() - new Date(dateA).getTime();
-            });
-
-        completedSorted.forEach(item => {
-            const isVersion = !!item.completed_version;
-            let label = item.completed_version;
+        changelog.forEach(commit => {
+            const isVersion = !!commit.version;
+            let label = commit.version;
 
             // If no version, use Month Year
             if (!label) {
-                const date = new Date(item.completed_at || item.created);
+                const date = new Date(commit.date);
                 label = format(date, 'MMMM yyyy', { locale: nl });
             }
 
             let group = groups.find(g => g.label === label);
             if (!group) {
-                group = { label, items: [], date: new Date(item.completed_at || item.created).getTime(), isVersion };
+                group = { label, items: [], date: new Date(commit.date).getTime(), isVersion };
                 groups.push(group);
             }
-            group.items.push(item);
+
+            group.items.push({
+                id: commit.id,
+                roadmap_title: commit.title,
+                message: commit.body,
+                created: commit.date,
+                completed_at: commit.date,
+                completed_version: commit.version,
+                type: commit.type,
+                status: 'completed'
+            });
         });
 
         // Ensure groups themselves are sorted by their newest item date
         return groups.sort((a, b) => b.date - a.date);
-    }, [items]);
+    }, []);
 
     // --- LIST LOGIC ---
     const activeFeedback = useMemo(() => items.filter(f => !f.archived && f.status !== 'completed'), [items]);
@@ -287,7 +291,7 @@ export function Roadmap() {
     );
 
     return (
-        <div className="w-full flex-1 flex flex-col min-h-[600px] overflow-hidden">
+        <div className="w-full h-[calc(100vh-100px)] min-h-[600px] flex flex-col overflow-hidden">
             <div className="shrink-0 px-4 lg:px-8">
                 <PageHeader
                     title="Feedback & Roadmap"
@@ -296,7 +300,7 @@ export function Roadmap() {
                 />
             </div>
 
-            <div className="flex-1 grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-6 p-4 lg:p-6 overflow-hidden h-full min-h-0">
+            <div className="flex-1 grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-6 p-4 lg:p-6 overflow-hidden min-h-0">
                 {/* Left Side: Feedback List (75% width) */}
                 <div className="flex flex-col overflow-hidden min-w-0 bg-white rounded-xl shadow-sm border">
                     <div className="p-4 border-b flex justify-between items-center bg-gray-50/50">
@@ -481,6 +485,11 @@ export function Roadmap() {
                                                                             {item.roadmap_title}
                                                                         </Badge>
                                                                     </div>
+                                                                    {item.message && (
+                                                                        <div className={`mt-1 pl-1 ${FONT_SIZES.table_sub} text-gray-500 whitespace-pre-wrap leading-relaxed max-w-[400px]`}>
+                                                                            {item.message}
+                                                                        </div>
+                                                                    )}
                                                                     <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
                                                                         <div className="flex items-center gap-1">
                                                                             <Calendar className="w-2.5 h-2.5" />

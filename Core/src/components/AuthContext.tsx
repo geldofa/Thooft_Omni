@@ -102,7 +102,8 @@ export type Permission =
   | 'manage_ticker'
   | 'data_checker_view'
   | 'activity_ticker_view'
-  | 'osint_view';
+  | 'osint_view'
+  | 'drukwerken_trash_view';
 
 
 export interface RolePermissions {
@@ -451,7 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
           'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
           'manage_themes', 'manage_notifications', 'manage_system_tasks',
-          'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view'
+          'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view', 'drukwerken_trash_view'
         ],
         'meestergast': [
           'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
@@ -675,7 +676,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
             'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
             'manage_themes', 'manage_notifications', 'manage_system_tasks',
-            'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view'
+            'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view', 'drukwerken_trash_view'
           ]
 
         },

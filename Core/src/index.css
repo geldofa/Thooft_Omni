@@ -2996,3 +2996,14 @@ html {
 .animate-bounce-subtle {
   animation: bounce-subtle 2s infinite;
 }
+
+@keyframes save-pulse {
+  0% { background-color: transparent; }
+  15% { background-color: rgba(59, 130, 246, 0.10); }
+  50% { background-color: rgba(59, 130, 246, 0.05); }
+  100% { background-color: transparent; }
+}
+
+.animate-save-pulse {
+  animation: save-pulse 2s ease-out;
+}

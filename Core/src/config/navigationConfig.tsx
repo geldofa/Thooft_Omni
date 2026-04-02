@@ -14,6 +14,7 @@ export interface SubtabConfig {
     label: string;
     path: string;
     permission?: Permission;
+    category?: string;
 }
 
 export interface NavItemConfig {
@@ -23,6 +24,7 @@ export interface NavItemConfig {
     description: string;
     permission: Permission;
     color: string;
+    isTall?: boolean;
     subtabs?: (activePresses: Press[], hasPermission: (p: Permission) => boolean) => SubtabConfig[];
 }
 
@@ -65,10 +67,13 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         permission: 'reports_view',
         color: 'bg-purple-600',
         subtabs: (_activePresses, hasPermission) => [
-            ...(hasPermission('reports_view') ? [{ label: 'Onderhoud', path: '/Analyses/Rapport' }] : []),
-            ...(hasPermission('drukwerken_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken' }] : []),
-            ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist' }] : []),
-            ...(hasPermission('reports_view') ? [{ label: 'Statistieken > Onderhoud (BETA)', path: '/analyses/statistieken/onderhoud' }] : []),
+            // Group: Rapporten
+            ...(hasPermission('reports_view') ? [{ label: 'Onderhoud', path: '/Analyses/Rapport', category: 'Rapporten' }] : []),
+            ...(hasPermission('drukwerken_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken', category: 'Rapporten' }] : []),
+            ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist', category: 'Rapporten' }] : []),
+            // Group: Statistieken
+            ...(hasPermission('maintenance_analytics_view') ? [{ label: 'Onderhoud', path: '/Analyses/statistieken/onderhoud', category: 'Statistieken' }] : []),
+            ...(hasPermission('production_analytics_view') ? [{ label: 'Productie', path: '/Analyses/statistieken/productie', category: 'Statistieken' }] : []),
         ]
     },
     {
@@ -79,13 +84,15 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         permission: 'management_access',
         color: 'bg-teal-600',
         subtabs: (_activePresses, hasPermission) => [
-            ...(hasPermission('manage_personnel') ? [{ label: 'Personeel', path: '/Beheer/Personeel' }] : []),
-            ...(hasPermission('manage_categories') ? [{ label: 'Categorieën', path: '/Beheer/Categorie' }] : []),
-            ...(hasPermission('manage_tags') ? [{ label: 'Tags', path: '/Beheer/Tags' }] : []),
-            ...(hasPermission('manage_presses') ? [{ label: 'Persen', path: '/Beheer/Persen' }] : []),
-            ...(hasPermission('manage_accounts') ? [{ label: 'Accounts', path: '/Beheer/Accounts' }] : []),
-            ...(hasPermission('manage_permissions') ? [{ label: 'Rechten', path: '/Beheer/Rechten' }] : []),
-            ...(hasPermission('manage_themes') ? [{ label: 'Thema', path: '/Beheer/Thema' }] : []),
+            // Group: Organisatie
+            ...(hasPermission('manage_personnel') ? [{ label: 'Personeel', path: '/Beheer/Personeel', category: 'Organisatie' }] : []),
+            ...(hasPermission('manage_categories') ? [{ label: 'Categorieën', path: '/Beheer/Categorie', category: 'Organisatie' }] : []),
+            ...(hasPermission('manage_tags') ? [{ label: 'Tags', path: '/Beheer/Tags', category: 'Organisatie' }] : []),
+            ...(hasPermission('manage_presses') ? [{ label: 'Persen', path: '/Beheer/Persen', category: 'Organisatie' }] : []),
+            ...(hasPermission('manage_parameters') ? [{ label: 'Parameters', path: '/Beheer/Parameters', category: 'Organisatie' }] : []),
+            
+            // Group: Geavanceerd (Replaces individual items for Toegang & Stijl and Systeem & Tools)
+            ...(hasPermission('management_access') ? [{ label: 'Geavanceerd', path: '/Beheer/Rechten' }] : []),
         ]
     },
     {

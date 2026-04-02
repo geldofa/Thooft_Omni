@@ -847,6 +847,7 @@ function MainApp() {
             onUpdateGroup={handleUpdateGroup}
             editTask={editingTask}
             initialGroup={editingGroup}
+            activePress={currentPressId}
           />
         </>
       )}

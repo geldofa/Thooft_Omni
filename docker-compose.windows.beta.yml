@@ -1,15 +1,14 @@
+version: '3.8'
+
+# Windows Docker Beta Stack for Omni.Thooft
+# Port: 81 (App), 8091 (DB)
+# Data: pb_data_beta
+
 services:
   app:
-    build:
-      context: .
-      dockerfile: Core/Dockerfile
     image: docker.io/geldofa/thooft_omni:latest
     ports:
-      - "80:80"
-    networks:
-      default:
-        aliases:
-          - OMNItest
+      - "81:80"
     environment:
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -17,31 +16,31 @@ services:
       db:
         condition: service_started
     restart: unless-stopped
-    container_name: thooft_omni
+    container_name: beta_thooft_omni
 
   db_init:
     image: docker.io/geldofa/thooft_omni:latest
     command: ["sync"]
     volumes:
-      - pb_migrations_relay:/relay/migrations
-      - pb_hooks_relay:/relay/hooks
-    container_name: thooft_db_init
+      - pb_migrations_relay_beta:/relay/migrations
+      - pb_hooks_relay_beta:/relay/hooks
+    container_name: beta_thooft_db_init
 
   db:
     image: alpine:latest
     ports:
-      - "127.0.0.1:8090:8090"
+      - "8091:8090"
     volumes:
-      - ./pb_data:/pb/pb_data
-      - pb_migrations_relay:/pb/pb_migrations:ro
-      - pb_hooks_relay:/pb/pb_hooks:ro
+      - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data_beta:/pb/pb_data"
+      - pb_migrations_relay_beta:/pb/pb_migrations:ro
+      - pb_hooks_relay_beta:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GDRIVE_CLIENT_ID=${GDRIVE_CLIENT_ID}
       - GDRIVE_CLIENT_SECRET=${GDRIVE_CLIENT_SECRET}
     restart: unless-stopped
-    container_name: thooft_db
+    container_name: beta_thooft_db
     depends_on:
       db_init:
         condition: service_completed_successfully
@@ -55,7 +54,6 @@ services:
           if [ "$$ARCH" = "x86_64" ]; then PB_ARCH="amd64"; else PB_ARCH="arm64"; fi &&
           curl -L "https://github.com/pocketbase/pocketbase/releases/download/v0.23.12/pocketbase_0.23.12_linux_$${PB_ARCH}.zip" -o /tmp/pb.zip &&
           unzip -o /tmp/pb.zip -d /pb/ &&
-          git config --global --add safe.directory /pb &&
           touch /pb/.pb_ready
         }
         /pb/pocketbase superuser upsert "$${POCKETBASE_ADMIN_EMAIL}" "$${POCKETBASE_ADMIN_PASSWORD}" --dir=/pb/pb_data &&
@@ -67,13 +65,13 @@ services:
 
   rclone:
     image: rclone/rclone:latest
-    container_name: thooft_rclone
+    container_name: beta_thooft_rclone
     volumes:
-      - ./pb_data/rclone:/config/rclone
-      - ./pb_data/backups:/backups
+      - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data_beta\\rclone:/config/rclone"
+      - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data_beta\\backups:/backups"
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
 
 volumes:
-  pb_migrations_relay:
-  pb_hooks_relay:
+  pb_migrations_relay_beta:
+  pb_hooks_relay_beta:

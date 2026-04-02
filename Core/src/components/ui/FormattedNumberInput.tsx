@@ -7,6 +7,7 @@ interface FormattedNumberInputProps {
     className?: string;
     decimals?: number;
     placeholder?: string;
+    disabled?: boolean;
 }
 
 export function FormattedNumberInput({
@@ -14,7 +15,8 @@ export function FormattedNumberInput({
     onChange,
     className,
     decimals = 0,
-    placeholder
+    placeholder,
+    disabled
 }: FormattedNumberInputProps) {
     const [displayValue, setDisplayValue] = useState(() =>
         value !== null && value !== undefined
@@ -64,6 +66,7 @@ export function FormattedNumberInput({
             onBlur={handleBlur}
             className={className}
             placeholder={placeholder}
+            disabled={disabled}
         />
     );
 }

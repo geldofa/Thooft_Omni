@@ -70,6 +70,8 @@ class DrukwerkenCacheService {
             pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || ''),
             created: r.created,
             opmerkingen: r.opmerking || '',
+            is_finished: !!r.is_finished,
+            locked: !!r.locked,
         };
     }
 

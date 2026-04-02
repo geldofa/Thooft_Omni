@@ -47,6 +47,7 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'drukwerken_view', label: 'Drukwerken Bekijken', description: 'Toegang tot de Drukwerken sectie.' },
             { key: 'drukwerken_view_all', label: 'Alle Drukwerken Zien', description: 'Mogelijkheid om drukwerken van alle persen te zien.' },
             { key: 'drukwerken_create', label: 'Drukwerken Aanmaken', description: 'Mogelijkheid om nieuwe werkorders toe te voegen.' },
+            { key: 'drukwerken_trash_view', label: 'Prullenbak Bekijken', description: 'Toegang tot verwijderde drukwerken en herstelmogelijkheden.' },
         ]
     },
     {

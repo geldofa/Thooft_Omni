@@ -998,7 +998,7 @@ export function Overzicht() {
                 <Layers className="w-5 h-5 text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs ({new Date().getFullYear()})</div>
+                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs {new Date().getFullYear()}</div>
                 <div className="flex items-baseline gap-2">
                   <div className="text-lg font-black leading-tight">{yearlyStats.jobsCount.toLocaleString()}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">{yearlyStats.versionsCount} versies</div>

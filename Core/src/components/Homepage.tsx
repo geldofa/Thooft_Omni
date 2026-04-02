@@ -153,22 +153,26 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
                     </p>
                 </div>
 
-                {/* Centered Flex Layout - Limited to 3-wide max, or 2x2 if exactly 4 cards */}
-                <div className={`flex flex-wrap justify-center gap-8 my-auto w-full mx-auto px-6 ${filteredItems.length === 4 ? 'max-w-[900px]' : 'max-w-[1400px]'}`}>
-                    {filteredItems.map((item: any) => {
+                {/* Centered Grid Layout */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 my-auto w-full mx-auto px-4 max-w-[1400px]">
+                    {filteredItems.map((item: any, index: number) => {
                         const Icon = item.icon;
                         const subtabs = item.subtabs ? item.subtabs(activePresses, hasPermission) : [];
+
+                        // Special centering for the last item if it's the 7th
+                        const isLastItem = index === filteredItems.length - 1;
+                        const lastItemClass = (isLastItem && filteredItems.length % 3 === 1) ? 'lg:col-start-2' : '';
 
                         return (
                             <Card
                                 key={item.id}
-                                className={`group relative overflow-hidden cursor-pointer hover:shadow-2xl transition-all duration-500 border-none shadow-xl bg-white/80 backdrop-blur-sm flex flex-col rounded-3xl min-h-[12rem] w-full sm:w-[calc(50%-1.5rem)] ${filteredItems.length === 4 ? 'lg:w-[calc(50%-1.5rem)]' : 'lg:w-[calc(33.33%-2rem)]'} max-w-[400px]`}
+                                className={`group relative overflow-hidden cursor-pointer hover:shadow-2xl transition-all duration-500 border-none shadow-xl bg-white/80 backdrop-blur-sm flex flex-col rounded-3xl p-5 min-h-[12rem] ${lastItemClass}`}
                                 onClick={() => setActiveTab(item.id)}
                             >
                                 {/* Aesthetic Background Gradient */}
                                 <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 ${item.color}`} />
 
-                                <div className="p-5 flex-1 flex flex-col text-center items-center">
+                                <div className="flex-1 flex flex-col text-center items-center">
                                     <div className="flex items-center justify-center mb-2 w-full relative">
                                         <div className={`${item.color} w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-slate-200 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
                                             <Icon className="w-7 h-7" />
@@ -178,7 +182,7 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
                                         </div>
                                     </div>
 
-                                    <div className="mb-3">
+                                    <div className="mb-2">
                                         <h3 className="text-xl font-black text-slate-900 group-hover:text-blue-600 transition-colors mb-1">
                                             {item.label}
                                         </h3>
@@ -187,21 +191,28 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
                                         </p>
                                     </div>
 
-                                    {/* Chips Section - Only shown if there are MULTIPLE subtabs */}
-                                    {subtabs.length > 1 && (
-                                        <div className="mt-auto pt-3 flex flex-wrap gap-2 border-t border-slate-50 w-full justify-center">
-                                            {subtabs.map((sub: any, i: number) => (
-                                                <button
-                                                    key={i}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setActiveTab(sub.path);
-                                                    }}
-                                                    className="px-2.5 py-1 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-600 rounded-full border border-slate-100 hover:bg-blue-600 hover:text-white hover:border-blue-600 hover:shadow-md active:scale-90 transition-all duration-300"
-                                                >
-                                                    {sub.label}
-                                                </button>
-                                            ))}
+                                    {/* Chips Section */}
+                                    {subtabs.length > 0 && (
+                                        <div className="mt-auto pt-2 flex flex-wrap gap-2 justify-center border-t border-slate-50 w-full">
+                                            {subtabs.map((sub: any, i: number) => {
+                                                const isAdvanced = sub.label.toLowerCase() === 'geavanceerd';
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setActiveTab(sub.path);
+                                                        }}
+                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-full border transition-all duration-300 active:scale-90 shadow-sm hover:shadow-md ${
+                                                            isAdvanced 
+                                                                ? 'bg-slate-800 text-white border-slate-800 hover:bg-slate-900 hover:scale-105' 
+                                                                : 'bg-white text-slate-600 border-slate-100 hover:bg-blue-600 hover:text-white hover:border-blue-600'
+                                                        }`}
+                                                    >
+                                                        {sub.label}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
