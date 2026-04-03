@@ -1,6 +1,5 @@
 node_modules
 pb_data
-.git
 .vscode
 build
 dist
@@ -12,3 +11,4 @@ storage
 # Ensure these are always included in the build context
 !pb_migrations
 !pb_hooks
+# Note: .git is NOT ignored — needed for the changelog vite plugin at build time

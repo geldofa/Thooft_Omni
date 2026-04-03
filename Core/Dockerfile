@@ -1,11 +1,14 @@
 # Build stage
 FROM node:20-alpine AS build-stage
 WORKDIR /app
+RUN apk add --no-cache git
 # Use package.json from Core/ directory for build tools
 COPY Core/package*.json ./
 RUN npm install
 # Copy actual app source from Core/
-COPY Core/ . 
+COPY Core/ .
+# Copy .git so the changelog vite plugin can run git log during build
+COPY .git /app/.git
 RUN npm run build:prod
 
 # Production stage

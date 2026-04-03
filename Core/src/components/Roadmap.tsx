@@ -137,7 +137,6 @@ export function Roadmap() {
         allSorted.filter(i => i.status !== 'completed' && i.status !== 'rejected' && !i.archived)
         , [allSorted]);
 
-    // Completed Groups: Grouped by version or month/year, sorted newest first
     // Completed Groups: Grouped by version (MAJOR.MINOR) or month/year, sorted newest first
     const roadmapCompletedGroups = useMemo(() => {
         const groups: { label: string, items: any[], date: number, isVersion: boolean }[] = [];
