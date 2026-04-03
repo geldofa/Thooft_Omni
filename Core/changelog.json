@@ -1,0 +1,402 @@
+[
+  {
+    "id": "28b2c169617cb51ea6e67621581fc083e6652003",
+    "version": "1.12.4",
+    "date": "2026-04-03",
+    "title": ".gitignore aanpassen voor changlog in productie",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "4172de165f2288595ee77ca49c1840dccf1cfdbc",
+    "version": "1.12.3",
+    "date": "2026-04-03",
+    "title": "Changlog optimalisatie",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "125c5959be249253e8681ec581b8ef273a0f64fb",
+    "version": "1.12.2",
+    "date": "2026-04-02",
+    "title": "fix: database migratie 2",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "d15b8b778f10e531d86c908c93b07dcecad3ba6b",
+    "version": "1.12.1",
+    "date": "2026-04-02",
+    "title": "fix: database migratie",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "cfaf6fb9ccebd0723177b555b0f51be192a54649",
+    "version": "1.12.0",
+    "date": "2026-04-02",
+    "title": "Drukwerken verbeteren",
+    "body": "Flow Drukwerken verbeteren:\n- Extra checks voor veiliger werken\n- Auto-save functie\n- Auto-vergrendeling van versies die volledig zijn ingevuld\n\nChangelog verbeteringen\nNieuwe beta test procedure",
+    "type": "feature"
+  },
+  {
+    "id": "e7d15f825237b34240614e0938a7eaecd393da74",
+    "version": "1.11.3",
+    "date": "2026-03-30",
+    "title": "Refresh on edit, Drukwerken",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "329590002d2d698d18c5a6b1e507044d9898a326",
+    "version": "1.11.2",
+    "date": "2026-03-30",
+    "title": "Eerste versie van een order heeft opstart aangevinkt, opslage start met een leeg veld",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "b53a4a6da3f163f52a5caabac909837f31a6f79b",
+    "version": "1.11.1",
+    "date": "2026-03-30",
+    "title": "Details",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "b5fe91375e4dff3069d1b4fc465dddc97343daab",
+    "version": "1.11.0",
+    "date": "2026-03-25",
+    "title": "Week nummering toegevoegd aan Drukwerken - Zoeken per week is nu mogelijk - Zoeken per maand is nu mogelijk",
+    "body": "NIEUW: Waarnemers rol voor het bekijken van statistieken en rapporten\nNIEUW: Overzicht pagina\n\nStatistieken voor Observers, Meestergast, Admin",
+    "type": "feature"
+  },
+  {
+    "id": "7e2e4372c4a96208f9b021faa6c9ccee24bbdd9c",
+    "version": "1.10.1",
+    "date": "2026-03-19",
+    "title": "Verbeterde logica Data checker",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "a9c3b49b50cbbb56ddc2486d45f095bab3aee129",
+    "version": "1.10.0",
+    "date": "2026-03-19",
+    "title": "Data checker: Bijhouden van verschillen tussen versturen en opslaan van data",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "8f1ed05fa32fca6d9c48f887e17976d38932dcc6",
+    "version": null,
+    "date": "2026-03-19",
+    "title": "fix(nginx): add SSE support and disable proxy buffering",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "ba57772e5f1249147455ccaefcff61930c4dd5d1",
+    "version": "1.9.12",
+    "date": "2026-03-19",
+    "title": "new stable branch voor continu gebruik van de app",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "7fa92c667b765f8211d57acca67cc24d3029b31e",
+    "version": null,
+    "date": "2026-03-19",
+    "title": "chore: update both compose files and github actions for stable branch",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "48d8fb0f5a2a7795e184c48505c42ec0041b59cc",
+    "version": null,
+    "date": "2026-03-19",
+    "title": "chore: update compose and github actions for stable branch",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "9f05faa58b4c1e2caca02b48a84080c478a793a0",
+    "version": "1.9.11",
+    "date": "2026-03-19",
+    "title": "login fix 7",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "fb6508cb76de8b700bb792244173ee9149ee59ba",
+    "version": "1.9.10",
+    "date": "2026-03-19",
+    "title": "login fix 7 + failsave app",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "7b3dc23e3c2272ef334ee25500ec77c5bf873d2a",
+    "version": "1.9.9",
+    "date": "2026-03-19",
+    "title": "Login fix 6",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "130df101d5b8f93e43a00ee7f4e70840ebb8a6d3",
+    "version": "1.9.8",
+    "date": "2026-03-19",
+    "title": "Login fix 5",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "20efc6eb408228bc8521a0f10cd2e107f00fb3e8",
+    "version": "1.9.7",
+    "date": "2026-03-19",
+    "title": "Login fix 4",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "69f8c96defe71541e4864beb0ab00291ea14ffce",
+    "version": "1.9.6",
+    "date": "2026-03-19",
+    "title": "Login fix 3",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "21d1f72d5ad7800852028884fd4414958da28097",
+    "version": "1.9.5",
+    "date": "2026-03-19",
+    "title": "More logging...",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "e298d55b7bfb43cfb88296bffa6dc80cf93336bd",
+    "version": "1.9.4",
+    "date": "2026-03-19",
+    "title": "Login fix 2",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "ecd96668f57136f628f3c01a7e3bb89c954d7442",
+    "version": "1.9.3",
+    "date": "2026-03-19",
+    "title": "Login logging v2",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "200b8fb5d5f639b41376e24f4cc47f5b86f60d60",
+    "version": "1.9.2",
+    "date": "2026-03-19",
+    "title": "Login detailed logging",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "dc571fa8ce55f5efd2afc6de090a7dbfe10a7a3e",
+    "version": "1.9.1",
+    "date": "2026-03-19",
+    "title": "Login Fix",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "dfca320612019a8248bcd8c8efdd8477ec91afb7",
+    "version": "1.9.1",
+    "date": "2026-03-19",
+    "title": "Login fix",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "1feb025b1e1dcf13687133570842b596da56aabf",
+    "version": "1.9.0",
+    "date": "2026-03-19",
+    "title": "Basis Implementatie statistieken (BETA)",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "aead45759bf8b45aa870fc63c46edbd53f6cc332",
+    "version": "1.8.1",
+    "date": "2026-03-17",
+    "title": "kleine verbeteringen",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "3600065cb725e872e4f4b4b37c17e6898290de03",
+    "version": "1.8.0",
+    "date": "2026-03-17",
+    "title": "Automatiseren Drukwerken export",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "eb6fa5ada92fb0f1fa15109f9b3b39d89bf8875d",
+    "version": "1.7.3",
+    "date": "2026-03-16",
+    "title": "Datum weergave (Europees)",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "9f6519f89d135ccbea99495cbb941a4457014db8",
+    "version": "1.7.2",
+    "date": "2026-03-13",
+    "title": "Import fix",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "4c9c178ad0001a6523a2f08b0ff1e7185b1de1d1",
+    "version": "1.7.1",
+    "date": "2026-03-13",
+    "title": "kleine verbeteringen",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "d5851614afdc621c450d46848ed6e1a35090875c",
+    "version": "1.7.0",
+    "date": "2026-03-13",
+    "title": "Beheer v2",
+    "body": "UX:\n- Systeembeheer\n- Analyses\n- Homepage v2\n- Meer plaats creëren door onnodige items te verwijderen (Onderhoudstaken, Drukwerken)\n\nFuncties\n- Rechten v2\n- Checklist v2\n- Drukwerken Export\n- Externe taken v2 (verplaatst naar Taken)\n- Updaten van onderhoudstaken met data van GSheets\n- Updaten van Drukwerktaken met data van GSheets\n- Logboek: Gedetaileerdere info voor drukwerken\n\nOnderliggend:\n- opkuisen van bestandsnamen in het project\n- Sheduler voor belangrijke taken",
+    "type": "chore"
+  },
+  {
+    "id": "237f03c0d8e77c8fd51b488e70682782487103a3",
+    "version": "1.6.0",
+    "date": "2026-03-04",
+    "title": "Samenvattingen - Done Bugfixes: - Percentage in drukwerken was niet op 100%",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "7b9ede021abf5b8595f694760512604503f482d9",
+    "version": "1.6.0",
+    "date": "2026-03-04",
+    "title": "Samenvattingen v4 - DONE",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "5c6ebba188b180ff6ae7bc5628d8a016ac4441ca",
+    "version": "1.5.9",
+    "date": "2026-03-03",
+    "title": "Samenvatting v3",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "84936c1c6ef9d1fcbfeb3f60d9190e0e0ae66743",
+    "version": "1.5.8",
+    "date": "2026-03-03",
+    "title": "Samenvattingen v3",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "04acd452fcd52cab97946757299c84e5f7062c25",
+    "version": "1.5.7",
+    "date": "2026-03-03",
+    "title": "Hotfix 7",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "1f4df6ef2cd846255455f1fdc9ad440c60abf7e3",
+    "version": "1.5.6",
+    "date": "2026-03-03",
+    "title": "Hotfix 6",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "a23e53952937e47310ff37e6c5d7dd4668130da6",
+    "version": "1.5.5",
+    "date": "2026-03-03",
+    "title": "Hotfix Multiploegen v2",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "5fc9cc03fe62a991fb294419032468afd747eb54",
+    "version": "1.5.4",
+    "date": "2026-03-02",
+    "title": "Hotfix multiploegen",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "b5ba1861bc8288cfd1d9240fd7c4fc0b31e33fb4",
+    "version": "1.5.3",
+    "date": "2026-03-02",
+    "title": "Hotfix migrations",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "905d18f67147711e967e230f0e87c61fe94d509d",
+    "version": "1.5.2",
+    "date": "2026-03-02",
+    "title": "Hotfix ploegen",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "0f5f23290661def551ea5051ec220918d36b456a",
+    "version": "1.5.1",
+    "date": "2026-03-02",
+    "title": "Samenvattingen v2 in werkende staat",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "5ac4a5f3356e4cc079343d9909192d5f134fe850",
+    "version": "1.5.0",
+    "date": "2026-03-02",
+    "title": "Samenvattingen v2 voorbereiding Bugfixes: - Operators op meerdere persen - Ploegen op meerdere persen - Tag Higlights werken opnieuw - Calculatie bij x1 rekenende hij enkel bij het herselecteren van 1",
+    "body": "",
+    "type": "bug"
+  },
+  {
+    "id": "9630a71369f9b6bb540c1c480b7582ca9cd307d9",
+    "version": "1.4.0",
+    "date": "2026-02-23",
+    "title": "Samenvattingen",
+    "body": "- (Meestergast) Mogelijkheid tot het creëren van Samenvattingen & ook automatisch op ingesteld tijdstip.\n- (Meestergast) Download pagina met de lijst van  gemaakte samenvattingen",
+    "type": "chore"
+  },
+  {
+    "id": "217cfdb5720f41009d3a57050fd07723f1bf089c",
+    "version": "1.3.11",
+    "date": "2026-02-19",
+    "title": "Update manager - Laatste wijzigingen weergeven",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "45bc3bc5fbdd8311f306369a4cbd0b16c3b5dc5f",
+    "version": "1.3.10",
+    "date": "2026-02-19",
+    "title": "Onderbroken job hervatten",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "ea002ead36ca9fbd17d5d3cde0463b43d168df31",
+    "version": "1.3.9",
+    "date": "2026-02-19",
+    "title": "Ex/omw optimalisatie v3",
+    "body": "",
+    "type": "chore"
+  }
+]

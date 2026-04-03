@@ -2,7 +2,45 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import fs from 'fs';
 import { execSync } from 'child_process';
+
+const CHANGELOG_FALLBACK = path.resolve(__dirname, 'changelog.json');
+
+function parseGitLog(): any[] {
+  try {
+    const log = execSync('git log -n 50 --pretty=format:"%H%n%cd%n%s%n%b%n===EOC===" --date=short').toString();
+    const commits: any[] = [];
+    const blocks = log.split('===EOC===').map(s => s.trim()).filter(Boolean);
+    
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      if (lines.length >= 3) {
+        const hash = lines[0];
+        const date = lines[1];
+        let subject = lines[2];
+        const body = lines.slice(3).join('\n').trim();
+        
+        let version = null;
+        const versionMatch = subject.match(/^(\d+\.\d+\.\d+)\s*[|]?\s*(.*)/);
+        if (versionMatch) {
+          version = versionMatch[1];
+          subject = versionMatch[2].trim();
+        }
+        
+        let type = 'chore';
+        const lowerSubject = subject.toLowerCase() + '\n' + body.toLowerCase();
+        if (lowerSubject.includes('bug') || lowerSubject.includes('fix')) type = 'bug';
+        else if (lowerSubject.includes('nieuw') || lowerSubject.includes('feature') || lowerSubject.includes('add')) type = 'feature';
+        
+        commits.push({ id: hash, version, date, title: subject, body, type });
+      }
+    }
+    return commits;
+  } catch {
+    return [];
+  }
+}
 
 function gitChangelogPlugin() {
   const virtualModuleId = 'virtual:changelog';
@@ -17,49 +55,26 @@ function gitChangelogPlugin() {
     },
     load(id: string) {
       if (id === resolvedVirtualModuleId) {
-        try {
-          // Get last 50 commits
-          const log = execSync('git log -n 50 --pretty=format:"%H%n%cd%n%s%n%b%n===EOC===" --date=short').toString();
-          const commits = [];
-          const blocks = log.split('===EOC===').map(s => s.trim()).filter(Boolean);
-          
-          for (const block of blocks) {
-            const lines = block.split('\n');
-            if (lines.length >= 3) {
-              const hash = lines[0];
-              const date = lines[1];
-              let subject = lines[2];
-              const body = lines.slice(3).join('\n').trim();
-              
-              // Try to parse version from subject (e.g., "1.11.3 | Details")
-              let version = null;
-              const versionMatch = subject.match(/^(\d+\.\d+\.\d+)\s*[|]?\s*(.*)/);
-              if (versionMatch) {
-                version = versionMatch[1];
-                subject = versionMatch[2].trim();
+        let commits = parseGitLog();
+
+        // If git returned a good amount of history, persist it as fallback
+        if (commits.length > 5) {
+          try {
+            fs.writeFileSync(CHANGELOG_FALLBACK, JSON.stringify(commits, null, 2));
+          } catch { /* ignore write errors */ }
+        } else {
+          // Shallow clone or no git — try the fallback file
+          try {
+            if (fs.existsSync(CHANGELOG_FALLBACK)) {
+              const fallback = JSON.parse(fs.readFileSync(CHANGELOG_FALLBACK, 'utf-8'));
+              if (fallback.length > commits.length) {
+                commits = fallback;
               }
-              
-              // Guess type from subject or body
-              let type = 'chore';
-              const lowerSubject = subject.toLowerCase() + '\n' + body.toLowerCase();
-              if (lowerSubject.includes('bug') || lowerSubject.includes('fix')) type = 'bug';
-              else if (lowerSubject.includes('nieuw') || lowerSubject.includes('feature') || lowerSubject.includes('add')) type = 'feature';
-              
-              commits.push({
-                id: hash,
-                version,
-                date,
-                title: subject,
-                body,
-                type
-              });
             }
-          }
-          return `export default ${JSON.stringify(commits)};`;
-        } catch (e) {
-          console.error("Failed to load git changelog", e);
-          return `export default [];`;
+          } catch { /* ignore read errors */ }
         }
+
+        return `export default ${JSON.stringify(commits)};`;
       }
     }
   };
