@@ -138,15 +138,25 @@ export function Roadmap() {
         , [allSorted]);
 
     // Completed Groups: Grouped by version or month/year, sorted newest first
+    // Completed Groups: Grouped by version (MAJOR.MINOR) or month/year, sorted newest first
     const roadmapCompletedGroups = useMemo(() => {
         const groups: { label: string, items: any[], date: number, isVersion: boolean }[] = [];
 
         changelog.forEach(commit => {
-            const isVersion = !!commit.version;
-            let label = commit.version;
+            const version = commit.version;
+            let label: string = version || '';
+            const isVersion = !!version;
 
-            // If no version, use Month Year
-            if (!label) {
+            if (version) {
+                // Group by MAJOR.MINOR (e.g. 1.11.3 -> v1.11)
+                const parts = version.split('.');
+                if (parts.length >= 2) {
+                    label = `v${parts[0]}.${parts[1]}`;
+                } else {
+                    label = `v${version}`;
+                }
+            } else {
+                // If no version, use Month Year
                 const date = new Date(commit.date);
                 label = format(date, 'MMMM yyyy', { locale: nl });
             }
@@ -167,6 +177,18 @@ export function Roadmap() {
                 type: commit.type,
                 status: 'completed'
             });
+        });
+
+        // After grouping, ensure each version group has its "main" release (.0) at the top
+        groups.forEach(group => {
+            if (group.isVersion && group.items.length > 1) {
+                // Find the index of the version ending in .0
+                const primaryIndex = group.items.findIndex(i => i.completed_version?.endsWith('.0'));
+                if (primaryIndex > 0) { // If it's not already at the top
+                    const [primary] = group.items.splice(primaryIndex, 1);
+                    group.items.unshift(primary);
+                }
+            }
         });
 
         // Ensure groups themselves are sorted by their newest item date
@@ -457,7 +479,7 @@ export function Roadmap() {
                                                     {/* Group Header (Only for non-version groups like Months) */}
                                                     {!group.isVersion && (
                                                         <div className="flex items-center gap-2 mb-2">
-                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded border">
+                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                                                 {group.label}
                                                             </span>
                                                             <div className="flex-1 h-[1px] bg-gray-100" />
@@ -465,40 +487,53 @@ export function Roadmap() {
                                                     )}
 
                                                     <div className="space-y-5">
-                                                        {group.items.map((item) => (
-                                                            <div key={item.id} className="relative">
-                                                                <div className="absolute left-[-30px] top-2.5 -translate-x-1/2 flex items-center justify-center z-10">
-                                                                    <div className={`w-3 h-3 rounded-full border-2 bg-white flex items-center justify-center ${item.type === 'bug' ? 'border-red-300' : 'border-blue-300'}`}>
-                                                                        <div className={`w-1 h-1 rounded-full ${item.type === 'bug' ? 'bg-red-300' : 'bg-blue-300'}`} />
-                                                                    </div>
-                                                                </div>
+                                                        {group.items.map((item, idx) => {
+                                                            const isPrimary = idx === 0;
+                                                            
+                                                            if (isPrimary) {
+                                                                return (
+                                                                    <div key={item.id} className="relative">
+                                                                        <div className="absolute left-[-30px] top-2.5 -translate-x-1/2 flex items-center justify-center z-10">
+                                                                            <div className={`w-3 h-3 rounded-full border-2 bg-white flex items-center justify-center ${item.type === 'bug' ? 'border-red-300' : 'border-blue-300'}`}>
+                                                                                <div className={`w-1 h-1 rounded-full ${item.type === 'bug' ? 'bg-red-300' : 'bg-blue-300'}`} />
+                                                                            </div>
+                                                                        </div>
 
-                                                                <div className="flex flex-col items-start gap-1 opacity-80">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        {/* Chip 1: Version or Status Label */}
-                                                                        <Badge variant="outline" className={`h-auto py-0.5 px-2 ${FONT_SIZES.sub} font-bold rounded-md border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
-                                                                            {item.completed_version ? `v${item.completed_version}` : STATUS_LABELS[item.status || 'pending']}
-                                                                        </Badge>
-                                                                        {/* Chip 2: Item Title */}
-                                                                        <Badge variant="outline" className={`h-auto py-1 px-2.5 ${FONT_SIZES.item} font-semibold rounded-lg border shadow-none ${STATUS_COLORS[item.status || 'pending']}`}>
-                                                                            <Check className="w-2.5 h-2.5 mr-1 inline-block" />
+                                                                        <div className="flex flex-col items-start gap-1 opacity-80 pl-1">
+                                                                            <div className="flex items-center gap-2 font-bold text-gray-900 text-sm">
+                                                                                <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                                                                <span>
+                                                                                    {item.completed_version && <span className="font-bold">{item.completed_version} | </span>}
+                                                                                    {item.roadmap_title}
+                                                                                </span>
+                                                                            </div>
+                                                                            {item.message && (
+                                                                                <div className={`mt-1 pl-1 ${FONT_SIZES.table_sub} text-gray-500 whitespace-pre-wrap leading-relaxed max-w-[400px]`}>
+                                                                                    {item.message}
+                                                                                </div>
+                                                                            )}
+                                                                            <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Calendar className="w-2.5 h-2.5" />
+                                                                                    {format(new Date(item.completed_at || item.created), 'dd MMM yy', { locale: nl })}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            } else {
+                                                                // Sub-items (Patches)
+                                                                return (
+                                                                    <div key={item.id} className={`mt-2 pl-1 ${FONT_SIZES.table_sub} text-gray-500 italic flex items-center gap-2 max-w-[400px]`}>
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
+                                                                        <span>
+                                                                            {item.completed_version && <span className="font-bold mr-1">{item.completed_version} |</span>}
                                                                             {item.roadmap_title}
-                                                                        </Badge>
+                                                                        </span>
                                                                     </div>
-                                                                    {item.message && (
-                                                                        <div className={`mt-1 pl-1 ${FONT_SIZES.table_sub} text-gray-500 whitespace-pre-wrap leading-relaxed max-w-[400px]`}>
-                                                                            {item.message}
-                                                                        </div>
-                                                                    )}
-                                                                    <div className={`flex items-center gap-1.5 ${FONT_SIZES.sub} text-gray-400 font-medium px-1`}>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <Calendar className="w-2.5 h-2.5" />
-                                                                            {format(new Date(item.completed_at || item.created), 'dd MMM yy', { locale: nl })}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                                                );
+                                                            }
+                                                        })}
                                                     </div>
                                                 </div>
                                             ))}
