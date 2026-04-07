@@ -72,6 +72,7 @@ class DrukwerkenCacheService {
             opmerkingen: r.opmerking || '',
             is_finished: !!r.is_finished,
             locked: !!r.locked,
+            voltooid_op: r.voltooid_op || null,
         };
     }
 

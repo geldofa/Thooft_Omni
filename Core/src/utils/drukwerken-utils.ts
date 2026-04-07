@@ -21,6 +21,7 @@ export interface Katern {
     locked?: boolean;
     dbGreen?: number | null; // Last saved green value in PB (for 50% deviation check)
     dbRed?: number | null;   // Last saved red value in PB
+    voltooid_op?: string | null;
 }
 
 export interface FinishedPrintJob {
@@ -52,6 +53,7 @@ export interface FinishedPrintJob {
     created?: string;
     is_finished?: boolean;
     locked?: boolean;
+    voltooid_op?: string | null;
 }
 
 export interface CalculatedField {

@@ -36,7 +36,7 @@ export interface DrukwerkRowProps {
     calculatedFields: CalculatedField[];
     onKaternChange: (werkorderId: string, katernId: string, field: keyof Katern, value: any) => void;
     onDeleteKatern: (werkorderId: string, katernId: string) => void;
-    onAutoSaved: (werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null) => void;
+    onAutoSaved: (werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null, voltooid_op: string | null) => void;
     addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
     user: User | null;
     hasPermission: (perm: Permission) => boolean;
@@ -153,6 +153,7 @@ export function DrukwerkRow({
             opmerking: '',
             is_finished: overrides?.is_finished ?? (k.is_finished || false),
             locked: overrides?.locked ?? (k.locked || false),
+            voltooid_op: k.voltooid_op || ((Number(k.green) + Number(k.red) > 0) ? new Date().toISOString() : null),
         };
     }, [effectivePress, effectivePressId, parameters, activePresses, outputConversions, getFormulaForColumn]);
 
@@ -208,7 +209,7 @@ export function DrukwerkRow({
             await drukwerkenCache.putRecord(record, user, hasPermission);
 
             // Notify parent
-            onAutoSaved(werkorderId, katernToSave.id, record.id, pbData.groen, pbData.rood);
+            onAutoSaved(werkorderId, katernToSave.id, record.id, pbData.groen, pbData.rood, pbData.voltooid_op);
 
             // Pulse animation
             setPulseActive(true);

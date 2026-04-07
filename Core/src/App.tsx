@@ -664,7 +664,7 @@ function MainApp() {
         <>
           {location.pathname !== '/' && <Header activeTab={location.pathname} setActiveTab={setActiveTab} />}
           <main className={
-            location.pathname === '/' || location.pathname.toLowerCase().startsWith('/extern')
+            location.pathname === '/' || location.pathname.toLowerCase().startsWith('/extern') || location.pathname === '/Overzicht'
               ? ""
               : `w-full mx-auto px-4 sm:px-6 lg:px-8 ${['/Beheer', '/Toolbox', '/Analyses'].some(p => location.pathname.startsWith(p)) ? 'pb-4 pt-4' : 'py-4'}`
           }>

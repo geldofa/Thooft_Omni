@@ -1,77 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { pb, useAuth } from './AuthContext';
-import { Card } from './ui/card';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { Badge } from './ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Button } from './ui/button';
-
+import React from 'react';
 import {
-  Activity,
-  Layers,
-  Wrench,
-  CheckCircle2,
-  AlertCircle,
-  Radio,
-  Search,
-  Calendar,
-  Printer,
   Zap,
-  ChevronDown,
-  ChevronRight
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  Layers,
+  BarChart3,
+  Wrench,
+  Clock,
+  ChevronRight,
+  History,
+  Plus
 } from 'lucide-react';
-
-import { cn } from './ui/utils';
-
-import { format } from 'date-fns';
+import { format, startOfWeek, subWeeks, startOfMonth, subMonths, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { pb } from './AuthContext';
+import { Card } from './ui/card';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { cn } from './ui/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from "./ui/dialog";
+import { ScrollArea } from "./ui/scroll-area";
 
-// Format number with dots as thousands separator
-const fmtNum = (v: string): string => {
-  const n = parseInt(v.replace(/[^0-9-]/g, ''), 10);
-  return isNaN(n) ? v : n.toLocaleString('nl-NL');
-};
-
-// Types
-interface PressMetric {
-  press: string;
-  value: number;
-}
-
-// Canonical press order
-const PRESS_ORDER = ['Lithoman', 'C818', 'C80'];
-const sortPressMetrics = (metrics: PressMetric[]): PressMetric[] => {
-  return [...metrics].sort((a, b) => {
-    let ai = PRESS_ORDER.indexOf(a.press);
-    let bi = PRESS_ORDER.indexOf(b.press);
-
-    // Handle 'KBA C818' legacy name if it appears
-    if (ai === -1 && a.press.includes('C818')) ai = PRESS_ORDER.indexOf('C818');
-    if (bi === -1 && b.press.includes('C818')) bi = PRESS_ORDER.indexOf('C818');
-
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
-};
-
-
-interface OsintCounterData {
-  label: string;
-  mainValue: string;
-  sideValue?: string;
-  pressBreakdown: PressMetric[];
-  status: 'nominal' | 'warning' | 'critical';
-  icon: React.ElementType;
-}
-
-interface YearlyStats {
-  jobsCount: number;
-  versionsCount: number;
-  totalNetto: number;
-  pressJobs: PressMetric[];
-  pressNetto: PressMetric[];
-}
+// --- Types & Interfaces ---
 
 interface ActivityEvent {
   id: string;
@@ -81,70 +38,144 @@ interface ActivityEvent {
   entity: string;
   entityName: string;
   details: string;
-  newValue?: string;
-  oldValue?: string;
-  entityId?: string;
+  newValue: string;
+  oldValue: string;
+  entityId: string;
   status: 'info' | 'success' | 'warning' | 'error';
 }
 
-interface MaintenanceStatsData {
-  overdueInRange: { count: number; pressBreakdown: PressMetric[] };
-  alreadyOverdue: { count: number; pressBreakdown: PressMetric[] };
-  completedInRange: { count: number; pressBreakdown: PressMetric[] };
+interface PressMetric {
+  press: string;
+  value: number;
 }
 
-// Press breakdown text component (standardized)
-const PressBreakdownText = ({ metrics, isLarge = false, showPercent = false }: { metrics: PressMetric[]; isLarge?: boolean; showPercent?: boolean }) => {
-  const sorted = sortPressMetrics(metrics);
+// --- Utilities & Subcomponents ---
+
+export const sortPressMetrics = (metrics: PressMetric[]): PressMetric[] => {
+  return [...metrics].sort((a, b) => {
+    const order = ['Lithoman', 'C818', 'C80'];
+    const idxA = order.indexOf(a.press);
+    const idxB = order.indexOf(b.press);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.press.localeCompare(b.press);
+  });
+};
+
+export const PressBreakdownText = ({ metrics, isLarge = false, showPercent = false }: { metrics: PressMetric[], isLarge?: boolean, showPercent?: boolean }) => {
+  if (!metrics || metrics.length === 0) return <div className="h-[14px]"></div>;
+
   return (
-    <div className="text-[10px] text-muted-foreground font-bold mt-1">
-      {sorted.map((p, i) => (
-        <span key={i}>
-          {i > 0 && ' // '}
-          {p.press}: {showPercent ? `${p.value}%` : (isLarge ? fmtNum(p.value.toString()) : p.value.toLocaleString('nl-NL'))}
-        </span>
+    <div className="flex items-center gap-x-2 gap-y-1 flex-wrap min-h-[14px]">
+      {metrics.map((m, i) => (
+        <div key={i} className="flex items-baseline gap-1 leading-none text-muted-foreground">
+          <span className={cn("font-semibold uppercase tracking-tighter opacity-60", isLarge ? "text-[10px]" : "text-[9px]")}>{m.press}:</span>
+          <span className={cn("font-semibold tracking-tight", isLarge ? "text-[11px]" : "text-[10px]")}>
+            {showPercent ? `${m.value}%` : m.value.toLocaleString()}
+          </span>
+        </div>
       ))}
     </div>
   );
 };
 
-// --- CONFIGURATION CONSTANTS ---
-// EDIT THESE TO CHANGE LAYOUT AND TYPOGRAPHY FROM ONE PLACE
-const LOG_CONFIG = {
-  columnWidths: {
-    netto: '82px',
-    groen: '82px',
-    rood: '72px'
-  }
+export const ProductionCard = ({ data }: { data: any }) => {
+  return (
+    <Card className="p-3 bg-card border shadow-sm flex flex-col gap-2 relative overflow-hidden group hover:border-primary/50 transition-colors">
+      <div className="flex items-center gap-3 relative z-10">
+        <div className={cn(
+          "size-10 rounded-xl flex items-center justify-center shrink-0",
+          data.status === 'critical' ? "bg-red-500/10" : "bg-primary/5"
+        )}>
+          <data.icon className={cn(
+            "w-5 h-5",
+            data.status === 'critical' ? "text-red-500" : "text-primary"
+          )} />
+        </div>
+        <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+          <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">{data.label}</div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-xl font-black leading-none tracking-tight">{data.mainValue}</div>
+            {data.sideValue && <div className="text-[10px] font-bold text-muted-foreground opacity-60 leading-none">{data.sideValue}</div>}
+          </div>
+          <div className="mt-0.5">
+            <PressBreakdownText metrics={data.pressBreakdown} showPercent={data.label === 'Productie' || data.label === 'Verlies' || data.label === 'Delta'} />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
 };
 
+export const MaintenanceCard = ({ title, count, breakdown, colorScheme }: { title: string, count: number, breakdown: PressMetric[], colorScheme: 'amber' | 'red' | 'green' }) => {
+  const colors = {
+    amber: { bg: 'bg-amber-500/10', text: 'text-amber-500', icon: Clock },
+    red: { bg: 'bg-red-500/10', text: 'text-red-500', icon: AlertCircle },
+    green: { bg: 'bg-green-500/10', text: 'text-green-500', icon: CheckCircle2 }
+  };
+  const Cfg = colors[colorScheme];
 
+  return (
+    <Card className="p-3 bg-card border shadow-sm flex flex-col gap-2 hover:border-primary/50 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className={cn("size-10 rounded-xl flex items-center justify-center shrink-0", Cfg.bg)}>
+          <Cfg.icon className={cn("w-5 h-5", Cfg.text)} />
+        </div>
+        <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+          <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">{title}</div>
+          <div className="text-xl font-black leading-none">{count}</div>
+          <div className="mt-0.5">
+            <PressBreakdownText metrics={breakdown} />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+};
 
-export function Overzicht() {
-  useAuth();
-  const navigate = useNavigate();
-  const [selectedLog, setSelectedLog] = useState<ActivityEvent | null>(null);
-  const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(new Set());
-  const [activities, setActivities] = useState<ActivityEvent[]>([]);
-  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
-  const [counters, setCounters] = useState<OsintCounterData[]>([]);
-  const [yearlyStats, setYearlyStats] = useState<YearlyStats>({
-    jobsCount: 0, versionsCount: 0, totalNetto: 0, pressJobs: [], pressNetto: []
+// --- Main Component ---
+
+export const Overzicht = () => {
+  const [activities, setActivities] = React.useState<ActivityEvent[]>([]);
+  const [counters, setCounters] = React.useState<any[]>([]);
+  const [timeRange, setTimeRange] = React.useState<'week' | 'lastWeek' | 'month' | 'lastMonth'>('week');
+  const [selectedLog, setSelectedLog] = React.useState<ActivityEvent | null>(null);
+  const [expandedOrders, setExpandedOrders] = React.useState<Set<string>>(new Set());
+  const [showOldOrders, setShowOldOrders] = React.useState(false);
+  const [jobDates, setJobDates] = React.useState<Record<string, string>>({});
+  const [currentRangeStart, setCurrentRangeStart] = React.useState<string>('');
+  const [yearlyStats, setYearlyStats] = React.useState({
+    jobsCount: 0,
+    versionsCount: 0,
+    totalNetto: 0,
+    pressJobs: [] as PressMetric[],
+    pressNetto: [] as PressMetric[]
   });
-  const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
-  const [maintenanceStats, setMaintenanceStats] = useState<MaintenanceStatsData>({
-    overdueInRange: { count: 0, pressBreakdown: [] },
-    alreadyOverdue: { count: 0, pressBreakdown: [] },
-    completedInRange: { count: 0, pressBreakdown: [] }
+  const [maintenanceStats, setMaintenanceStats] = React.useState({
+    overdueInRange: { count: 0, pressBreakdown: [] as PressMetric[] },
+    alreadyOverdue: { count: 0, pressBreakdown: [] as PressMetric[] },
+    completedInRange: { count: 0, pressBreakdown: [] as PressMetric[] }
   });
-  const [showOldOrders, setShowOldOrders] = useState(false);
-  const [jobDates, setJobDates] = useState<Record<string, string>>({});
-  const [currentRangeStart, setCurrentRangeStart] = useState<string>('');
 
-  useEffect(() => {
+  const now = new Date();
+  const weekLabel = `Deze week (W${getISOWeek(now)})`;
+  const lastWeekLabel = `W${getISOWeek(subWeeks(now, 1))}`;
+  const monthLabel = format(now, 'MMMM', { locale: nl });
+  const lastMonthLabel = format(subMonths(now, 1), 'MMMM', { locale: nl });
+
+  const getActiveRangeLabel = () => {
+    if (timeRange === 'week') return 'deze week';
+    if (timeRange === 'lastWeek') return 'vorige week';
+    if (timeRange === 'month') return 'deze maand';
+    return 'vorige maand';
+  };
+
+  React.useEffect(() => {
     fetchData();
     fetchMaintenanceData();
 
+    // Subscribe to changes
     pb.collection('drukwerken').subscribe('*', () => fetchData());
     pb.collection('activity_logs').subscribe('*', (e) => {
       if (e.action === 'create') {
@@ -158,6 +189,8 @@ export function Overzicht() {
           entityName: r.entity_name || r.entityName || '',
           details: r.details || '',
           newValue: r.newValue || r.newvalue || '',
+          oldValue: r.oldValue || r.oldvalue || '',
+          entityId: r.entity_id || r.entityId || '',
           status: getStatusFromAction(r.action)
         }, ...prev].slice(0, 150));
       }
@@ -172,68 +205,118 @@ export function Overzicht() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange]);
 
-  // --- DATA FETCHING ---
-  const fetchData = async (range: 'week' | 'month' = timeRange) => {
+  const getStatusFromAction = (action: string): 'info' | 'success' | 'warning' | 'error' => {
+    const a = action?.toLowerCase() || '';
+    if (a.includes('error') || a.includes('fail')) return 'error';
+    if (a.includes('delet') || a.includes('remove')) return 'warning';
+    if (a.includes('creat') || a.includes('complet') || a.includes('finish')) return 'success';
+    return 'info';
+  };
+
+  const fetchData = async (range: 'week' | 'lastWeek' | 'month' | 'lastMonth' = timeRange) => {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const yearStr = format(new Date(today.getFullYear(), 0, 1), 'yyyy-MM-dd');
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yearStr = format(new Date(now.getFullYear(), 0, 1), 'yyyy-MM-dd');
 
-      let rangeStart = new Date(today);
-      if (range === 'month') {
-        rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      let start: Date;
+      let end: Date | null = null;
+
+      if (range === 'week') {
+        start = startOfWeek(today, { weekStartsOn: 1 });
+      } else if (range === 'lastWeek') {
+        start = startOfWeek(subWeeks(today, 1), { weekStartsOn: 1 });
+        end = startOfWeek(today, { weekStartsOn: 1 });
+      } else if (range === 'month') {
+        start = startOfMonth(today);
       } else {
-        const dow = today.getDay();
-        rangeStart.setDate(today.getDate() - dow);
+        // lastMonth
+        start = startOfMonth(subMonths(today, 1));
+        end = startOfMonth(today);
       }
-      const rangeStr = format(rangeStart, 'yyyy-MM-dd');
 
-      const rangeFilter = `(date >= "${rangeStr}" || created >= "${rangeStr}")`;
-      const yearFilter = `(date >= "${yearStr}" || created >= "${yearStr}")`;
+      const startStr = format(start, 'yyyy-MM-dd');
+      const endStr = end ? format(end, 'yyyy-MM-dd') : null;
+
+      const rangeFilter = endStr
+        ? `((voltooid_op >= "${startStr}" && voltooid_op < "${endStr}") || (date >= "${startStr}" && date < "${endStr}"))`
+        : `(voltooid_op >= "${startStr}" || date >= "${startStr}")`;
+
+      const yearFilter = `(voltooid_op >= "${yearStr}" || date >= "${yearStr}")`;
+      const logsFilter = endStr
+        ? `created >= "${startStr}" && created < "${endStr}"`
+        : `created >= "${startStr}"`;
+
+      const fetchJobsResilient = async (filter: string) => {
+        try {
+          return await pb.collection('drukwerken').getFullList({
+            filter: filter,
+            sort: '-created',
+            expand: 'pers'
+          });
+        } catch (err: any) {
+          if (err.status === 400 && filter.includes('voltooid_op')) {
+            const fallbackFilter = filter.replace(/voltooid_op/g, 'date');
+            return await pb.collection('drukwerken').getFullList({
+              filter: fallbackFilter,
+              sort: '-created',
+              expand: 'pers'
+            });
+          }
+          throw err;
+        }
+      };
 
       const [rangeJobsRaw, logs, yearJobsRaw] = await Promise.all([
-        pb.collection('drukwerken').getFullList({ filter: rangeFilter, sort: '-created', expand: 'pers' }),
-        pb.collection('activity_logs').getList(1, 500, { filter: rangeFilter.replace('date', 'created'), sort: '-created' }),
-        pb.collection('drukwerken').getFullList({ filter: yearFilter, expand: 'pers' })
+        fetchJobsResilient(rangeFilter),
+        pb.collection('activity_logs').getList(1, 500, { filter: logsFilter, sort: '-created' }),
+        fetchJobsResilient(yearFilter)
       ]);
 
       const rangeJobs = rangeJobsRaw.filter(item => (item.groen || 0) !== 0 || (item.rood || 0) !== 0);
       const yearJobs = yearJobsRaw.filter(item => (item.groen || 0) !== 0 || (item.rood || 0) !== 0);
 
-      processProduction(rangeJobs);
+      processProduction(rangeJobs, startStr);
       processActivities(logs.items);
-      processYearlyStats(yearJobs);
+      processYearlyStats(yearJobs, yearStr);
 
-      // Track production dates for all jobs in range
       const dates: Record<string, string> = {};
       rangeJobsRaw.forEach(j => {
-        if (j.date) dates[j.id] = j.date.split(' ')[0];
+        if (j.voltooid_op) dates[j.id] = j.voltooid_op.split(' ')[0];
+        else if (j.date) dates[j.id] = j.date.split(' ')[0];
       });
       setJobDates(dates);
-      setCurrentRangeStart(rangeStr);
+      setCurrentRangeStart(startStr);
     } catch (err) {
       console.error("OSINT fetch failed:", err);
+      processProduction([], "");
+      processYearlyStats([], "");
     }
   };
 
-  const fetchMaintenanceData = async (range: 'week' | 'month' = timeRange) => {
+  const fetchMaintenanceData = async (range: 'week' | 'lastWeek' | 'month' | 'lastMonth' = timeRange) => {
     try {
       const tasks = await pb.collection('onderhoud').getFullList({ expand: 'pers' });
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      let rangeStart = new Date(today);
-      let rangeEnd = new Date(today);
+      let rangeStart: Date;
+      let rangeEnd: Date;
 
-      if (range === 'month') {
-        rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        rangeEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+      if (range === 'week') {
+        rangeStart = startOfWeek(today, { weekStartsOn: 1 });
+        rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (range === 'lastWeek') {
+        rangeStart = startOfWeek(subWeeks(today, 1), { weekStartsOn: 1 });
+        rangeEnd = new Date(startOfWeek(today, { weekStartsOn: 1 }));
+        rangeEnd.setMilliseconds(-1);
+      } else if (range === 'month') {
+        rangeStart = startOfMonth(today);
+        rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       } else {
-        const dow = today.getDay();
-        rangeStart.setDate(today.getDate() - dow);
-        rangeEnd = new Date(rangeStart);
-        rangeEnd.setDate(rangeStart.getDate() + 6);
-        rangeEnd.setHours(23, 59, 59, 999);
+        rangeStart = startOfMonth(subMonths(today, 1));
+        rangeEnd = startOfMonth(today);
+        rangeEnd.setMilliseconds(-1);
       }
 
       const overdueThisRange: any[] = [];
@@ -282,12 +365,23 @@ export function Overzicht() {
     }
   };
 
-  // --- DATA PROCESSING ---
-  const processProduction = (items: any[]) => {
+  const processProduction = (items: any[], rangeStartStr: string) => {
     const pressMap: Record<string, { green: number, red: number, planned: number }> = {};
     let totalGreen = 0, totalRed = 0, totalPlanned = 0;
 
+    if (!items || items.length === 0) {
+      setCounters([
+        { label: 'Productie', mainValue: '0', status: 'nominal', icon: AlertCircle, pressBreakdown: [] },
+        { label: 'Verlies', mainValue: '0.0%', sideValue: '0', status: 'nominal', icon: AlertCircle, pressBreakdown: [] },
+        { label: 'Delta', mainValue: '0.0%', sideValue: '0', status: 'nominal', icon: AlertCircle, pressBreakdown: [] }
+      ]);
+      return;
+    }
+
     items.forEach(item => {
+      const prodDate = item.voltooid_op?.split(' ')[0] || item.date?.split(' ')[0];
+      if (prodDate && rangeStartStr && prodDate < rangeStartStr) return;
+
       const press = item.expand?.pers?.naam || item.pers || 'Onbekend';
       if (!pressMap[press]) pressMap[press] = { green: 0, red: 0, planned: 0 };
       pressMap[press].green += (item.groen || 0);
@@ -313,49 +407,31 @@ export function Overzicht() {
     const deltaPercentageText = (deltaPercentage * 100).toFixed(1);
     const displayDelta = Number(deltaPercentageText) > 0 ? `+${deltaPercentageText}%` : `${deltaPercentageText}%`;
 
-    // Modified Productie calculation: count Netto if Groen > 0
     let totalProdNetto = 0;
     items.forEach(item => {
-      if ((item.groen || 0) > 0) {
-        totalProdNetto += (item.netto_oplage || 0);
-      }
+      if ((item.groen || 0) > 0) totalProdNetto += (item.netto_oplage || 0);
     });
 
     const lossPercentage = totalGreen > 0 ? (totalRed / totalGreen * 100).toFixed(1) : '0.0';
 
     setCounters([
-      {
-        label: 'Productie', mainValue: totalProdNetto.toLocaleString(),
-        pressBreakdown: pressGreen,
-        status: totalGreen < totalPlanned ? 'warning' : 'nominal',
-        icon: AlertCircle
-      },
-      {
-        label: 'Verlies', mainValue: `${lossPercentage}%`, sideValue: totalRed.toLocaleString(),
-        pressBreakdown: pressLoss,
-        status: parseFloat(lossPercentage) > 5 ? 'warning' : 'nominal', icon: AlertCircle
-      },
-      {
-        label: 'Delta', mainValue: displayDelta, sideValue: totalDelta.toLocaleString(),
-        pressBreakdown: pressDelta,
-        status: Math.abs(deltaPercentage) > 0.01
-          ? (totalDelta > 0 ? 'critical' : 'warning')
-          : 'nominal',
-        icon: AlertCircle
-      }
+      { label: 'Productie', mainValue: totalProdNetto.toLocaleString(), pressBreakdown: pressGreen, status: totalGreen < totalPlanned ? 'warning' : 'nominal', icon: AlertCircle },
+      { label: 'Verlies', mainValue: `${lossPercentage}%`, sideValue: totalRed.toLocaleString(), pressBreakdown: pressLoss, status: parseFloat(lossPercentage) > 5 ? 'warning' : 'nominal', icon: AlertCircle },
+      { label: 'Delta', mainValue: displayDelta, sideValue: totalDelta.toLocaleString(), pressBreakdown: pressDelta, status: Math.abs(deltaPercentage) > 0.01 ? (totalDelta > 0 ? 'critical' : 'warning') : 'nominal', icon: AlertCircle }
     ]);
   };
 
-  const processYearlyStats = (items: any[]) => {
+  const processYearlyStats = (items: any[], yearStartStr: string) => {
     const orderNumbers = new Set<string>();
     const orderByPress: Record<string, Set<string>> = {};
     const nettoMap: Record<string, number> = {};
-    let totalNetto = 0;
-    let versionsCount = 0;
+    let totalNetto = 0, versionsCount = 0;
 
     items.forEach(item => {
       const groen = item.groen || 0;
       if (groen <= 0) return;
+      const prodDate = item.voltooid_op?.split(' ')[0] || item.date?.split(' ')[0];
+      if (!prodDate || (yearStartStr && prodDate < yearStartStr)) return;
 
       const press = item.expand?.pers?.naam || item.pers || 'Onbekend';
       const orderNum = item.order_nummer || item.id;
@@ -398,13 +474,6 @@ export function Overzicht() {
     })));
   };
 
-  const getStatusFromAction = (action: string): 'info' | 'success' | 'warning' | 'error' => {
-    const a = action?.toLowerCase() || '';
-    if (a.includes('error') || a.includes('fail')) return 'error';
-    if (a.includes('delet') || a.includes('remove')) return 'warning';
-    if (a.includes('creat') || a.includes('complet') || a.includes('finish')) return 'success';
-    return 'info';
-  };
   const getOrderKey = (item: ActivityEvent) => {
     if (item.newValue) {
       const parts = item.newValue.split('|||');
@@ -412,8 +481,7 @@ export function Overzicht() {
       if (orderPart) return orderPart.split(':')[1].trim();
     }
     const match = item.entityName?.match(/DT\s*(\d+)/i);
-    if (match) return match[1];
-    return item.entityName || 'Onbekend';
+    return match ? match[1] : (item.entityName || 'Onbekend');
   };
 
   const getVersie = (item: ActivityEvent) => {
@@ -425,46 +493,31 @@ export function Overzicht() {
     return '';
   };
 
-  // --- Split activities ---
   const orderActivities = React.useMemo(() => {
     const raw = activities.filter(a => {
       const e = a.entity?.toLowerCase() || '';
       const d = a.details?.toLowerCase() || '';
       return e.includes('job') || e.includes('druk') || d.includes('druk') || d.includes('order') || e === 'finishedjob';
     });
-
     const latestPerJob = new Map<string, ActivityEvent>();
     raw.forEach(a => {
       const id = `${getOrderKey(a)}|${getVersie(a)}`;
-      if (!latestPerJob.has(id)) {
-        latestPerJob.set(id, a);
-      } else {
-        const existing = latestPerJob.get(id)!;
-        if (a.timestamp > existing.timestamp) {
-          latestPerJob.set(id, a);
-        }
-      }
+      if (!latestPerJob.has(id)) latestPerJob.set(id, a);
+      else if (a.timestamp > latestPerJob.get(id)!.timestamp) latestPerJob.set(id, a);
     });
-
     return Array.from(latestPerJob.values()).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [activities]);
 
   const groupedOrders = React.useMemo(() => {
     const groups = new Map<string, ActivityEvent[]>();
     orderActivities.forEach(a => {
-      // If showOldOrders is false (OFF), check if the job production date is old and skip it
+      const dayStr = format(a.timestamp, 'yyyy-MM-dd');
       if (!showOldOrders && a.entityId && currentRangeStart) {
         const prodDate = jobDates[a.entityId];
-        if (prodDate && prodDate < currentRangeStart) {
-          return; // Skip old order
-        }
-        // If it's a FinishedJob but not in jobDates, it's likely outside our range
-        if (a.entity === 'FinishedJob' && !prodDate) {
-          return;
-        }
+        if (prodDate && prodDate !== dayStr) return;
+        if (a.entity === 'FinishedJob' && !prodDate) return;
       }
-
-      const key = getOrderKey(a);
+      const key = `${dayStr}|${getOrderKey(a)}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(a);
     });
@@ -475,40 +528,6 @@ export function Overzicht() {
     });
   }, [orderActivities, showOldOrders, jobDates, currentRangeStart]);
 
-  const onderhoudActivities = activities.filter(a => {
-    const e = a.entity?.toLowerCase() || '';
-    const d = a.details?.toLowerCase() || '';
-    return e.includes('maintenance') || e.includes('onderhoud') || d.includes('onderhoud') || d.includes('task');
-  });;
-
-  // --- Helpers for log detail dialog ---
-  const formatDateTime = (date: Date) => {
-    const d = new Date(date);
-    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-
-  const getActionBadge = (action: string) => {
-    if (action === 'Created') return <Badge className="bg-green-500">Aangemaakt</Badge>;
-    if (action === 'Updated') return <Badge className="bg-blue-500">Bijgewerkt</Badge>;
-    if (action === 'Deleted') return <Badge className="bg-red-500">Verwijderd</Badge>;
-    return <Badge variant="secondary">{action}</Badge>;
-  };
-
-  const parseChanges = (oldStr: string, newStr: string) => {
-    if (!oldStr && !newStr) return [];
-    const split = (s: string) => s.includes('|||') ? s.split('|||') : s.split(' · ');
-    const oldParts = split(oldStr); const newParts = split(newStr);
-    const fieldNames = new Set<string>();
-    const oldMap = new Map<string, string>(); const newMap = new Map<string, string>();
-    const parse = (part: string, map: Map<string, string>) => {
-      const i = part.indexOf(': ');
-      if (i !== -1) { const f = part.substring(0, i); map.set(f, part.substring(i + 2)); fieldNames.add(f); }
-    };
-    oldParts.forEach(p => parse(p, oldMap)); newParts.forEach(p => parse(p, newMap));
-    return Array.from(fieldNames).map(f => ({ field: f, old: oldMap.get(f) || '-', new: newMap.get(f) || '-' }));
-  };
-
-  // --- Order Stream Renderer ---
   const renderOrderStream = (groupedItems: [string, ActivityEvent[]][]) => {
     const flatList: React.ReactNode[] = [];
     let lastDateStr: string | null = null;
@@ -521,9 +540,7 @@ export function Overzicht() {
       if (itemDayStr !== lastDateStr) {
         flatList.push(
           <div key={`date-${itemDayStr}-${groupIndex}`} className="flex items-end gap-1 mt-3 mb-0.5 first:mt-0 opacity-50 select-none">
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-              {format(itemDate, 'EEEE d MMM', { locale: nl }).toUpperCase()}
-            </span>
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest whitespace-nowrap">{format(itemDate, 'EEEE d MMM', { locale: nl }).toUpperCase()}</span>
             <div className="flex-1 border-b border-muted-foreground/30 h-[1.5px] mb-[1.5px] opacity-20"></div>
           </div>
         );
@@ -531,40 +548,31 @@ export function Overzicht() {
       }
 
       const isExpanded = expandedOrders.has(orderKey);
-      const hasMultiple = events.length > 1;
-
       const toggleOrder = (e: React.MouseEvent) => {
         e.stopPropagation();
         setExpandedOrders(prev => {
           const next = new Set(prev);
-          if (next.has(orderKey)) next.delete(orderKey);
-          else next.add(orderKey);
+          if (next.has(orderKey)) next.delete(orderKey); else next.add(orderKey);
           return next;
         });
       };
 
-      const renderSingleItem = (item: ActivityEvent, isChild = false, customPrefix?: React.ReactNode) => {
-        let netto = 0, groen = 0, rood = 0, versie = '', typeLabel = '';
+      const renderSingleItem = (item: ActivityEvent, isChild = false) => {
+        let groen = 0, rood = 0, typeLabel = '';
         if (item.newValue) {
-          const parts = item.newValue.split('|||');
-          parts.forEach(p => {
+          item.newValue.split('|||').forEach(p => {
             const [f, v] = p.split(':').map(s => s.trim());
             const numV = Number(v?.replace(/[.,]/g, '')) || 0;
-            if (f === 'Netto') netto = numV;
-            if (f === 'Groen') groen = numV;
-            if (f === 'Rood') rood = numV;
-            if (f === 'Versie') versie = v;
-            if (['4/4', '4/0', '1/0', '1/1', '4/1'].includes(f) && numV > 0) typeLabel = f;
+            if (f === 'Groen') groen = numV; else if (f === 'Rood') rood = numV;
+            else if (['4/4', '4/0', '1/0', '1/1', '4/1'].includes(f) && numV > 0) typeLabel = f;
           });
         }
-
         let displayUser = item.user;
         if (displayUser) {
           if (/MAN Lithoman/i.test(displayUser)) displayUser = 'Lithoman';
           else if (/KBA C818/i.test(displayUser)) displayUser = 'C818';
           else if (/KBA C80/i.test(displayUser)) displayUser = 'C80';
         }
-
         let textStr = item.entityName || item.details || '';
         const pMatchers = [{ prefix: 'MAN LITHOMAN' }, { prefix: 'LITHOMAN' }, { prefix: 'KBA C818' }, { prefix: 'C818' }, { prefix: 'C80' }];
         for (const m of pMatchers) {
@@ -574,907 +582,237 @@ export function Overzicht() {
             break;
           }
         }
-
         return (
-          <div
-            key={item.id}
-            className={cn(
-              "text-[11px] border-l-2 pl-2.5 py-0.5 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-r cursor-pointer group",
-              isChild ? "ml-6 border-muted/20" : "border-muted hover:border-primary"
-            )}
-            onClick={() => setSelectedLog(item)}
-          >
+          <div key={item.id} className={cn("text-[11px] border-l-2 pl-2.5 py-0.5 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-r cursor-pointer group", isChild ? "ml-6 border-muted/20" : "border-muted hover:border-primary")} onClick={() => setSelectedLog(item)}>
             <span className="text-muted-foreground font-mono shrink-0 w-[42px] text-right">[{format(item.timestamp, 'HH:mm')}]</span>
-
             <div className="flex items-center gap-1.5 shrink-0">
               {!isChild ? <div className="w-3.5 h-3.5" /> : null}
               <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", isChild ? "bg-muted-foreground/30" : "bg-primary")}></span>
             </div>
-
             {!isChild && (
               <div className="w-[92px] shrink-0 flex items-center">
                 <span className="px-1.5 py-0.5 rounded-md bg-muted/60 text-[9px] font-black text-muted-foreground uppercase tracking-tight shadow-sm border border-muted/30 whitespace-nowrap">{displayUser}</span>
               </div>
             )}
-
             <div className="flex flex-1 items-center min-w-0">
-              {customPrefix}
-              <span className={cn(
-                "text-muted-foreground truncate group-hover:text-foreground transition-colors",
-                isChild && "ml-[148px]"
-              )}>
-                {isChild ? (versie || textStr) : textStr}
-              </span>
-              {!isChild && versie && versie !== '-' && (
-                <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-widest text-primary/70 bg-primary/10 border border-primary/20 shrink-0">{versie}</span>
-              )}
+              <div className="flex items-center gap-2 overflow-hidden">
+                <span className="font-bold truncate">{item.action === 'Deleted' ? `VERWIJDERD: ${textStr}` : textStr}</span>
+                {item.entity === 'FinishedJob' && item.newValue && (
+                  <div className="flex items-center gap-2 text-muted-foreground shrink-0">
+                    <div className="w-px h-3 bg-muted-foreground/20"></div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-bold border-muted-foreground/20">{typeLabel || 'Druk'}</Badge>
+                      <span className="font-black text-primary">{groen.toLocaleString()}</span>
+                      <span className="text-[9px] font-bold uppercase opacity-50">G</span>
+                      {rood > 0 && (
+                        <>
+                          <span className="font-black text-red-500">{rood.toLocaleString()}</span>
+                          <span className="text-[9px] font-bold uppercase opacity-50">R</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-
-            <div className="ml-auto flex items-center gap-1.5 shrink-0">
-              {typeLabel && (
-                <div className="px-1.5 py-0.5 rounded bg-gray-100 text-[9px] font-bold text-gray-600 border border-gray-200">
-                  {typeLabel}
-                </div>
-              )}
-
-              <div
-                className="flex justify-between shrink-0 text-blue-700 bg-blue-500/15 px-1.5 py-0.5 rounded font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.netto }}
-              >
-                <span className="opacity-70 text-[9px]">N:</span><span className="font-bold text-[10px]">{netto > 0 ? fmtNum(netto.toString()) : '0'}</span>
-              </div>
-
-              <div
-                className="flex justify-between shrink-0 text-emerald-700 bg-emerald-500/15 px-1.5 py-0.5 rounded font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.groen }}
-              >
-                <span className="opacity-70 text-[9px]">G:</span><span className="font-bold text-[10px]">{groen > 0 ? fmtNum(groen.toString()) : '0'}</span>
-              </div>
-
-              <div
-                className="flex justify-between shrink-0 text-red-700 bg-red-500/15 px-1.5 py-0.5 rounded font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.rood }}
-              >
-                <span className="opacity-70 text-[9px]">R:</span><span className="font-bold text-[10px]">{rood > 0 ? fmtNum(rood.toString()) : '0'}</span>
-              </div>
+            {isChild && <div className="flex-1"></div>}
+            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+              <ChevronRight className="w-3 h-3 text-muted-foreground" />
             </div>
           </div>
         );
       };
-
-      if (!hasMultiple) {
-        flatList.push(renderSingleItem(latestEvent));
-      } else {
-        // Parent row logic
-        let totalNetto = 0, totalGroen = 0, totalRood = 0;
-        const typeCounts: Record<string, number> = {};
-
-        // Deduplicate events by version to get the latest state of each version
-        const latestVersionLogs = new Map<string, ActivityEvent>();
-        events.forEach(item => {
-          let versie = '-';
-          if (item.newValue) {
-            const vPart = item.newValue.split('|||').find(p => p.startsWith('Versie:'));
-            if (vPart) versie = vPart.split(':')[1].trim();
-          }
-          if (!latestVersionLogs.has(versie)) {
-            latestVersionLogs.set(versie, item);
-          }
-        });
-
-        latestVersionLogs.forEach(item => {
-          if (item.newValue) {
-            const parts = item.newValue.split('|||');
-            parts.forEach(p => {
-              const [f, v] = p.split(':').map(s => s.trim());
-              const numV = Number(v?.replace(/[.,]/g, '')) || 0;
-              if (f === 'Netto') totalNetto += numV;
-              if (f === 'Groen') totalGroen += numV;
-              if (f === 'Rood') totalRood += numV;
-              if (['4/4', '4/0', '1/0', '1/1', '4/1'].includes(f) && numV > 0) {
-                typeCounts[f] = (typeCounts[f] || 0) + 1;
-              }
-            });
-          }
-        });
-
-        const parentText = latestEvent.entityName; // Use full name (ordernr - ordername)
-        const pMatchers = [{ prefix: 'MAN LITHOMAN' }, { prefix: 'LITHOMAN' }, { prefix: 'KBA C818' }, { prefix: 'C818' }, { prefix: 'C80' }];
-        let displayTitle = parentText;
-        for (const m of pMatchers) {
-          if (displayTitle.toUpperCase().startsWith(m.prefix)) {
-            displayTitle = displayTitle.slice(m.prefix.length).trim();
-            if (displayTitle.startsWith('- ')) displayTitle = displayTitle.slice(2);
-            break;
-          }
-        }
-
-        flatList.push(
-          <div
-            key={`parent-${orderKey}`}
-            className="text-[11px] border-l-2 border-primary/40 pl-2.5 py-1 flex items-center gap-3 bg-primary/5 hover:bg-primary/10 transition-colors rounded-r cursor-pointer group mb-0.5"
-            onClick={toggleOrder}
-          >
-            <span className="text-muted-foreground font-mono shrink-0 w-[42px] text-right">[{format(latestEvent.timestamp, 'HH:mm')}]</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-primary" /> : <ChevronRight className="w-3.5 h-3.5 text-primary" />}
-              <span className={cn("w-1.5 h-1.5 rounded-full", "bg-primary")}></span>
-            </div>
-
-            <div className="w-[92px] shrink-0 flex items-center">
-              {(() => {
-                let displayUser = latestEvent.user;
-                if (displayUser) {
-                  if (/MAN Lithoman/i.test(displayUser)) displayUser = 'Lithoman';
-                  else if (/KBA C818/i.test(displayUser)) displayUser = 'C818';
-                  else if (/KBA C80/i.test(displayUser)) displayUser = 'C80';
-                }
-                return <span className="px-1.5 py-0.5 rounded-md bg-muted/60 text-[9px] font-black text-muted-foreground uppercase tracking-tight shadow-sm border border-muted/30 whitespace-nowrap">{displayUser}</span>;
-              })()}
-            </div>
-
-            <div className="flex flex-1 items-center min-w-0">
-              <span className="text-foreground/80 truncate">{displayTitle}</span>
-              <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded text-gray-600 border border-gray-200 uppercase tracking-tighter shrink-0 flex items-center gap-1 shadow-sm">
-                <Layers className="w-2.5 h-2.5" /> {events.length} VERSIES
-              </span>
-            </div>
-
-            <div className="ml-auto flex items-center gap-1.5 shrink-0">
-              {/* Type summary cards */}
-              <div className="flex gap-1 mr-2">
-                {Object.entries(typeCounts).map(([type, count]) => (
-                  <div key={type} className="px-1.5 py-0.5 rounded bg-white shadow-sm border border-primary/20 text-[9px] font-bold text-primary italic">
-                    {count}x {type}
-                  </div>
-                ))}
-              </div>
-
-              <div
-                className="flex justify-between shrink-0 text-blue-700 bg-blue-700/10 px-1.5 py-0.5 rounded border border-blue-200 font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.netto }}
-              >
-                <span className="opacity-70 text-[9px]">ΣN:</span><span className="font-black text-[10px]">{totalNetto > 0 ? fmtNum(totalNetto.toString()) : '0'}</span>
-              </div>
-
-              <div
-                className="flex justify-between shrink-0 text-emerald-700 bg-emerald-700/10 px-1.5 py-0.5 rounded border border-emerald-200 font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.groen }}
-              >
-                <span className="opacity-70 text-[9px]">ΣG:</span><span className="font-black text-[10px]">{totalGroen > 0 ? fmtNum(totalGroen.toString()) : '0'}</span>
-              </div>
-
-              <div
-                className="flex justify-between shrink-0 text-red-700 bg-red-700/10 px-1.5 py-0.5 rounded border border-red-200 font-mono"
-                style={{ width: LOG_CONFIG.columnWidths.rood }}
-              >
-                <span className="opacity-70 text-[9px]">ΣR:</span><span className="font-black text-[10px]">{totalRood > 0 ? fmtNum(totalRood.toString()) : '0'}</span>
-              </div>
-            </div>
-          </div>
-        );
-
-        if (isExpanded) {
-          events.forEach(child => {
-            flatList.push(renderSingleItem(child, true));
-          });
-        }
-      }
+      flatList.push(
+        <div key={orderKey} className="relative group">
+          {events.length > 1 && (
+            <button onClick={toggleOrder} className="absolute left-[54px] top-[4px] z-10 w-3.5 h-3.5 rounded bg-muted/50 hover:bg-muted border border-muted-foreground/10 flex items-center justify-center transition-colors">
+              <Plus className={cn("w-2.5 h-2.5 transition-transform", isExpanded && "rotate-45")} />
+            </button>
+          )}
+          {renderSingleItem(latestEvent)}
+          {isExpanded && <div className="flex flex-col">{events.slice(1).map(child => renderSingleItem(child, true))}</div>}
+        </div>
+      );
     });
-
     return flatList;
   };
 
-  // --- Maintenance Activity Stream Renderer ---
-  const renderActivityStream = (items: ActivityEvent[]) => {
-    return items.reduce((acc: React.ReactNode[], item, index, array) => {
-      const itemDate = new Date(item.timestamp);
-      const itemDayStr = format(itemDate, 'yyyy-MM-dd');
-      const prevItem = index > 0 ? (array[index - 1] as any) : null;
-      const prevDayStr = prevItem ? format(new Date(prevItem.timestamp), 'yyyy-MM-dd') : null;
-
-      if (itemDayStr !== prevDayStr) {
-        acc.push(
-          <div key={`date-${itemDayStr}-${index}`} className="flex items-end gap-1 mt-2 mb-0.5 first:mt-0 opacity-50 select-none">
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-              {format(itemDate, 'EEEE d MMM', { locale: nl }).toUpperCase()}
-            </span>
-            <div className="flex-1 border-b border-muted-foreground/30 h-[1.5px] mb-[1.5px] opacity-20"></div>
-          </div>
-        );
-      }
-
-      let prodData = null;
-      let versieBadge = null;
-      if ((item.entity as string) === 'FinishedJob' && item.newValue) {
-        const parts = item.newValue.split('|||');
-        let netto = '', groen = '', rood = '', versie = '';
-        parts.forEach((p: string) => {
-          if (p.startsWith('Netto:')) netto = p.split(':')[1].trim();
-          if (p.startsWith('Groen:')) groen = p.split(':')[1].trim();
-          if (p.startsWith('Rood:')) rood = p.split(':')[1].trim();
-          if (p.startsWith('Versie:')) versie = p.split(':')[1].trim();
-        });
-
-        if (versie && versie !== '-') {
-          versieBadge = <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-widest text-primary/70 bg-primary/10 border border-primary/20 shrink-0">{versie}</span>;
-        }
-
-        if (netto || groen || rood) {
-          prodData = (
-            <div className="flex items-center gap-1.5 ml-auto text-[10px] font-mono shrink-0">
-              <div
-                className="flex justify-between shrink-0 text-blue-700 bg-blue-500/15 px-1.5 py-0.5 rounded"
-                style={{ width: LOG_CONFIG.columnWidths.netto }}
-              >
-                <span className="opacity-70">N:</span><span className="font-bold">{netto ? fmtNum(netto) : '0'}</span>
-              </div>
-              <div
-                className="flex justify-between shrink-0 px-1.5 py-0.5 rounded text-emerald-900 bg-emerald-500/20"
-                style={{ width: LOG_CONFIG.columnWidths.groen }}
-              >
-                <span className="opacity-70">G:</span><span className="font-bold">{groen ? fmtNum(groen) : '0'}</span>
-              </div>
-              <div
-                className="flex justify-between shrink-0 text-red-700 bg-red-500/15 px-1.5 py-0.5 rounded"
-                style={{ width: LOG_CONFIG.columnWidths.rood }}
-              >
-                <span className="opacity-70">R:</span><span className="font-bold">{rood ? fmtNum(rood) : '0'}</span>
-              </div>
-            </div>
-          );
-        }
-      }
-
-      let maintenanceData = null;
-      if ((item.entity as string) === 'Task' && item.newValue) {
-        const parts = item.newValue.split('|||');
-        let operators = '';
-        parts.forEach((p: string) => {
-          if (p.includes('Operators:')) {
-            const val = p.split('Operators:')[1]?.trim();
-            if (val && !/Niemand/i.test(val)) operators = val;
-          }
-        });
-        if (operators) {
-          maintenanceData = (
-            <div className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-[9px] font-black text-indigo-700 uppercase tracking-tight shadow-sm border border-indigo-500/20 max-w-[140px] truncate ml-auto">
-              {operators}
-            </div>
-          );
-        }
-      }
-
-      let textStr = item.entityName || item.details || '';
-      const pMatchers = [
-        { prefix: 'MAN LITHOMAN', display: 'Lithoman' },
-        { prefix: 'LITHOMAN', display: 'Lithoman' },
-        { prefix: 'KBA C818', display: 'C818' },
-        { prefix: 'C818', display: 'C818' },
-        { prefix: 'C80', display: 'C80' }
-      ];
-
-      for (const m of pMatchers) {
-        if (textStr.toUpperCase().startsWith(m.prefix)) {
-          textStr = textStr.slice(m.prefix.length).trim();
-          if (textStr.startsWith('- ')) textStr = textStr.slice(2);
-          break;
-        }
-      }
-
-      let displayUser = item.user;
-      if (displayUser) {
-        if (/MAN Lithoman/i.test(displayUser)) displayUser = 'Lithoman';
-        else if (/KBA C818/i.test(displayUser)) displayUser = 'C818';
-        else if (/KBA C80/i.test(displayUser)) displayUser = 'C80';
-      }
-
-      acc.push(
-        <div
-          key={item.id}
-          className="text-[11px] border-l-2 border-muted pl-2.5 py-0.5 flex items-center gap-3 hover:border-primary hover:bg-muted/50 transition-colors rounded-r cursor-pointer group"
-          onClick={() => setSelectedLog(item)}
-        >
-          <span className="text-muted-foreground font-mono shrink-0 w-[42px] text-right">[{format(item.timestamp, 'HH:mm')}]</span>
-          <span className={cn(
-            "w-1.5 h-1.5 rounded-full shrink-0",
-            (item.entity as string) === 'FinishedJob' ? "bg-primary" : "bg-indigo-500"
-          )}></span>
-          <div className="w-[92px] shrink-0 flex items-center">
-            <span className="px-1.5 py-0.5 rounded-md bg-muted/60 text-[9px] font-black text-muted-foreground uppercase tracking-tight shadow-sm border border-muted/30 whitespace-nowrap">{displayUser}</span>
-          </div>
-          <span className="text-muted-foreground truncate group-hover:text-foreground transition-colors flex flex-1 items-center">
-            {textStr}
-            {versieBadge}
-          </span>
-          <div className="ml-auto flex items-center gap-2 shrink-0">
-            {prodData}
-            {maintenanceData}
-          </div>
-        </div>
-      );
-      return acc;
-    }, []);
-  };
-
-  // --- Production Card ---
-  const ProductionCard = ({ data }: { data: OsintCounterData }) => {
-    const sorted = sortPressMetrics(data.pressBreakdown);
-    return (
-      <Card
-        className="p-2 bg-card border shadow-sm cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-        onClick={() => navigate('/Analyses/statistieken/productie')}
-      >
-        <div className="flex items-center gap-3 mb-1">
-          <div className={cn(
-            "size-10 rounded flex items-center justify-center",
-            data.status === 'nominal' ? "bg-green-500/5" : data.status === 'warning' ? "bg-amber-500/5" : "bg-red-500/5"
-          )}>
-            <data.icon className={cn(
-              "w-5 h-5",
-              data.status === 'nominal' ? "text-green-500" : data.status === 'warning' ? "text-amber-500" : "text-red-500"
-            )} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">{data.label}</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black leading-tight">{data.mainValue}</span>
-              {data.sideValue && <span className="text-base font-bold text-muted-foreground">{data.sideValue}</span>}
-            </div>
-            <PressBreakdownText metrics={sorted} isLarge={data.label.toLowerCase().includes('oplage') || data.label.toLowerCase().includes('productie')} showPercent />
-          </div>
-        </div>
-      </Card>
-    );
-  };
-
-  // --- Maintenance Card ---
-  const MaintenanceCard = ({ title, count, breakdown, colorScheme }: {
-    title: string; count: number; breakdown: PressMetric[];
-    colorScheme: 'red' | 'amber' | 'green';
-  }) => {
-    const colors = {
-      red: { bg: 'bg-red-500/10', text: 'text-red-500' },
-      amber: { bg: 'bg-amber-500/10', text: 'text-amber-500' },
-      green: { bg: 'bg-green-500/10', text: 'text-green-500' }
+  const parseChanges = (oldStr: string, newStr: string) => {
+    if (!oldStr && !newStr) return [];
+    const split = (s: string) => s.includes('|||') ? s.split('|||') : s.split(' · ');
+    const oldParts = split(oldStr), newParts = split(newStr);
+    const fieldNames = new Set<string>(), oldMap = new Map<string, string>(), newMap = new Map<string, string>();
+    const parse = (part: string, map: Map<string, string>) => {
+      const i = part.indexOf(': ');
+      if (i !== -1) { const f = part.substring(0, i); map.set(f, part.substring(i + 2)); fieldNames.add(f); }
     };
-    const scheme = count > 0 ? colors[colorScheme] : colors.green;
-    const IconComp = colorScheme === 'green' ? CheckCircle2 : AlertCircle;
-    const sorted = sortPressMetrics(breakdown);
-
-    return (
-      <Card
-        className="p-2 bg-card border shadow-sm cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-        onClick={() => navigate('/Analyses/statistieken/onderhoud')}
-      >
-        <div className="flex items-center gap-3 mb-1">
-          <div className={cn("size-10 rounded flex items-center justify-center", scheme.bg)}>
-            <IconComp className={cn("w-5 h-5", scheme.text)} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">{title}</div>
-            <div className="text-2xl font-black leading-tight">{count}</div>
-            <PressBreakdownText metrics={sorted} />
-          </div>
-        </div>
-      </Card>
-    );
+    oldParts.forEach(p => parse(p, oldMap)); newParts.forEach(p => parse(p, newMap));
+    return Array.from(fieldNames).map(f => ({ field: f, old: oldMap.get(f) || '-', new: newMap.get(f) || '-' }));
   };
 
-  // --- RENDER ---
+  const formatDateTime = (date: Date) => {
+    const d = new Date(date);
+    const dayName = format(d, 'EEEE d MMMM', { locale: nl });
+    return `${dayName} om ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const getActionBadge = (action: string) => {
+    if (action === 'Created') return <Badge className="bg-green-500 uppercase tracking-widest font-black text-[9px]">Aangemaakt</Badge>;
+    if (action === 'Updated') return <Badge className="bg-blue-500 uppercase tracking-widest font-black text-[9px]">Bijgewerkt</Badge>;
+    if (action === 'Deleted') return <Badge className="bg-red-500 uppercase tracking-widest font-black text-[9px]">Verwijderd</Badge>;
+    return <Badge variant="secondary" className="uppercase tracking-widest font-black text-[9px]">{action}</Badge>;
+  };
+
   return (
-    <div className="flex flex-col h-[calc(95vh-var(--header-height,64px))] bg-background text-foreground p-2 gap-3 overflow-hidden">
-
-      {/* TOP HEADER ROW */}
-      <div className="flex items-center gap-4 justify-between flex-wrap shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="size-12 rounded-lg bg-card border flex items-center justify-center">
-            <Radio className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tighter uppercase">OVERZICHT</h1>
-              <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as 'week' | 'month')}>
-                <TabsList className="tab-pill-list">
-                  <TabsTrigger value="week" className="tab-pill-trigger">Week</TabsTrigger>
-                  <TabsTrigger value="month" className="tab-pill-trigger">Maand</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-            <div className="flex items-center gap-2 text-[12px] uppercase tracking-widest text-muted-foreground font-bold">
-              <span className="text-green-600 flex items-center gap-1">
-                <div className="size-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                LIVE
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Yearly KPIs */}
-        <div className="grid grid-cols-3 gap-4 w-[calc(50%-12px)]">
-          <Card className="p-3 bg-card border shadow-sm h-full flex flex-col justify-center col-start-2">
-            <div className="flex items-center gap-3">
-              <div className="size-10 bg-primary/5 rounded flex items-center justify-center shrink-0">
-                <Layers className="w-5 h-5 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs {new Date().getFullYear()}</div>
-                <div className="flex items-baseline gap-2">
-                  <div className="text-lg font-black leading-tight">{yearlyStats.jobsCount.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">{yearlyStats.versionsCount} versies</div>
+    <div className="p-6 flex flex-col gap-4 h-[calc(100vh-56px)] overflow-hidden bg-background/50 font-sans">
+      <div className="flex flex-col gap-0 shrink-0">
+        {/* HEADER: KPI Strip */}
+        <div className="flex items-stretch gap-6 shrink-0">
+          <div className="flex-1 flex flex-col justify-center">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2 bg-primary/10 rounded-xl"><BarChart3 className="w-6 h-6 text-primary" /></div>
+              <div>
+                <h1 className="text-2xl font-black tracking-tight leading-none uppercase">Overzicht</h1>
+                <div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                  <span className="text-green-600 flex items-center gap-1"><div className="size-1.5 rounded-full bg-green-500 animate-pulse"></div>LIVE</span>
                 </div>
-                <PressBreakdownText metrics={yearlyStats.pressJobs} showPercent />
               </div>
+              <Card className="ml-29 flex-shrink-0 bg-card border shadow-sm overflow-hidden self-center p-0 h-full">
+                <div className="grid grid-cols-2 h-full min-w-[220px]">
+                  {/* Current Row */}
+                  <Button
+                    variant={timeRange === 'week' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-auto py-3 px-4 font-bold text-[12px] uppercase tracking-tight flex items-center justify-center whitespace-nowrap rounded-none border-b border-r"
+                    onClick={() => setTimeRange('week')}
+                  >
+                    {weekLabel}
+                  </Button>
+                  <Button
+                    variant={timeRange === 'month' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-auto py-3 px-4 font-bold text-[12px] uppercase tracking-tight flex items-center justify-center whitespace-nowrap rounded-none border-b"
+                    onClick={() => setTimeRange('month')}
+                  >
+                    {monthLabel}
+                  </Button>
+
+                  {/* Previous Row */}
+                  <Button
+                    variant={timeRange === 'lastWeek' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-auto py-2 px-4 font-bold text-[10px] uppercase tracking-tight flex items-center justify-center opacity-70 whitespace-nowrap rounded-none border-r"
+                    onClick={() => setTimeRange('lastWeek')}
+                  >
+                    {lastWeekLabel}
+                  </Button>
+                  <Button
+                    variant={timeRange === 'lastMonth' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-auto py-2 px-4 font-bold text-[10px] uppercase tracking-tight flex items-center justify-center opacity-70 whitespace-nowrap rounded-none"
+                    onClick={() => setTimeRange('lastMonth')}
+                  >
+                    {lastMonthLabel}
+                  </Button>
+                </div>
+              </Card>
             </div>
-          </Card>
-          <Card className="p-3 bg-card border shadow-sm h-full flex flex-col justify-center col-start-3">
-            <div className="flex items-center gap-3">
-              <div className="size-10 bg-green-500/5 rounded flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5 text-green-500" />
+          </div>
+          <div className="grid grid-cols-3 gap-4 w-[calc(50%-12px)]">
+            <Card className="p-3 bg-card border shadow-sm h-full flex flex-col justify-center col-start-2">
+              <div className="flex items-center gap-3">
+                <div className="size-10 bg-primary/5 rounded flex items-center justify-center shrink-0"><Layers className="w-5 h-5 text-primary" /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Jobs {new Date().getFullYear()}</div>
+                  <div className="flex items-baseline gap-2">
+                    <div className="text-lg font-black leading-tight">{yearlyStats.jobsCount.toLocaleString()}</div>
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">{yearlyStats.versionsCount} versies</div>
+                  </div>
+                  <PressBreakdownText metrics={yearlyStats.pressJobs} showPercent />
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Netto {new Date().getFullYear()}</div>
-                <div className="text-lg font-black leading-tight">{yearlyStats.totalNetto.toLocaleString()}</div>
-                <PressBreakdownText metrics={yearlyStats.pressNetto} isLarge showPercent />
+            </Card>
+            <Card className="p-3 bg-card border shadow-sm h-full flex flex-col justify-center col-start-3">
+              <div className="flex items-center gap-3">
+                <div className="size-10 bg-green-500/5 rounded flex items-center justify-center shrink-0"><CheckCircle2 className="w-5 h-5 text-green-500" /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider truncate">Netto {new Date().getFullYear()}</div>
+                  <div className="text-lg font-black leading-tight">{yearlyStats.totalNetto.toLocaleString()}</div>
+                  <PressBreakdownText metrics={yearlyStats.pressNetto} isLarge showPercent />
+                </div>
               </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* MIDDLE BODY: Left = Productie, Right = Onderhoud */}
+        <div className="flex gap-6 shrink-0 mt-[-14px]">
+          <div className="flex-1 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-muted-foreground"><Zap className="w-3.5 h-3.5" /> Productie ({getActiveRangeLabel()})</div>
+            <div className="grid grid-cols-3 gap-4">{counters.map((c, i) => <ProductionCard key={i} data={c} />)}</div>
+          </div>
+          <div className="flex-1 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-muted-foreground"><Wrench className="w-3.5 h-3.5" /> Onderhoud ({getActiveRangeLabel()})</div>
+            <div className="grid grid-cols-3 gap-4">
+              <MaintenanceCard title={timeRange === 'week' || timeRange === 'lastWeek' ? (timeRange === 'week' ? "Vervalt deze week" : "Verviel vorige week") : (timeRange === 'month' ? "Vervalt deze maand" : "Verviel vorige maand")} count={maintenanceStats.overdueInRange.count} breakdown={maintenanceStats.overdueInRange.pressBreakdown} colorScheme="amber" />
+              <MaintenanceCard title="Achterstallig" count={maintenanceStats.alreadyOverdue.count} breakdown={maintenanceStats.alreadyOverdue.pressBreakdown} colorScheme="red" />
+              <MaintenanceCard title={timeRange === 'week' || timeRange === 'lastWeek' ? (timeRange === 'week' ? "Afgerond deze week" : "Afgerond vorige week") : (timeRange === 'month' ? "Afgerond deze maand" : "Afgerond vorige maand")} count={maintenanceStats.completedInRange.count} breakdown={maintenanceStats.completedInRange.pressBreakdown} colorScheme="green" />
             </div>
-          </Card>
+          </div>
         </div>
       </div>
 
-      {/* MIDDLE BODY: Left = Productie, Right = Onderhoud */}
-      <div className="flex gap-6 shrink-0">
-        {/* Productie (left) */}
-        <div className="flex-1 flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-muted-foreground">
-            <Zap className="w-3.5 h-3.5" /> Productie ({timeRange === 'week' ? 'deze week' : 'deze maand'})
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {counters.map((c, i) => <ProductionCard key={i} data={c} />)}
-          </div>
-        </div>
-
-        {/* Onderhoud (right) */}
-        <div className="flex-1 flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-muted-foreground">
-            <Wrench className="w-3.5 h-3.5" /> Onderhoud ({timeRange === 'week' ? 'deze week' : 'deze maand'})
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <MaintenanceCard
-              title={timeRange === 'week' ? "Vervalt deze week" : "Vervalt deze maand"}
-              count={maintenanceStats.overdueInRange.count}
-              breakdown={maintenanceStats.overdueInRange.pressBreakdown}
-              colorScheme="amber"
-            />
-            <MaintenanceCard
-              title="Achterstallig"
-              count={maintenanceStats.alreadyOverdue.count}
-              breakdown={maintenanceStats.alreadyOverdue.pressBreakdown}
-              colorScheme="red"
-            />
-            <MaintenanceCard
-              title={timeRange === 'week' ? "Afgerond deze week" : "Afgerond deze maand"}
-              count={maintenanceStats.completedInRange.count}
-              breakdown={maintenanceStats.completedInRange.pressBreakdown}
-              colorScheme="green"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* BOTTOM: Two Activity Streams (pinned, fill remaining space) */}
+      {/* BOTTOM: Activities */}
       <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
-        {/* Orders Stream (left) */}
         <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0">
           <div className="py-2 px-4 border-b flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Orders</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 cursor-pointer group">
-                <span className="text-[9px] font-bold text-muted-foreground group-hover:text-foreground transition-colors uppercase tracking-tighter">Aangepaste jobs</span>
-                <div
-                  onClick={() => setShowOldOrders(!showOldOrders)}
-                  className={cn(
-                    "w-7 h-4 rounded-full transition-colors relative flex items-center px-0.5",
-                    showOldOrders ? "bg-primary" : "bg-muted-foreground/30"
-                  )}
-                >
-                  <div className={cn(
-                    "w-3 h-3 bg-white rounded-full shadow-sm transition-transform",
-                    showOldOrders ? "translate-x-3" : "translate-x-0"
-                  )} />
-                </div>
-              </label>
-            </div>
+            <div className="flex items-center gap-2"><Activity className="w-3.5 h-3.5 text-primary" /><span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Orders</span></div>
+            <div className="flex items-center gap-2"><label className="flex items-center gap-1.5 cursor-pointer group"><span className="text-[9px] font-bold text-muted-foreground group-hover:text-foreground transition-colors uppercase tracking-tighter">Aangepaste jobs</span><div onClick={() => setShowOldOrders(!showOldOrders)} className={cn("w-7 h-4 rounded-full transition-colors relative flex items-center px-0.5", showOldOrders ? "bg-primary" : "bg-muted-foreground/30")}><div className={cn("w-3 h-3 bg-white rounded-full shadow-sm transition-transform", showOldOrders ? "translate-x-3" : "translate-x-0")} /></div></label></div>
           </div>
-          <div className="flex-1 px-3 pt-0 pb-3 overflow-y-auto min-h-0">
-            <div className="flex flex-col gap-y-0.5">
-              {renderOrderStream(groupedOrders)}
-              {groupedOrders.length === 0 && (
-                <div className="text-[11px] text-muted-foreground italic py-4 text-center">Geen recente order activiteit.</div>
-              )}
-            </div>
-          </div>
+          <ScrollArea className="flex-1 p-4"><div className="flex flex-col">{renderOrderStream(groupedOrders)}</div></ScrollArea>
         </Card>
-
-        {/* Onderhoud Stream (right) */}
         <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0">
-          <div className="py-2 px-4 border-b flex items-center gap-2 shrink-0">
-            <Wrench className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Onderhoud</span>
-          </div>
-          <div className="flex-1 px-3 pt-0 pb-3 overflow-y-auto min-h-0">
-            <div className="flex flex-col gap-y-0.5">
-              {renderActivityStream(onderhoudActivities)}
-              {onderhoudActivities.length === 0 && (
-                <div className="text-[11px] text-muted-foreground italic py-4 text-center">Geen recente onderhoud activiteit.</div>
-              )}
+          <div className="py-2 px-4 border-b flex items-center shrink-0"><div className="flex items-center gap-2"><History className="w-3.5 h-3.5 text-primary" /><span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Onderhoud</span></div></div>
+          <ScrollArea className="flex-1 p-4"><div className="flex flex-col gap-0.5">{activities.filter(a => { const e = a.entity?.toLowerCase() || ''; const d = a.details?.toLowerCase() || ''; return e.includes('maintenance') || e.includes('onderhoud') || d.includes('onderhoud') || d.includes('task'); }).map((a, i) => (
+            <div key={i} className="text-[11px] border-l-2 border-muted pl-2.5 py-1.5 hover:bg-muted/50 transition-colors rounded-r cursor-pointer group" onClick={() => setSelectedLog(a)}>
+              <div className="flex items-center gap-2 mb-1"><span className="text-muted-foreground font-mono">[{format(a.timestamp, 'HH:mm')}]</span>{getActionBadge(a.action)}<span className="ml-auto text-[10px] opacity-40">{format(a.timestamp, 'MMM d')}</span></div>
+              <div className="flex items-center gap-2"><span className="font-bold truncate">{a.entityName}</span><div className="text-[10px] text-muted-foreground truncate opacity-70">{a.details}</div></div>
             </div>
-          </div>
+          ))}</div></ScrollArea>
         </Card>
       </div>
 
-      {/* Log Details Dialog */}
-      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-600" />
-              Activiteit Details
-            </DialogTitle>
-            <div className="text-sm text-gray-500">
-              {selectedLog && (
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm">
-                  <span>Gebruiker: <strong>{selectedLog.user}</strong></span>
-                  <span>Tijd: <strong>{formatDateTime(selectedLog.timestamp)}</strong></span>
-                </div>
-              )}
-            </div>
-          </DialogHeader>
-
+      <Dialog open={!!selectedLog} onOpenChange={(o) => !o && setSelectedLog(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
           {selectedLog && (
-            <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Entiteit</h4>
-                  <p className="text-sm font-medium text-gray-900">{selectedLog.entity} | {selectedLog.entityName}</p>
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Actie</h4>
-                  <div className="flex items-center gap-2">
-                    {getActionBadge(selectedLog.action)}
-                    {selectedLog.action !== 'Updated' && (
-                      <span className="text-sm text-gray-700">{selectedLog.details}</span>
-                    )}
+            <>
+              <DialogHeader className="p-6 border-b shrink-0">
+                <div className="flex items-center justify-between mb-2"><Badge className={cn("uppercase tracking-widest font-black text-[10px]", selectedLog.status === 'success' ? "bg-green-500" : selectedLog.status === 'warning' ? "bg-amber-500" : selectedLog.status === 'error' ? "bg-red-500" : "bg-blue-500")}>{selectedLog.entity || 'Event'}</Badge><span className="text-[11px] font-mono text-muted-foreground">ID: {selectedLog.id}</span></div>
+                <div className="flex items-center gap-3"><div className="p-2 bg-primary/10 rounded-lg"><Activity className="w-5 h-5 text-primary" /></div><div><DialogTitle className="text-xl font-black leading-tight">{selectedLog.entityName || 'Event Details'}</DialogTitle><div className="text-xs text-muted-foreground opacity-70 mt-0.5">{formatDateTime(selectedLog.timestamp)} door <span className="font-bold text-foreground">{selectedLog.user}</span></div></div></div>
+              </DialogHeader>
+              <ScrollArea className="flex-1 px-6 py-4"><div className="space-y-6">
+                <div><h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"><div className="w-1 h-3 bg-primary rounded-full"></div>Beschrijving</h4><div className="p-4 rounded-xl bg-muted/30 border border-muted"><p className="text-sm leading-relaxed font-semibold text-foreground">{selectedLog.details || 'Geen details beschikbaar'}</p></div></div>
+                {(selectedLog.oldValue || selectedLog.newValue) && (
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">Wijzigingen</h4>
+                    <div className="rounded-xl border overflow-hidden bg-card shadow-sm">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-muted/30"><tr className="border-b"><th className="py-2 px-4 text-[9px] font-black uppercase tracking-wider text-muted-foreground">Veld</th><th className="py-2 px-4 text-[9px] font-black uppercase tracking-wider text-muted-foreground">Oud</th><th className="py-2 px-4 text-[9px] font-black uppercase tracking-wider text-muted-foreground">Nieuw</th></tr></thead>
+                        <tbody className="divide-y">{parseChanges(selectedLog.oldValue, selectedLog.newValue).map((change, i) => (
+                          <tr key={i} className="hover:bg-muted/30 transition-colors"><td className="py-3 px-4 font-black text-[10px] text-primary uppercase">{change.field}</td><td className="py-3 px-4 text-xs font-mono opacity-60 line-through">{change.old}</td><td className="py-3 px-4 text-xs font-bold">{change.new}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Drukwerken Aggregated Summary Card */}
-              {selectedLog.entity === 'FinishedJob' && (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mt-4">
-                  <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <Printer className="w-4 h-4 text-orange-600" />
-                      Afgewerkte Versies
-                    </h3>
-                    {selectedVersionIds.size > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-7 text-gray-500 hover:text-gray-900"
-                        onClick={() => setSelectedVersionIds(new Set())}
-                      >
-                        Wis selectie ({selectedVersionIds.size})
-                      </Button>
-                    )}
-                  </div>
-                  {(() => {
-                    const latestStr = selectedLog.newValue || selectedLog.oldValue || '';
-                    const mainChanges = parseChanges(latestStr, latestStr);
-                    const getMainField = (name: string) => mainChanges.find(c => c.field.toLowerCase() === name.toLowerCase())?.new || '-';
-                    const orderNr = getMainField('Order') !== '-' ? getMainField('Order') : (selectedLog.entityName.split(' - ')[0] || '-');
-
-                    // Group logs by entityId to find unique versions
-                    const versionLogs = activities.filter(l => l.entity === 'FinishedJob' && l.entityName.startsWith(orderNr));
-                    const uniqueJobIds = Array.from(new Set(versionLogs.map(l => l.entityId)));
-
-                    const aggregatedVersions = uniqueJobIds.map(jobId => {
-                      const logsForJob = versionLogs.filter(l => l.entityId === jobId);
-                      logsForJob.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-                      const firstLog = logsForJob[0];
-                      const lastLog = logsForJob[logsForJob.length - 1];
-
-                      const lastChanges = parseChanges(lastLog.newValue || lastLog.oldValue || '', lastLog.newValue || lastLog.oldValue || '');
-                      const getField = (name: string) => lastChanges.find(c => c.field.toLowerCase() === name.toLowerCase())?.new || '-';
-
-                      return {
-                        id: jobId || '',
-                        createdDate: firstLog.timestamp,
-                        naam: getField('Naam') !== '-' ? getField('Naam') : (lastLog.entityName.split(' - ')[1] || '-'),
-                        versie: getField('Versie'),
-                        netto: getField('Netto'),
-                        groen: getField('Groen'),
-                        rood: getField('Rood'),
-                        delta: getField('Delta %'),
-                      };
-                    }).sort((a, b) => new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime());
-
-                    return (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-white hover:bg-white border-none">
-                              <TableHead className="w-[120px] text-xs font-semibold text-gray-500 uppercase">Aanmaakdatum</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-500 uppercase">Naam / Versie</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-500 uppercase">Netto</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-500 uppercase">Gecontroleerd</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-500 uppercase">Delta %</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {aggregatedVersions.map(v => {
-                              const isSelected = selectedVersionIds.has(v.id);
-                              return (
-                                <TableRow
-                                  key={v.id}
-                                  className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/50 hover:bg-blue-50/80 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/50 border-l-2 border-l-transparent'}`}
-                                  onClick={() => {
-                                    const next = new Set(selectedVersionIds);
-                                    if (next.has(v.id)) next.delete(v.id);
-                                    else next.add(v.id);
-                                    setSelectedVersionIds(next);
-                                  }}
-                                >
-                                  <TableCell className="text-xs text-gray-500">
-                                    {formatDateTime(v.createdDate)}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex flex-col">
-                                      <span className="font-medium text-gray-900 truncate max-w-[200px]" title={v.naam}>{v.naam}</span>
-                                      {v.versie !== '-' && <span className="text-xs text-gray-500">Versie: {v.versie}</span>}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="font-medium text-blue-600">
-                                    {v.netto}
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="text-green-600 font-medium">{v.groen}</span>
-                                    <span className="text-gray-400 mx-1">/</span>
-                                    <span className="text-red-600 font-medium">{v.rood}</span>
-                                  </TableCell>
-                                  <TableCell className="font-medium">
-                                    {v.delta}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* Wijzigingenoverzicht */}
-              {(selectedLog.newValue || '') && selectedLog.action === 'Updated' && (
-                <div className="space-y-3">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <Search className="w-4 h-4 text-blue-500" />
-                    Wijzigingenoverzicht
-                  </h3>
-                  <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3">
-                    {parseChanges(selectedLog.oldValue || '', selectedLog.newValue || '')
-                      .filter(change => change.old !== change.new)
-                      .filter(change => !change.field.toLowerCase().includes('volgend onderhoud') && !change.field.toLowerCase().includes('volgende datum'))
-                      .map((change, idx) => {
-                        const oldVal = change.old.length > 100 ? change.old.substring(0, 97) + '...' : change.old;
-                        const newVal = change.new.length > 100 ? change.new.substring(0, 97) + '...' : change.new;
-                        return (
-                          <div key={idx} className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2 border-b border-gray-50 last:border-0 pb-2 last:pb-0">
-                            <span className="font-bold text-gray-900 shrink-0">{change.field}:</span>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {change.old !== '-' && (
-                                <>
-                                  <span className="text-gray-400 italic line-through font-normal">{oldVal}</span>
-                                  <span className="text-gray-400">→</span>
-                                </>
-                              )}
-                              <span className="text-blue-700 font-medium">{newVal}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
-              {/* History Section */}
-              {selectedLog.entityId && selectedLog.entityId !== 'new' && (
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-500" />
-                    Activiteitshistorie (Vorige wijzigingen)
-                  </h3>
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                    <Table>
-                      <TableHeader>
-                        {selectedLog.entity === 'FinishedJob' ? (
-                          <TableRow className="bg-gray-50/80">
-                            <TableHead className="w-[120px] font-semibold text-gray-900">Datum</TableHead>
-                            <TableHead className="w-[100px] font-semibold text-gray-900">Actie</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Order</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Naam</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Blz</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Netto</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Groen</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Rood</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Delta %</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Opmerkingen</TableHead>
-                          </TableRow>
-                        ) : (
-                          <TableRow className="bg-gray-50/80">
-                            <TableHead className="w-[120px] font-semibold text-gray-900">Datum</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Taak</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Laatste onderhoud</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Volgende onderhoud</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Operators</TableHead>
-                            <TableHead className="font-semibold text-gray-900">Opmerkingen</TableHead>
-                          </TableRow>
-                        )}
-                      </TableHeader>
-                      <TableBody>
-                        {activities
-                          .filter(l => {
-                            if (selectedLog.entity === 'FinishedJob') {
-                              const orderNr = selectedLog.entityName.split(' - ')[0];
-                              const isSameOrder = l.entity === 'FinishedJob' && l.entityName.startsWith(orderNr);
-                              if (!isSameOrder) return false;
-                              if (selectedVersionIds.size > 0 && !selectedVersionIds.has(l.entityId || '')) return false;
-                              return true;
-                            }
-                            return l.entity === selectedLog.entity && l.entityId === selectedLog.entityId;
-                          })
-                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                          .map((histLog) => {
-                            const isCurrent = histLog.id === selectedLog.id;
-                            const rowClass = isCurrent ? "bg-blue-50/30" : "";
-
-                            if (histLog.entity === 'FinishedJob') {
-                              // Drukwerken History Row
-                              const changes = parseChanges(histLog.oldValue || '', histLog.newValue || '');
-                              const diffs = changes.filter(c => c.old !== c.new);
-
-                              const getFieldDiff = (name: string) => {
-                                const diff = diffs.find(c => c.field.toLowerCase() === name.toLowerCase());
-                                if (!diff) {
-                                  return <span className="text-gray-600">{changes.find(c => c.field.toLowerCase() === name.toLowerCase())?.new || '-'}</span>;
-                                }
-                                return (
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="line-through text-gray-400">{diff.old}</span>
-                                    <span className="text-gray-400">→</span>
-                                    <span className="text-blue-600 font-medium">{diff.new}</span>
-                                  </div>
-                                );
-                              };
-
-                              const rawVersieObj = changes.find(c => c.field.toLowerCase() === 'versie');
-                              const rawVersie = rawVersieObj?.new || '-';
-
-                              return (
-                                <TableRow key={histLog.id} className={rowClass}>
-                                  <TableCell className="text-xs text-gray-500 whitespace-nowrap align-top">
-                                    {formatDateTime(histLog.timestamp)}
-                                  </TableCell>
-                                  <TableCell className="align-top">
-                                    {getActionBadge(histLog.action)}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top font-medium">
-                                    {(changes.find(c => c.field.toLowerCase() === 'order')?.new || '-') === '-'
-                                      ? histLog.entityName.split(' - ')[0]
-                                      : getFieldDiff('Order')}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    <div className="flex flex-col">
-                                      <span className="font-medium text-gray-900">{histLog.entityName.split(' - ')[1] || histLog.entityName}</span>
-                                      {rawVersie !== '-' && (
-                                        <span className="text-gray-500 mt-0.5">Versie: {getFieldDiff('Versie')}</span>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    {getFieldDiff('Blz')}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    {getFieldDiff('Netto')}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    {getFieldDiff('Groen')}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    {getFieldDiff('Rood')}
-                                  </TableCell>
-                                  <TableCell className="text-xs align-top">
-                                    {getFieldDiff('Delta %')}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-gray-600 italic max-w-xs truncate align-top">
-                                    {histLog.action === 'Updated' && diffs.length > 0 ? (
-                                      diffs.filter(d => !['Order', 'Naam', 'Versie', 'Blz', 'Netto', 'Groen', 'Rood', 'Delta %'].includes(d.field)).map(d => `${d.field}: ${d.new}`).join(', ')
-                                    ) : (
-                                      histLog.details
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            } else {
-                              // Task / Default History Row
-                              const histChanges = parseChanges(histLog.oldValue || '', histLog.newValue || '');
-                              const lastMaintenance = histChanges.find(c => {
-                                const f = c.field.toLowerCase();
-                                return f.includes('laatste onderhoud') || f.includes('datum') || f === 'last_date';
-                              })?.new || '-';
-                              const nextMaintenance = histChanges.find(c => {
-                                const f = c.field.toLowerCase();
-                                return f.includes('volgend onderhoud') || f.includes('volgende datum') || f === 'next_date';
-                              })?.new || '-';
-                              const operators = histChanges.find(c => {
-                                const f = c.field.toLowerCase();
-                                return f.includes('operator') || f.includes('toegewezen') || f.includes('assigned_operator');
-                              })?.new || '-';
-                              const opmerkingen = histChanges.find(c => {
-                                const f = c.field.toLowerCase();
-                                return f.includes('opmerking');
-                              })?.new || '-';
-
-                              return (
-                                <TableRow key={histLog.id} className={rowClass}>
-                                  <TableCell className="text-xs text-gray-500 whitespace-nowrap">
-                                    {formatDateTime(histLog.timestamp)}
-                                  </TableCell>
-                                  <TableCell className="text-xs font-medium text-gray-700">
-                                    {histLog.entityName}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-gray-600">
-                                    {lastMaintenance}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-gray-600">
-                                    {nextMaintenance}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-gray-600">
-                                    {operators}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-gray-600 italic max-w-xs truncate">
-                                    {opmerkingen}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            }
-                          })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-
-            </div>
+                )}
+              </div></ScrollArea>
+              <DialogFooter className="p-4 border-t bg-muted/20 shrink-0"><Button variant="outline" className="font-bold text-xs uppercase" onClick={() => setSelectedLog(null)}>Sluiten</Button></DialogFooter>
+            </>
           )}
-          <div className="flex justify-end mt-1">
-            <Button variant="outline" onClick={() => setSelectedLog(null)}>Sluiten</Button>
-          </div>
         </DialogContent>
       </Dialog>
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        ::-webkit-scrollbar { width: 0px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: hsl(var(--muted)); border-radius: 10px; }
-      `}} />
     </div>
   );
-}
+};
+
+export default Overzicht;

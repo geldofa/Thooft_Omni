@@ -616,14 +616,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         );
     };
 
-    const handleAutoSaved = useCallback((werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null) => {
+    const handleAutoSaved = useCallback((werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null, voltooid_op: string | null) => {
         setWerkorders(prev => prev.map(wo => {
             if (wo.id === werkorderId) {
                 return {
                     ...wo,
                     katernen: wo.katernen.map(k => {
                         if (k.id === katernId) {
-                            return { ...k, originalId: pbRecordId, dbGreen: savedGreen, dbRed: savedRed };
+                            return { ...k, originalId: pbRecordId, dbGreen: savedGreen, dbRed: savedRed, voltooid_op };
                         }
                         return k;
                     })
@@ -818,7 +818,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     delta_percent: (processedKatern.deltaPercentage as number) || 0,
                     pers: processedKatern.pressId || effectivePressId,
                     status: 'check',
-                    opmerking: ''
+                    opmerking: '',
+                    voltooid_op: processedKatern.voltooid_op || ((Number(processedKatern.green) + Number(processedKatern.red) > 0) ? new Date().toISOString() : null)
                 };
 
                 let record;
@@ -1382,8 +1383,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             toast.success("Drukwerk hersteld.");
             fetchTrashJobs();
             if (user) drukwerkenCache.checkForUpdates(user, hasPermission);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error restoring job:", error);
+            if (error.data) {
+                console.error("Validation error details:", JSON.stringify(error.data, null, 2));
+            }
             toast.error("Fout bij herstellen.");
         }
     };
@@ -1424,7 +1428,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         delta: processed.delta_number || 0,
                         delta_percent: processed.delta_percentage || 0,
                         pers: processed.pressId || job.pressId || user?.pressId,
-                        opmerking: job.opmerkingen
+                        opmerking: job.opmerkingen,
+                        voltooid_op: (Number(job.green) + Number(job.red) > 0) ? new Date().toISOString() : null
                     };
 
                     const record = await pb.collection('drukwerken').create(pbData);
@@ -1501,6 +1506,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             }
                         }
                     });
+
+                    // Set voltooid_op if not yet set and production is recorded
+                    if (!originalJob.voltooid_op && (Number(job.green) + Number(job.red) > 0)) {
+                        partialPbData.voltooid_op = new Date().toISOString();
+                    }
 
                     // Only update if something changed
                     if (Object.keys(partialPbData).length > 0) {
@@ -2530,7 +2540,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             trashJobs.map((job) => (
                                                 <TableRow key={job.id} className="hover:bg-gray-50 h-10">
                                                     <TableCell className="text-center border-r text-xs">
-                                                        {format(new Date(job.created), 'dd/MM/yyyy HH:mm')}
+                                                        {job.created ? format(new Date(job.created), 'dd/MM/yyyy HH:mm') : '-'}
                                                     </TableCell>
                                                     <TableCell className="text-center border-r font-medium">DT {job.order_nummer}</TableCell>
                                                     <TableCell className="border-r truncate" title={job.klant_order_beschrijving}>

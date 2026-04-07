@@ -1,5 +1,13 @@
 [
   {
+    "id": "b423e435bea987bd5425b2cf4e110aa98e41b227",
+    "version": "1.12.5",
+    "date": "2026-04-03",
+    "title": "git aanpassing v2",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "28b2c169617cb51ea6e67621581fc083e6652003",
     "version": "1.12.4",
     "date": "2026-04-03",
@@ -388,14 +396,6 @@
     "version": "1.3.10",
     "date": "2026-02-19",
     "title": "Onderbroken job hervatten",
-    "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "ea002ead36ca9fbd17d5d3cde0463b43d168df31",
-    "version": "1.3.9",
-    "date": "2026-02-19",
-    "title": "Ex/omw optimalisatie v3",
     "body": "",
     "type": "chore"
   }
