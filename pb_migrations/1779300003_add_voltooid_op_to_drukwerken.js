@@ -3,13 +3,11 @@ migrate((app) => {
     const collection = app.findCollectionByNameOrId("drukwerken");
 
     // Add voltooid_op field
-    collection.fields.add(new DateTimeField({
+    collection.fields.add(new DateField({
         name: "voltooid_op",
         required: false,
         presentable: false,
         system: false,
-        onCreate: false,
-        onUpdate: false
     }));
 
     return app.save(collection);
