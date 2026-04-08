@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { DrukwerkRow } from './DrukwerkRow';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PressType, useAuth, pb } from './AuthContext';
-import { drukwerkenCache, CacheStatus } from '../services/DrukwerkenCache';
+import { drukwerkenCache, CacheStatus, readLockedCache, writeLockedCache, addToLockedCache, removeFromLockedCache, db } from '../services/DrukwerkenCache';
 import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'; // Added useEffect
 
@@ -58,7 +58,7 @@ const COL_WIDTHS = {
     date: '70px',
     orderNr: '45px',
     orderName: '220px',
-    pages: '40px',
+    pages: '30px',
     exOmw: '40px',
     netRun: '55px',
     startup: '30px',
@@ -67,12 +67,12 @@ const COL_WIDTHS = {
     c1_0: '25px',
     c1_1: '25px',
     c4_1: '25px',
-    maxGross: '55px',
-    green: '55px',
-    red: '55px',
+    maxGross: '50px',
+    green: '50px',
+    red: '50px',
     delta: '45px',
     deltaPercent: '45px',
-    actions: '25px'
+    actions: '30px'
 };
 
 const FONT_SIZES = {
@@ -505,47 +505,144 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         deltaPercentage: 0,
     };
 
+    // --- Locked Katernen Browser Cache Handled by DrukwerkenCache ---
+
     const [werkorders, setWerkorders] = useState<Werkorder[]>(() => {
         const stored = localStorage.getItem('thooft_werkorders');
+        let orders: Werkorder[] | null = null;
         if (stored) {
             try {
-                return JSON.parse(stored);
+                orders = JSON.parse(stored);
             } catch (e) {
                 console.error("Failed to parse stored werkorders:", e);
             }
         }
-        return [
-            {
-                id: '1',
-                orderNr: '',
-                orderName: '',
-                orderDate: new Date().toISOString().split('T')[0],
-                katernen: [
-                    { id: '1-1', version: '', pages: null, exOmw: '', netRun: null, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
-                ]
-            }
-        ];
+
+        if (!orders) {
+            orders = [
+                {
+                    id: '1',
+                    orderNr: '',
+                    orderName: '',
+                    orderDate: new Date().toISOString().split('T')[0],
+                    katernen: [
+                        { id: '1-1', version: '', pages: null, exOmw: '', netRun: null, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                    ]
+                }
+            ];
+        }
+
+        // Reconcile locked state from the dedicated locked cache
+        const lockedSet = readLockedCache();
+        if (lockedSet.size > 0) {
+            orders = orders.map(wo => ({
+                ...wo,
+                katernen: wo.katernen.map(k => {
+                    const shouldBeLocked = lockedSet.has(k.id) || (k.originalId && lockedSet.has(k.originalId));
+                    if (shouldBeLocked && (!k.locked || !k.is_finished)) {
+                        console.log(`[Drukwerken] Restoring locked state for katern ${k.id} (originalId: ${k.originalId})`);
+                        return { ...k, locked: true, is_finished: true };
+                    }
+                    return k;
+                })
+            }));
+        }
+
+        return orders;
     });
 
-    // Save werkorders to localStorage whenever they change
+    // Stable sync function to avoid duplication
+    const syncToLocalStorage = useCallback((orders: Werkorder[]) => {
+        localStorage.setItem('thooft_werkorders', JSON.stringify(orders));
+        
+        // Rebuild the locked cache
+        const lockedIds = new Set<string>();
+        orders.forEach(wo => {
+            wo.katernen.forEach(k => {
+                if (k.locked && k.is_finished) {
+                    lockedIds.add(k.id);
+                    if (k.originalId) lockedIds.add(k.originalId);
+                }
+            });
+        });
+        writeLockedCache(lockedIds);
+    }, []);
+
+    // Also keep the effect for any other state changes, but handlers will now be more aggressive
     useEffect(() => {
-        localStorage.setItem('thooft_werkorders', JSON.stringify(werkorders));
-    }, [werkorders]);
+        syncToLocalStorage(werkorders);
+    }, [werkorders, syncToLocalStorage]);
+
+    // --- RECONCILIATION ---
+    // If we have "orphaned" drafts (katernen without an originalId), 
+    // check if they already exist in the local cache (Dexie).
+    // This happens if a save finished after the component unmounted previously.
+    useEffect(() => {
+        const reconcile = async () => {
+            let needsUpdate = false;
+            const nextWerkorders = await Promise.all(werkorders.map(async (wo) => {
+                const nextKaternen = await Promise.all(wo.katernen.map(async (k) => {
+                    if (!k.originalId && wo.orderNr && k.version) {
+                        try {
+                            const cachedJobs = await db.jobs
+                                .where('[orderNr+version]')
+                                .equals([wo.orderNr, k.version])
+                                .toArray();
+                            
+                            // Find the most recent one that matches the order date
+                            const match = cachedJobs.find((j: FinishedPrintJob) => j.date === wo.orderDate || !j.date);
+                            if (match) {
+                                console.log(`[Drukwerken] Reconciled draft ${k.id} with cached record ${match.id}`);
+                                needsUpdate = true;
+                                return { 
+                                    ...k, 
+                                    originalId: match.id, 
+                                    locked: match.locked || k.locked,
+                                    is_finished: match.is_finished || k.is_finished,
+                                    dbGreen: match.green,
+                                    dbRed: match.red,
+                                    voltooid_op: match.voltooid_op
+                                };
+                            }
+                        } catch (e) {
+                            console.error("[Drukwerken] Reconciliation failed for katern", k.id, e);
+                        }
+                    }
+                    return k;
+                }));
+                return { ...wo, katernen: nextKaternen };
+            }));
+
+            if (needsUpdate) {
+                setWerkorders(nextWerkorders);
+            }
+        };
+
+        // Only run if there are any katernen without IDs
+        const hasOrphans = werkorders.some(wo => wo.katernen.some(k => !k.originalId));
+        if (hasOrphans) {
+            reconcile();
+        }
+    }, [werkorders]); // Dependencies: werkorders. We use hasOrphans and needsUpdate to prevent loops.
 
 
     const handleAddKaternClick = (werkorderId: string) => {
         handleKaternSubmit(defaultKaternToAdd, werkorderId);
     };
 
-    const handleKaternSubmit = (katernData: Omit<Katern, 'id'>, werkorderId: string) => {
-        setWerkorders(werkorders.map(wo => {
-            if (wo.id === werkorderId) {
-                const newKatern = { ...katernData, id: `${wo.id} -${wo.katernen.length + 1} ` };
-                return { ...wo, katernen: [...wo.katernen, newKatern] };
-            }
-            return wo;
-        }));
-    };
+    const handleKaternSubmit = useCallback((katernData: Omit<Katern, 'id'>, werkorderId: string) => {
+        setWerkorders(prev => {
+            const next = prev.map(wo => {
+                if (wo.id === werkorderId) {
+                    const newKatern = { ...katernData, id: `${wo.id}-${wo.katernen.length + 1}` };
+                    return { ...wo, katernen: [...wo.katernen, newKatern] };
+                }
+                return wo;
+            });
+            syncToLocalStorage(next);
+            return next;
+        });
+    }, [syncToLocalStorage]);
 
     const defaultKatern: Katern = {
         id: 'new-katern-1', // Temporary ID, will be replaced with `${ newWerkorder.id } -1`
@@ -566,24 +663,39 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         deltaPercentage: null,
     };
 
-    const handleWerkorderSubmit = (werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
+    const handleWerkorderSubmit = useCallback((werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
         const newWerkorderId = Date.now().toString();
         const newKaternWithId: Katern = {
             ...defaultKatern,
-            id: `${newWerkorderId} -1`, // Assign a proper ID
+            id: `${newWerkorderId}-1`,
         };
 
         const newWerkorder: Werkorder = {
             ...werkorderData,
             id: newWerkorderId,
-            katernen: [newKaternWithId], // Now includes the default katern
+            katernen: [newKaternWithId],
         };
-        setWerkorders([newWerkorder, ...werkorders]);
-    };
+        setWerkorders(prev => {
+            const next = [newWerkorder, ...prev];
+            syncToLocalStorage(next);
+            return next;
+        });
+    }, [defaultKatern, syncToLocalStorage]);
 
-    const handleKaternChange = (werkorderId: string, katernId: string, field: keyof Katern, value: any) => {
-        setWerkorders(prevWerkorders =>
-            prevWerkorders.map(wo => {
+    const handleKaternChange = useCallback((werkorderId: string, katernId: string, field: keyof Katern, value: any) => {
+        // Immediately update the locked cache when lock state changes
+        if (field === 'locked') {
+            const wo = werkorders.find(w => w.id === werkorderId);
+            const katern = wo?.katernen.find(k => k.id === katernId);
+            if (value) {
+                addToLockedCache(katernId, katern?.originalId);
+            } else {
+                removeFromLockedCache(katernId, katern?.originalId);
+            }
+        }
+
+        setWerkorders(prevWerkorders => {
+            const next = prevWerkorders.map(wo => {
                 if (wo.id === werkorderId) {
                     return {
                         ...wo,
@@ -612,30 +724,36 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     };
                 }
                 return wo;
-            })
-        );
-    };
+            });
+            syncToLocalStorage(next);
+            return next;
+        });
+    }, [werkorders, addToLockedCache, removeFromLockedCache, syncToLocalStorage]);
 
     const handleAutoSaved = useCallback((werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null, voltooid_op: string | null) => {
-        setWerkorders(prev => prev.map(wo => {
-            if (wo.id === werkorderId) {
-                return {
-                    ...wo,
-                    katernen: wo.katernen.map(k => {
-                        if (k.id === katernId) {
-                            return { ...k, originalId: pbRecordId, dbGreen: savedGreen, dbRed: savedRed, voltooid_op };
-                        }
-                        return k;
-                    })
-                };
-            }
-            return wo;
-        }));
-    }, []);
+        setWerkorders(prev => {
+            const next = prev.map(wo => {
+                if (wo.id === werkorderId) {
+                    return {
+                        ...wo,
+                        katernen: wo.katernen.map(k => {
+                            if (k.id === katernId) {
+                                return { ...k, originalId: pbRecordId, dbGreen: savedGreen, dbRed: savedRed, voltooid_op };
+                            }
+                            return k;
+                        })
+                    };
+                }
+                return wo;
+            });
+            syncToLocalStorage(next);
+            return next;
+        });
+    }, [syncToLocalStorage]);
 
-    const handleWerkorderChange = (werkorderId: string, field: 'orderNr' | 'orderName', value: string) => {
-        setWerkorders(prevWerkorders =>
-            prevWerkorders.map(wo => {
+    const handleWerkorderChange = useCallback((werkorderId: string, field: 'orderNr' | 'orderName', value: string) => {
+        setWerkorders(prevWerkorders => {
+            const next = prevWerkorders.map(wo => {
                 if (wo.id === werkorderId) {
                     if (field === 'orderNr') {
                         // Remove "DT" prefix if present and keep only digits
@@ -649,8 +767,10 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     return { ...wo, [field]: value };
                 }
                 return wo;
-            })
-        );
+            });
+            syncToLocalStorage(next);
+            return next;
+        });
 
         // Clear validation errors for this field
         if (validationErrors[werkorderId]?.[field]) {
@@ -667,7 +787,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 return newErrors;
             });
         }
-    };
+    }, [syncToLocalStorage, validationErrors]);
 
     const handleDeleteWerkorder = async (werkorderId: string) => {
         const order = werkorders.find(wo => wo.id === werkorderId);
@@ -1355,7 +1475,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         try {
             const trashRecord = await pb.collection('trashed_drukwerken').getOne(trashId);
             const metadata = { ...trashRecord.metadata };
-            
+
             // Strip system-managed fields to allow PB to generate new ones
             delete metadata.id;
             delete metadata.created;
@@ -1365,10 +1485,10 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
             // Re-create in main collection
             const record = await pb.collection('drukwerken').create(metadata);
-            
+
             // Delete from trash
             await pb.collection('trashed_drukwerken').delete(trashId);
-            
+
             // Log action
             await addActivityLog({
                 action: 'Updated',
@@ -1396,7 +1516,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         try {
             // 1. Process deletions (Archive to trashed_drukwerken)
             if (deletedIds.length > 0) {
-                await Promise.all(deletedIds.map((id) => 
+                await Promise.all(deletedIds.map((id) =>
                     archiveAndDeleteJobById(id, `Drukwerk verwijderd en gearchiveerd via snel bewerken`)
                 ));
             }
@@ -1434,7 +1554,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
                     const record = await pb.collection('drukwerken').create(pbData);
                     await drukwerkenCache.putRecord(record, user, hasPermission);
-                    
+
                     // Log creation
                     await addActivityLog({
                         action: 'Created',
@@ -1515,7 +1635,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     // Only update if something changed
                     if (Object.keys(partialPbData).length > 0) {
                         const processed = processJobFormulas(job);
-                        
+
                         if (needsRecalc) {
                             partialPbData.max_bruto = processed.maxGross;
                             partialPbData.delta = processed.delta_number || 0;
@@ -2104,7 +2224,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </TableRow>
                                                 <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm h-10">
                                                     <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">Version</TableHead>
-                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Pagina's</TableHead>
+                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Blz</TableHead>
                                                     <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
                                                     <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
                                                     <TableHead className="text-center sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.startup }}>Opstart</TableHead>
@@ -2184,7 +2304,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r border-slate-300 bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
-                                                <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Pagina's {getSortIcon('pages')}</div></TableHead>
+                                                <TableHead onClick={() => requestSort('pages')} style={{ width: COL_WIDTHS.pages }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Blz {getSortIcon('pages')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('exOmw')} style={{ width: COL_WIDTHS.exOmw }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 leading-3 bg-white"><div className="flex items-center justify-center h-full">Ex/<br />Omw. {getSortIcon('exOmw')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('netRun')} style={{ width: COL_WIDTHS.netRun }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Oplage {getSortIcon('netRun')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('startup')} style={{ width: COL_WIDTHS.startup }} className="cursor-pointer hover:bg-gray-100 text-center bg-gray-50 border-r border-slate-300"><div className="flex items-center justify-center">Opstart {getSortIcon('startup')}</div></TableHead>
@@ -2550,9 +2670,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     <TableCell className="text-center border-r">{job.press || '-'}</TableCell>
                                                     <TableCell className="text-center border-r text-gray-500">{job.deleted_by}</TableCell>
                                                     <TableCell className="text-center">
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="ghost" 
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
                                                             className="h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-[11px] font-medium"
                                                             onClick={() => handleRestoreJob(job.id)}
                                                         >

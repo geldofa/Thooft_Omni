@@ -13,7 +13,13 @@ import { Button } from './components/ui/button';
 import { Badge } from './components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, ChevronDown, ClipboardList, ClipboardCheck } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './components/ui/dropdown-menu';
 import { getStatusInfo } from './utils/StatusUtils';
 import { APP_TITLE } from './config';
 import { useAutoReports } from './hooks/useAutoReports';
@@ -27,7 +33,9 @@ const UnifiedSettingsLayout = lazy(() => import('./components/layout/UnifiedSett
 const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: m.Roadmap })));
 const ExternalTasks = lazy(() => import('./components/ExternalTasks').then(m => ({ default: m.ExternalTasks })));
 const Overzicht = lazy(() => import('./components/Overzicht').then(m => ({ default: m.Overzicht })));
+const ChecklistView = lazy(() => import('./components/ChecklistView').then(m => ({ default: m.ChecklistView })));
 import { Homepage } from './components/Homepage';
+import { CreateChecklistDialog } from './components/dialogs/CreateChecklistDialog';
 
 
 function MainApp() {
@@ -339,7 +347,11 @@ function MainApp() {
   }, []);
 
   const activePresses = presses.filter(p => p.active && !p.archived).filter(p => {
-    if (user?.role === 'press' && user.press) return p.name === user.press;
+    const isPressRole = user?.role?.toLowerCase() === 'press' || user?.role?.toLowerCase() === 'operator';
+    if (isPressRole && user.press) {
+      const clean = (s: string) => s.toLowerCase().replace(/\s/g, '');
+      return clean(p.name) === clean(user.press);
+    }
     return true;
   });
 
@@ -363,6 +375,7 @@ function MainApp() {
   );
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isChecklistDialogOpen, setIsChecklistDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<MaintenanceTask | null>(null);
   const [editingGroup, setEditingTaskGroup] = useState<MaintenanceTask[] | null>(null);
   const [selectedPress, setSelectedPress] = useState<string>(() => {
@@ -374,16 +387,73 @@ function MainApp() {
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
+  // === Checklist State ===
+  const [activeChecklists, setActiveChecklists] = useState<Record<string, any>>({});
+
+  const fetchActiveChecklists = useCallback(async () => {
+    try {
+      const records = await pb.collection('maintenance_checklists').getFullList({
+        filter: 'active = true'
+      });
+      const map: Record<string, any> = {};
+      records.forEach(r => { map[r.press_id] = r; });
+      setActiveChecklists(map);
+    } catch (e: any) {
+      // Collection might not exist yet (before migration)
+      if (e.status !== 404) console.error('Failed to fetch active checklists:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchActiveChecklists();
+      const sub = pb.collection('maintenance_checklists').subscribe('*', () => fetchActiveChecklists());
+      return () => { sub.then(unsub => unsub?.()); };
+    }
+  }, [user?.id, fetchActiveChecklists]);
+
+
   const handleStatusFilter = (status: string) => {
     setStatusFilter(statusFilter === status ? null : status);
   };
 
   const { currentPressId, pressNameFromUrl } = useMemo(() => {
     const segments = location.pathname.split('/').filter(Boolean);
-    const name = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
-    const id = presses.find(p => p.name.toLowerCase() === name.toLowerCase())?.id;
+    const lastSegment = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
+    
+    // Fallback to selectedPress if we are on the Checklist route
+    let name = lastSegment;
+    if (lastSegment === 'Checklist') {
+      name = selectedPress;
+    }
+
+    const clean = (s: string) => s.toLowerCase().replace(/\s/g, '');
+    const id = presses.find(p => clean(p.name) === clean(name))?.id;
     return { currentPressId: id, pressNameFromUrl: name };
+  }, [location.pathname, presses, selectedPress]);
+
+  // Keep selectedPress in sync with URL
+  useEffect(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    const name = segments.length > 0 ? decodeURIComponent(segments[segments.length - 1]) : '';
+    const clean = (s: string) => s.toLowerCase().replace(/\s/g, '');
+    const press = presses.find(p => clean(p.name) === clean(name));
+    if (press) {
+      setSelectedPress(press.name);
+    }
   }, [location.pathname, presses]);
+
+  // Ensure press users have the right initial selectedPress
+  useEffect(() => {
+    const isPressRole = user?.role?.toLowerCase() === 'press' || user?.role?.toLowerCase() === 'operator';
+    if (isPressRole && user?.press && selectedPress !== user.press) {
+      setSelectedPress(user.press);
+    }
+  }, [user, selectedPress]);
+
+  // The active checklist for the current press
+  const currentPressChecklist = currentPressId ? activeChecklists[currentPressId] : null;
+  const hasActiveChecklist = !!currentPressChecklist;
 
   const currentPressTasks = useMemo(() => {
     if (!pressNameFromUrl || pressNameFromUrl === 'Taken') return [];
@@ -676,15 +746,28 @@ function MainApp() {
 
                 <Route path="/Taken/*" element={hasPermission('tasks_view') ? (
                   <div className="space-y-6">
-                    <div className={`flex flex-col sm:flex-row ${((activePresses.length + (hasPermission('extern_view') ? 1 : 0)) > 1) ? 'justify-between' : 'justify-center'} items-start sm:items-center gap-4 mb-2 mt-2`}>
+                    <div className={`flex flex-col sm:flex-row ${((activePresses.length + (hasPermission('extern_view') ? 1 : 0) + (hasActiveChecklist ? 1 : 0)) > 1) ? 'justify-between' : 'justify-center'} items-start sm:items-center gap-4 mb-2 mt-2`}>
                       <div className="flex items-center gap-4">
-                        {(activePresses.length + (hasPermission('extern_view') ? 1 : 0)) > 1 && (
+                        {(activePresses.length + (hasPermission('extern_view') ? 1 : 0) + (hasActiveChecklist ? 1 : 0)) > 1 && (
                           <Tabs
-                            value={decodeURIComponent(location.pathname.split('/').pop() || '')}
+                            value={decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || activePresses[0]?.name || '')}
                             onValueChange={(value) => navigate(`/Taken/${encodeURIComponent(value)}`)}
                             className="w-full sm:w-auto"
                           >
                             <TabsList className="tab-pill-list">
+                              {/* CHECKLIST tab — only if active checklist exists for any currently visible press */}
+                              {hasActiveChecklist && (hasPermission('checklist_view') || ((user?.role?.toLowerCase() === 'press' || user?.role?.toLowerCase() === 'operator') && user?.press?.toLowerCase().replace(/\s/g, '') === currentPressChecklist?.press_name?.toLowerCase().replace(/\s/g, ''))) && (
+                                <>
+                                  <TabsTrigger
+                                    value="Checklist"
+                                    className="tab-pill-trigger !bg-emerald-50 !text-emerald-700 data-[state=active]:!bg-emerald-600 data-[state=active]:!text-white font-bold gap-1.5"
+                                  >
+                                    <ClipboardCheck className="w-3.5 h-3.5" />
+                                    Checklist
+                                  </TabsTrigger>
+                                  <div className="w-px h-6 bg-emerald-200/50 mx-1 self-center" />
+                                </>
+                              )}
                               {activePresses.map(press => (
                                 <TabsTrigger
                                   key={press.id}
@@ -754,18 +837,51 @@ function MainApp() {
                             <Badge variant={statusFilter === 'Deze Maand' ? 'secondary' : 'default'} className="bg-yellow-500">{statusCounts['Deze Maand']}</Badge>
                           </Button>
                         )}
-                        {hasPermission('tasks_edit') && location.pathname.toLowerCase() !== '/taken/extern' && (
-                          <Button
-                            onClick={() => { setEditingTask(null); setEditingTaskGroup(null); setIsAddDialogOpen(true); }}
-                            className="gap-2 shadow-sm"
-                          >
-                            <Plus className="w-4 h-4" />Nieuwe Taak
-                          </Button>
+                        {hasPermission('tasks_edit') && location.pathname.toLowerCase() !== '/taken/extern' && location.pathname.toLowerCase() !== '/taken/checklist' && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button className="gap-2 shadow-sm">
+                                <Plus className="w-4 h-4" />Nieuw
+                                <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem
+                                onClick={() => { setEditingTask(null); setEditingTaskGroup(null); setIsAddDialogOpen(true); }}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <ClipboardList className="w-4 h-4" />
+                                Taak
+                              </DropdownMenuItem>
+                              {hasPermission('checklist_view') && (
+                                <DropdownMenuItem
+                                  onClick={() => setIsChecklistDialogOpen(true)}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <ClipboardCheck className="w-4 h-4 text-emerald-600" />
+                                  Checklist
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                       </div>
                     </div>
 
                     <Routes>
+                      {/* Checklist route */}
+                      <Route path="Checklist" element={
+                        currentPressChecklist ? (
+                          <ChecklistView
+                            checklist={currentPressChecklist}
+                            groupedTasks={groupedTasks.filter(g => g.pressId === currentPressId && !g.isHighlightGroup)}
+                            onTaskUpdated={handleEditTask}
+                            onChecklistChanged={fetchActiveChecklists}
+                          />
+                        ) : (
+                          <Navigate to={`/Taken/${encodeURIComponent(activePresses[0]?.name || '')}`} replace />
+                        )
+                      } />
                       {hasPermission('extern_view') && <Route path="Extern" element={<ExternalTasks tasks={groupedTasks} presses={presses} isEmbedded={true} />} />}
                       <Route path=":pressName" element={
                         <MaintenanceTable
@@ -799,7 +915,7 @@ function MainApp() {
                   </div>
                 ) : <Navigate to="/" replace />} />
 
-                <Route path="/Drukwerken" element={user?.role === 'press' ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
+                <Route path="/Drukwerken" element={(user?.role?.toLowerCase() === 'press' || user?.role?.toLowerCase() === 'operator') ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
                 <Route path="/Drukwerken/:subtab" element={hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />} />
 
                 <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
@@ -848,6 +964,19 @@ function MainApp() {
             editTask={editingTask}
             initialGroup={editingGroup}
             activePress={currentPressId}
+          />
+          {/* Checklist Creation Dialog */}
+          <CreateChecklistDialog
+            open={isChecklistDialogOpen}
+            onOpenChange={setIsChecklistDialogOpen}
+            pressId={currentPressId || ''}
+            pressName={pressNameFromUrl || ''}
+            tasks={tasks}
+            onCreated={() => {
+              fetchActiveChecklists();
+              // Navigate to checklist tab
+              navigate('/Taken/Checklist');
+            }}
           />
         </>
       )}

@@ -369,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear user-specific localStorage items (keep onboarding_dismissed)
     try {
       localStorage.removeItem('thooft_werkorders');
+      localStorage.removeItem('thooft_locked_katernen');
       localStorage.removeItem('superuser_credentials');
     } catch (e) {
       console.warn("[Auth] localStorage cleanup failed:", e);

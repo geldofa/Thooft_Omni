@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { pb, type User, type Permission, type ActivityLog } from './AuthContext';
-import { drukwerkenCache } from '../services/DrukwerkenCache';
+import { drukwerkenCache, addToLockedCache } from '../services/DrukwerkenCache';
 import { type Katern, type CalculatedField, evaluateFormula } from '../utils/drukwerken-utils';
 import { FormulaResultWithTooltip } from './Drukwerken';
 import { TableRow, TableCell } from './ui/table';
@@ -307,13 +307,25 @@ export function DrukwerkRow({
     // Keep flushRef up to date with latest dependencies
     useEffect(() => {
         flushRef.current = () => {
-            if (autoSaveTimerRef.current) {
-                clearTimeout(autoSaveTimerRef.current);
+            const hasActiveSave = !!autoSaveTimerRef.current;
+            const hasActiveFinish = !!autoFinishTimerRef.current;
+
+            if (hasActiveSave || hasActiveFinish) {
+                if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+                if (autoFinishTimerRef.current) clearTimeout(autoFinishTimerRef.current);
+                
                 autoSaveTimerRef.current = null;
+                autoFinishTimerRef.current = null;
+
                 const k = latestKaternRef.current;
-                if (!k.locked && canAutoSave(k)) {
+                
+                // If we were about to finish, or if we are finishing now, ensure we lock
+                const shouldLock = hasActiveFinish || (Number(k.green) > 0 && Number(k.red) > 0);
+
+                if (!isSavingRef.current && canAutoSave(k)) {
                     // Fire-and-forget — component is unmounting
-                    const pbData = buildPbData(k);
+                    const pbData = buildPbData(k, shouldLock ? { is_finished: true, locked: true } : undefined);
+                    
                     if (k.originalId) {
                         pb.collection('drukwerken').update(k.originalId, pbData).catch(e =>
                             console.error('[DrukwerkRow] Flush update failed:', e)
@@ -323,10 +335,18 @@ export function DrukwerkRow({
                             console.error('[DrukwerkRow] Flush create failed:', e)
                         );
                     }
+
+                    // Update local cache as well to be safe
+                    drukwerkenCache.putRecord({ ...pbData, id: k.originalId || '' } as any, user, hasPermission);
+
+                    // ALSO update the locked cache directly if we are locking
+                    if (shouldLock) {
+                        addToLockedCache(k.id, k.originalId);
+                    }
                 }
             }
         };
-    }, [validateGreen, buildPbData]);
+    }, [validateGreen, buildPbData, user, hasPermission]);
 
     useEffect(() => {
         return () => {

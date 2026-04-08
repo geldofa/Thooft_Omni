@@ -356,3 +356,38 @@ class DrukwerkenCacheService {
 }
 
 export const drukwerkenCache = new DrukwerkenCacheService();
+
+// --- Locked Katernen Browser Cache Helpers ---
+export const LOCKED_CACHE_KEY = 'thooft_locked_katernen';
+
+export const readLockedCache = (): Set<string> => {
+    try {
+        const raw = localStorage.getItem(LOCKED_CACHE_KEY);
+        if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch (e) {
+        console.warn('[DrukwerkenCache] Failed to read locked cache:', e);
+    }
+    return new Set();
+};
+
+export const writeLockedCache = (lockedIds: Set<string>) => {
+    try {
+        localStorage.setItem(LOCKED_CACHE_KEY, JSON.stringify([...lockedIds]));
+    } catch (e) {
+        console.warn('[DrukwerkenCache] Failed to write locked cache:', e);
+    }
+};
+
+export const addToLockedCache = (katernId: string, originalId?: string) => {
+    const set = readLockedCache();
+    set.add(katernId);
+    if (originalId) set.add(originalId);
+    writeLockedCache(set);
+};
+
+export const removeFromLockedCache = (katernId: string, originalId?: string) => {
+    const set = readLockedCache();
+    set.delete(katernId);
+    if (originalId) set.delete(originalId);
+    writeLockedCache(set);
+};

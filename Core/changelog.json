@@ -1,5 +1,21 @@
 [
   {
+    "id": "a579252222de66fa53848d56ae31af74a5c40769",
+    "version": "1.12.7",
+    "date": "2026-04-07",
+    "title": "Migratie aanpassing",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "b62dddb99117e5b62068832c739e1df9687d445a",
+    "version": "1.12.6",
+    "date": "2026-04-07",
+    "title": "l Overzicht verbeteringen",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "b423e435bea987bd5425b2cf4e110aa98e41b227",
     "version": "1.12.5",
     "date": "2026-04-03",
@@ -381,22 +397,6 @@
     "date": "2026-02-23",
     "title": "Samenvattingen",
     "body": "- (Meestergast) Mogelijkheid tot het creëren van Samenvattingen & ook automatisch op ingesteld tijdstip.\n- (Meestergast) Download pagina met de lijst van  gemaakte samenvattingen",
-    "type": "chore"
-  },
-  {
-    "id": "217cfdb5720f41009d3a57050fd07723f1bf089c",
-    "version": "1.3.11",
-    "date": "2026-02-19",
-    "title": "Update manager - Laatste wijzigingen weergeven",
-    "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "45bc3bc5fbdd8311f306369a4cbd0b16c3b5dc5f",
-    "version": "1.3.10",
-    "date": "2026-02-19",
-    "title": "Onderbroken job hervatten",
-    "body": "",
     "type": "chore"
   }
 ]
