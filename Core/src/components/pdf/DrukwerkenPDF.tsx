@@ -23,6 +23,7 @@ export interface DrukwerkTask {
     delta: number;
     delta_percent: number;
     pers_name?: string;
+    opmerking?: string;
 }
 
 export interface DrukwerkenPDFProps {
@@ -334,15 +335,15 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
                             const isDateChange = prevTask && task.date !== prevTask.date;
 
                             return (
-                                <View
-                                    style={[
-                                        styles.tableRow,
-                                        isDateChange ? styles.tableRowDateChange : {}
-                                    ]}
-                                    key={task.id}
-                                    wrap={false}
-                                >
-                                    <View style={[styles.colDate, styles.borderR]}><Text style={[styles.tableCell, { fontSize }]}>{formatDisplayDate(task.date)}</Text></View>
+                                <React.Fragment key={task.id}>
+                                    <View
+                                        style={[
+                                            styles.tableRow,
+                                            isDateChange ? styles.tableRowDateChange : {}
+                                        ]}
+                                        wrap={false}
+                                    >
+                                        <View style={[styles.colDate, styles.borderR]}><Text style={[styles.tableCell, { fontSize }]}>{formatDisplayDate(task.date)}</Text></View>
                                     <View style={[styles.colOrderNr, styles.borderR]}><Text style={[styles.tableCell, { fontSize }, styles.bold]}>{task.order_nummer}</Text></View>
                                     <View style={[styles.colOrderName, styles.borderRBlack]}>
                                         <Text style={[styles.tableCell, { fontSize }]}>{task.klant_order_beschrijving}</Text>
@@ -442,7 +443,20 @@ export const DrukwerkenPDF: React.FC<DrukwerkenPDFProps> = ({
                                             </>
                                         );
                                     })()}
-                                </View>
+                                    </View>
+                                    {task.opmerking && (
+                                        <View style={[styles.tableRow, { minHeight: 18, borderTopWidth: 0, paddingBottom: 4 }]} wrap={false}>
+                                            <View style={[styles.colDate, styles.borderR]} />
+                                            <View style={[styles.colOrderNr, styles.borderR]} />
+                                            <View style={[{ width: '87%' }, { paddingLeft: 4, flexDirection: 'row', alignItems: 'center' }]}>
+                                                <Text style={{ fontFamily: 'Helvetica', fontSize: fontSize - 1, color: '#3b82f6' }}>↳</Text>
+                                                <Text style={{ fontFamily: 'Helvetica-Oblique', fontSize: fontSize - 1, color: '#64748b', marginLeft: 4 }}>
+                                                    {task.opmerking}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    )}
+                                </React.Fragment>
                             );
                         })}
                     </View>

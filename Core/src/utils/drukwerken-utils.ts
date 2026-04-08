@@ -17,6 +17,7 @@ export interface Katern {
     red: number | null;
     delta: number | null;
     deltaPercentage: number | null;
+    opmerking?: string;
     is_finished?: boolean;
     locked?: boolean;
     dbGreen?: number | null; // Last saved green value in PB (for 50% deviation check)

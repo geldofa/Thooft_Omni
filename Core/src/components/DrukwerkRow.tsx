@@ -9,7 +9,8 @@ import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
-import { Trash2, Pencil } from 'lucide-react';
+import { Textarea } from './ui/textarea';
+import { Trash2, Pencil, MessageSquare } from 'lucide-react';
 import { cn } from './ui/utils';
 import { formatNumber } from '../utils/formatNumber';
 import { format } from 'date-fns';
@@ -32,7 +33,6 @@ export interface DrukwerkRowProps {
     activePresses: string[];
     outputConversions: Record<string, Record<string, number>>;
     pressMap: Record<string, string>;
-    showComparison: boolean;
     calculatedFields: CalculatedField[];
     onKaternChange: (werkorderId: string, katernId: string, field: keyof Katern, value: any) => void;
     onDeleteKatern: (werkorderId: string, katernId: string) => void;
@@ -53,7 +53,6 @@ export function DrukwerkRow({
     activePresses,
     outputConversions,
     pressMap,
-    showComparison,
     calculatedFields,
     onKaternChange,
     onDeleteKatern,
@@ -74,6 +73,9 @@ export function DrukwerkRow({
 
     // ===================== UI STATE =====================
     const [pulseActive, setPulseActive] = useState(false);
+    const [showComment, setShowComment] = useState(false);
+    const [commentValue, setCommentValue] = useState(katern.opmerking || '');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // ===================== SYNC REFS WITH PROPS =====================
     useEffect(() => { latestKaternRef.current = katern; }, [katern]);
@@ -81,6 +83,23 @@ export function DrukwerkRow({
     useEffect(() => {
         if (katern.is_finished) wasEverLockedRef.current = true;
     }, [katern.is_finished]);
+    useEffect(() => {
+        setCommentValue(katern.opmerking || '');
+    }, [katern.opmerking]);
+
+    const adjustTextareaHeight = useCallback(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (showComment) {
+            // timeout guarantees DOM is updated
+            setTimeout(adjustTextareaHeight, 0);
+        }
+    }, [showComment, commentValue, adjustTextareaHeight]);
 
     // ===================== HELPERS =====================
     const getFormulaForColumn = useCallback(
@@ -89,7 +108,7 @@ export function DrukwerkRow({
     );
 
     /** Build PocketBase data object from a Katern. */
-    const buildPbData = useCallback((k: Katern, overrides?: Partial<{ is_finished: boolean; locked: boolean }>) => {
+    const buildPbData = useCallback((k: Katern, overrides?: Partial<{ is_finished: boolean; locked: boolean; opmerking: string }>) => {
         const today = new Date();
         const formattedDate = format(today, 'yyyy-MM-dd');
         const formattedDatum = format(today, 'dd-MM');
@@ -150,7 +169,7 @@ export function DrukwerkRow({
             delta_percent: deltaPctVal || 0,
             pers: effectivePressId,
             status: 'check',
-            opmerking: '',
+            opmerking: overrides?.opmerking ?? (k.opmerking || ''),
             is_finished: overrides?.is_finished ?? (k.is_finished || false),
             locked: overrides?.locked ?? (k.locked || false),
             voltooid_op: k.voltooid_op || ((Number(k.green) + Number(k.red) > 0) ? new Date().toISOString() : null),
@@ -187,7 +206,7 @@ export function DrukwerkRow({
     // ===================== CORE SAVE =====================
     const performSave = useCallback(async (
         k?: Katern,
-        overrides?: Partial<{ is_finished: boolean; locked: boolean }>
+        overrides?: Partial<{ is_finished: boolean; locked: boolean; opmerking: string }>
     ) => {
         if (isSavingRef.current) return;
         isSavingRef.current = true;
@@ -364,6 +383,21 @@ export function DrukwerkRow({
         startAutoFinishTimer();
     }, [werkorderId, katern.id, onKaternChange, startAutoSaveTimer, startAutoFinishTimer]);
 
+    const handleCommentBlur = async () => {
+        if (katern.originalId && commentValue !== (katern.opmerking || '')) {
+            try {
+                await pb.collection('drukwerken').update(katern.originalId, { opmerking: commentValue });
+                onKaternChange(werkorderId, katern.id, 'opmerking', commentValue);
+                toast.success('Opmerking opgeslagen.');
+            } catch (error) {
+                console.error('[DrukwerkRow] Comment update failed:', error);
+                toast.error('Opmerking opslaan mislukt.');
+            }
+        } else if (!katern.originalId && commentValue !== (katern.opmerking || '')) {
+            onKaternChange(werkorderId, katern.id, 'opmerking', commentValue);
+        }
+    };
+
     // ===================== UNLOCK HANDLER =====================
 
     const handleUnlock = useCallback(async () => {
@@ -449,22 +483,34 @@ export function DrukwerkRow({
         cn("h-9 px-1 text-[10px] border-gray-200", locked ? "bg-gray-100 text-gray-500" : "bg-white");
 
     return (
-        <TableRow
-            className={cn(
-                "hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group",
-                isLocked && "bg-gray-50",
-                pulseActive && "animate-save-pulse"
-            )}
-        >
-            {/* Version */}
-            <TableCell>
-                <Input
-                    value={katern.version}
-                    onChange={(e) => handleChange('version', e.target.value)}
-                    className={inputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
+        <>
+            <TableRow
+                className={cn(
+                    "hover:bg-blue-50/70 [&>td]:hover:bg-blue-50/70 transition-colors group",
+                    isLocked && "bg-gray-50",
+                    pulseActive && "animate-save-pulse"
+                )}
+            >
+                {/* Version */}
+                <TableCell>
+                    <div className="flex gap-2 items-center">
+                        <Input
+                            value={katern.version}
+                            onChange={(e) => handleChange('version', e.target.value)}
+                            className={inputBaseClass(isLocked)}
+                            disabled={isLocked}
+                        />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn("h-8 w-8 p-0 flex-shrink-0 transition-colors", showComment || commentValue ? "text-blue-600 bg-blue-50" : "text-gray-400 hover:text-blue-600")}
+                            onClick={() => setShowComment(!showComment)}
+                            title="Opmerkingen"
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                        </Button>
+                    </div>
+                </TableCell>
 
             {/* Pages */}
             <TableCell className="text-right">
@@ -581,11 +627,6 @@ export function DrukwerkRow({
                         outputConversions={outputConversions}
                         pressMap={pressMap}
                     />
-                    {showComparison && (
-                        <div className="text-[10px] text-gray-400 border-t mt-1 pt-0.5 w-full text-center">
-                            Rec: {formatNumber(katern.maxGross)}
-                        </div>
-                    )}
                 </div>
             </TableCell>
 
@@ -710,5 +751,26 @@ export function DrukwerkRow({
                 </div>
             </TableCell>
         </TableRow>
+        {showComment && (
+            <TableRow className={cn("bg-blue-50/10", isLocked && "bg-gray-50/50")}>
+                <TableCell colSpan={16} className="p-0 border-b-0">
+                    <div className="mx-4 my-2 pl-4 py-2 border-l-2 border-blue-400 bg-white/60 shadow-sm rounded-r-md">
+                        <Textarea
+                            ref={textareaRef}
+                            value={commentValue}
+                            onChange={(e) => {
+                                setCommentValue(e.target.value);
+                                adjustTextareaHeight();
+                            }}
+                            onBlur={handleCommentBlur}
+                            placeholder="Voeg hier een opmerking toe voor deze versie..."
+                            className="min-h-[40px] resize-none border-0 focus-visible:ring-0 px-0 rounded-none shadow-none text-sm bg-transparent overflow-hidden"
+                            disabled={isLocked}
+                        />
+                    </div>
+                </TableCell>
+            </TableRow>
+        )}
+        </>
     );
 }

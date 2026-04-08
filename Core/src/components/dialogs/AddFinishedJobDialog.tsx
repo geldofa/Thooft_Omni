@@ -17,7 +17,8 @@ import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
 import { FinishedPrintJob } from '../../utils/drukwerken-utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { Trash2, Plus, ArrowUpLeft, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, ArrowUpLeft, AlertCircle, MessageSquare } from 'lucide-react';
+import { Textarea } from '../ui/textarea';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 interface AddFinishedJobDialogProps {
@@ -53,6 +54,7 @@ export function AddFinishedJobDialog({
     const [jobToDelete, setJobToDelete] = useState<string | null>(null);
     const [showDeleteChoices, setShowDeleteChoices] = useState(false);
     const [initialStateHash, setInitialStateHash] = useState('');
+    const [showComments, setShowComments] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if (open) {
@@ -318,8 +320,39 @@ export function AddFinishedJobDialog({
                                     <TableBody>
                                         {jobs.map((job) => (
                                             <TableRow key={job.id}>
-                                                <TableCell>
-                                                    <Input value={job.version} onChange={(e) => handleJobChange(job.id, 'version', e.target.value)} className="h-9 px-2 bg-white border-gray-200" />
+                                                <TableCell className="align-top py-2 relative">
+                                                    <div className="flex flex-col gap-1 w-full">
+                                                        <div className="flex gap-1 items-center w-full">
+                                                            <Input 
+                                                                value={job.version} 
+                                                                onChange={(e) => handleJobChange(job.id, 'version', e.target.value)} 
+                                                                className="h-9 px-2 bg-white border-gray-200 flex-1 min-w-[80px]" 
+                                                                placeholder="Versie"
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                title="Opmerking toevoegen/bekijken"
+                                                                className={`h-9 w-9 hover:bg-blue-100 flex-shrink-0 ${(job as any).opmerkingen || (job as any).opmerking || showComments[job.id] ? "text-blue-600 bg-blue-50" : "text-gray-400"}`}
+                                                                onClick={() => setShowComments(prev => ({ ...prev, [job.id]: !prev[job.id] }))}
+                                                            >
+                                                                <MessageSquare className="w-4 h-4" />
+                                                            </Button>
+                                                        </div>
+                                                        {((job as any).opmerkingen || (job as any).opmerking || showComments[job.id]) && (
+                                                            <Textarea
+                                                                value={(job as any).opmerkingen || (job as any).opmerking || ''}
+                                                                onChange={(e) => {
+                                                                    handleJobChange(job.id, 'opmerkingen', e.target.value);
+                                                                    // We also update opmerking directly to handle arbitrary structures if needed by caller
+                                                                    handleJobChange(job.id, 'opmerking' as keyof FinishedPrintJob, e.target.value);
+                                                                }}
+                                                                placeholder="Opmerking..."
+                                                                className="min-h-[50px] text-xs resize-y bg-blue-50/50 border-blue-200"
+                                                            />
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <FormattedNumberInput value={job.pages || null} onChange={(val) => handleJobChange(job.id, 'pages', val)} className="h-9 px-2 bg-white border-gray-200" />

@@ -252,7 +252,8 @@ export async function generatePresetReport(
       rood: r.rood,
       delta: r.delta,
       delta_percent: r.delta_percent,
-      pers_name: r.expand?.pers?.naam || 'Onbekend'
+      pers_name: r.expand?.pers?.naam || 'Onbekend',
+      opmerking: r.opmerking
     }));
 
     // 2. Generate PDF

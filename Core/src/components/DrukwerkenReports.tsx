@@ -440,7 +440,8 @@ export function DrukwerkenReports({ presses }: DrukwerkenReportsProps) {
           rood: r.rood,
           delta: r.delta,
           delta_percent: r.delta_percent,
-          pers_name: r.expand?.pers?.naam || 'Onbekend'
+          pers_name: r.expand?.pers?.naam || 'Onbekend',
+          opmerking: r.opmerking
         }));
         if (!cancelled) setTasks(mapped);
       } finally { if (!cancelled) setIsLoading(false); }

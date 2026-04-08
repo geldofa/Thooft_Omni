@@ -12,7 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown } from 'lucide-react';
+import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown, CornerDownRight } from 'lucide-react';
 import { cn } from './ui/utils';
 import { TableVirtuoso } from 'react-virtuoso';
 import { formatNumber } from '../utils/formatNumber';
@@ -20,7 +20,6 @@ import { format, differenceInDays } from 'date-fns';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
-import { Switch } from './ui/switch';
 
 
 import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
@@ -432,7 +431,6 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
-    const [showComparison, setShowComparison] = useState(false);
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
@@ -554,7 +552,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     // Stable sync function to avoid duplication
     const syncToLocalStorage = useCallback((orders: Werkorder[]) => {
         localStorage.setItem('thooft_werkorders', JSON.stringify(orders));
-        
+
         // Rebuild the locked cache
         const lockedIds = new Set<string>();
         orders.forEach(wo => {
@@ -588,15 +586,15 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                 .where('[orderNr+version]')
                                 .equals([wo.orderNr, k.version])
                                 .toArray();
-                            
+
                             // Find the most recent one that matches the order date
                             const match = cachedJobs.find((j: FinishedPrintJob) => j.date === wo.orderDate || !j.date);
                             if (match) {
                                 console.log(`[Drukwerken] Reconciled draft ${k.id} with cached record ${match.id}`);
                                 needsUpdate = true;
-                                return { 
-                                    ...k, 
-                                    originalId: match.id, 
+                                return {
+                                    ...k,
+                                    originalId: match.id,
                                     locked: match.locked || k.locked,
                                     is_finished: match.is_finished || k.is_finished,
                                     dbGreen: match.green,
@@ -938,7 +936,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     delta_percent: (processedKatern.deltaPercentage as number) || 0,
                     pers: processedKatern.pressId || effectivePressId,
                     status: 'check',
-                    opmerking: '',
+                    opmerking: processedKatern.opmerking || '',
                     voltooid_op: processedKatern.voltooid_op || ((Number(processedKatern.green) + Number(processedKatern.red) > 0) ? new Date().toISOString() : null)
                 };
 
@@ -2066,17 +2064,6 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                         </Tabs>
                                     )}
 
-                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
-                                        <div className="flex items-center space-x-2 bg-white px-3 h-9 rounded-md border text-xs shadow-sm">
-                                            <Switch
-                                                id="compare-mode"
-                                                checked={showComparison}
-                                                onCheckedChange={setShowComparison}
-                                                className="scale-75 origin-left"
-                                            />
-                                            <Label htmlFor="compare-mode" className="cursor-pointer font-medium text-gray-600">Vergelijk</Label>
-                                        </div>
-                                    )}
 
                                     <div className="flex gap-2">
                                         {activeTab === 'Gedrukt' && (
@@ -2255,7 +2242,6 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                         activePresses={activePresses}
                                                         outputConversions={outputConversions}
                                                         pressMap={pressMap}
-                                                        showComparison={showComparison}
                                                         calculatedFields={calculatedFields}
                                                         onKaternChange={handleKaternChange}
                                                         onDeleteKatern={requestDeleteKatern}
@@ -2396,8 +2382,18 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </TableCell>
                                                 <TableCell className={cn("py-1 px-2 text-center", borderClass)}>DT {job.orderNr}</TableCell>
                                                 <TableCell className={cn("py-1 px-2", borderClass)}>
-                                                    <span className="font-medium mr-2">{job.orderName}</span>
-                                                    <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-center">
+                                                            <span className="font-medium mr-2">{job.orderName}</span>
+                                                            <span className="text-gray-500 whitespace-nowrap">{job.version}</span>
+                                                        </div>
+                                                        {((job as any).opmerking || job.opmerkingen) && (
+                                                            <div className="flex items-start gap-1 mt-0.5 text-[11px] text-blue-600/80 italic font-medium leading-tight">
+                                                                <CornerDownRight className="w-3 h-3 flex-shrink-0" />
+                                                                <span>{(job as any).opmerking || job.opmerkingen}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className={cn("text-right py-1 px-1", borderClass)}>{formatNumber(job.pages)} blz</TableCell>
                                                 <TableCell className={cn("text-center py-1 px-1", borderClass)}>{job.exOmw}</TableCell>
