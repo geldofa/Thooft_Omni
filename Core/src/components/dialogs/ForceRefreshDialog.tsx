@@ -1,13 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { RefreshCw, AlertTriangle, GitCommit, Rocket } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import changelog from 'virtual:changelog';
+import { APP_VERSION } from '../../config';
+
+// Compare semver strings (e.g. "1.12.7" > "1.12.6")
+function semverGt(a: string, b: string): boolean {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true;
+        if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false;
+    }
+    return false;
+}
 
 export function ForceRefreshDialog() {
     const { refreshTriggeredAt, recentCommits, fetchRecentCommits, appStartTime } = useAuth();
     const [open, setOpen] = useState(false);
     const [lastTrigger, setLastTrigger] = useState<string | null>(null);
+
+    // Derive the running version number without prefix/spaces
+    const runningVersion = APP_VERSION.replace(/[^0-9.]/g, '').trim();
+
+    // Fallback: commits from changelog that are NEWER than the currently running version
+    const changelogFallback = useMemo(() => {
+        return changelog
+            .filter(c => c.version && semverGt(c.version, runningVersion))
+            .map(c => [c.version ? `v${c.version} | ` : '', c.title, c.body].filter(Boolean).join('\n').trim())
+            .filter(Boolean);
+    }, [runningVersion]);
+
+    const commitsToShow = recentCommits.length > 0 ? recentCommits : changelogFallback;
 
     useEffect(() => {
         console.log("[ForceRefresh] Checking trigger:", refreshTriggeredAt, "Last:", lastTrigger);
@@ -50,14 +76,14 @@ export function ForceRefreshDialog() {
                     </DialogDescription>
                 </DialogHeader>
 
-                {recentCommits && recentCommits.length > 0 && (
+                {commitsToShow && commitsToShow.length > 0 && (
                     <div className="my-2 space-y-2">
                         <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
                             <Rocket className="w-3 h-3 text-blue-500" />
                             Recente Wijzigingen
                         </div>
                         <div className="bg-slate-50 border border-slate-100 rounded-lg overflow-hidden max-h-[40vh] overflow-y-auto">
-                            {recentCommits.map((commit, idx) => {
+                            {commitsToShow.map((commit, idx) => {
                                 const [title, ...bodyLines] = commit.split('\n');
                                 return (
                                     <div

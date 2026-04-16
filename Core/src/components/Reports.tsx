@@ -322,7 +322,8 @@ function getNextRunDate(p: ReportPreset): Date | null {
 // ─── Component ──────────────────────────────────────────────
 
 export function Reports(_props: ReportsProps) {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canManagePresets = hasPermission('reports_view');
   const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
   const [presets, setPresets] = useState<ReportPreset[]>([]);
   const [archive, setArchive] = useState<GeneratedReport[]>([]);
@@ -620,7 +621,7 @@ export function Reports(_props: ReportsProps) {
             <FileText className="w-6 h-6 text-indigo-600" /> Rapporten
           </h1>
           <Button onClick={() => openEditor(null)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-            <PlusCircle className="w-4 h-4" /> Nieuw Sjabloon
+            <PlusCircle className="w-4 h-4" /> {canManagePresets ? 'Nieuw Sjabloon' : 'Eenmalige Export'}
           </Button>
         </div>
 
@@ -678,9 +679,9 @@ export function Reports(_props: ReportsProps) {
                   </div>
                 </div>
                 <CardFooter className="py-2 px-3 flex gap-2 border-t bg-slate-50/50 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => openEditor(p)} className="flex-1 gap-1 h-8 rounded-lg border-indigo-100 text-indigo-700 hover:bg-indigo-50/50 text-[11px]"><Edit2 className="w-3 h-3" /> Config</Button>
+                  {canManagePresets && <Button variant="outline" size="sm" onClick={() => openEditor(p)} className="flex-1 gap-1 h-8 rounded-lg border-indigo-100 text-indigo-700 hover:bg-indigo-50/50 text-[11px]"><Edit2 className="w-3 h-3" /> Config</Button>}
                   <Button size="sm" onClick={() => generatePresetNow(p)} className="flex-1 gap-1 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 text-[11px]"><PlayCircle className="w-3 h-3" /> Nu Run</Button>
-                  <Button variant="ghost" size="sm" onClick={() => setPresetToDelete(p)} className="h-8 w-8 p-0 text-red-300 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></Button>
+                  {canManagePresets && <Button variant="ghost" size="sm" onClick={() => setPresetToDelete(p)} className="h-8 w-8 p-0 text-red-300 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></Button>}
                 </CardFooter>
               </Card>
             );
@@ -809,7 +810,7 @@ export function Reports(_props: ReportsProps) {
                         }}>
                           <Download className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-300 hover:text-red-500" title="Verwijder" onClick={() => setArchiveToDelete(r)}>
+                        <Button variant="ghost" size="sm" className={cn("h-8 w-8 p-0 text-red-300 hover:text-red-500", !canManagePresets && "hidden")} title="Verwijder" onClick={() => setArchiveToDelete(r)} disabled={!canManagePresets}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -997,7 +998,7 @@ export function Reports(_props: ReportsProps) {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-4 border-t">
+              {canManagePresets && <div className="space-y-4 pt-4 border-t">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label className="text-sm font-bold">Automatisatie</Label>
@@ -1148,7 +1149,7 @@ export function Reports(_props: ReportsProps) {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
 
               <div className="pt-2">
                 <Button variant="ghost" size="sm" onClick={() => setIsAdvancedOpen(!isAdvancedOpen)} className="w-full justify-between h-8 text-[10px] font-bold uppercase text-slate-400">
@@ -1167,7 +1168,7 @@ export function Reports(_props: ReportsProps) {
             <CardFooter className="flex flex-col gap-2 pt-4 border-t bg-slate-50/50">
               <div className="flex gap-2 w-full">
                 <Button variant="outline" onClick={() => setCurrentView('dashboard')} className="flex-1 h-9 text-xs">Annuleren</Button>
-                <Button onClick={handleSavePreset} disabled={isSaving} className="flex-1 h-9 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1">{isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Sjabloon Opslaan</Button>
+                {canManagePresets && <Button onClick={handleSavePreset} disabled={isSaving} className="flex-1 h-9 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1">{isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Sjabloon Opslaan</Button>}
               </div>
               <Button onClick={handleGenerateAndSave} disabled={isSaving || tasks.length === 0} className="w-full h-10 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold gap-2">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />} Genereer & Archiveer Nu

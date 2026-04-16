@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press } from './components/AuthContext';
+import { pb, useAuth, MaintenanceTask, GroupedTask, AuthProvider, Press, Tag, EXTERNAL_TAG_NAME } from './components/AuthContext';
 import { ThemeProvider } from './components/ThemeProvider';
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/layout/Header';
@@ -34,6 +34,8 @@ const Roadmap = lazy(() => import('./components/Roadmap').then(m => ({ default: 
 const ExternalTasks = lazy(() => import('./components/ExternalTasks').then(m => ({ default: m.ExternalTasks })));
 const Overzicht = lazy(() => import('./components/Overzicht').then(m => ({ default: m.Overzicht })));
 const ChecklistView = lazy(() => import('./components/ChecklistView').then(m => ({ default: m.ChecklistView })));
+const WeekPlanner = lazy(() => import('./components/WeekPlanner').then(m => ({ default: m.WeekPlanner })));
+const PlanningPersoneel = lazy(() => import('./components/PlanningPersoneel').then(m => ({ default: m.PlanningPersoneel })));
 import { Homepage } from './components/Homepage';
 import { CreateChecklistDialog } from './components/dialogs/CreateChecklistDialog';
 
@@ -42,6 +44,7 @@ function MainApp() {
   const navigate = useNavigate();
   const [groupedTasks, setGroupedTasks] = useState<GroupedTask[]>([]);
   const [presses, setPresses] = useState<Press[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
 
   const {
@@ -106,6 +109,7 @@ function MainApp() {
         archived: r.archived === true,
         category_order: r.category_order
       }));
+      setTags(mappedTags);
       setPresses(mappedPresses);
 
       const grouped: GroupedTask[] = [];
@@ -503,14 +507,15 @@ function MainApp() {
       cues[press.name] = getEarliestStatusColor(pressSubtasks);
     });
 
-    // Cue for Extern tab (External only)
+    // Cue for Extern tab — treat both is_external flag AND "Extern" tag as external
+    const externTagId = tags.find(t => t.naam === EXTERNAL_TAG_NAME)?.id;
     const externalSubtasks = groupedTasks
       .flatMap(g => g.subtasks)
-      .filter((st: any) => st.isExternal);
+      .filter((st: any) => st.isExternal || (externTagId && Array.isArray(st.tagIds) && st.tagIds.includes(externTagId)));
     cues['Extern'] = getEarliestStatusColor(externalSubtasks);
 
     return cues;
-  }, [activePresses, groupedTasks, getEarliestStatusColor]);
+  }, [activePresses, groupedTasks, getEarliestStatusColor, tags]);
 
   const allSubtasks = currentPressTasks.flatMap((group: any) => group.subtasks);
   const statusCounts = allSubtasks.reduce((acc: any, subtask: any) => {
@@ -742,6 +747,8 @@ function MainApp() {
               <Routes>
                 <Route path="/" element={<Homepage setActiveTab={setActiveTab} activePresses={activePresses} />} />
                 <Route path="/Overzicht" element={<Overzicht />} />
+                <Route path="/werkrooster" element={<WeekPlanner />} />
+                <Route path="/werkrooster/instellingen" element={hasPermission('management_access') ? <PlanningPersoneel /> : <Navigate to="/" replace />} />
                 <Route path="/Taken" element={activePresses.length > 0 ? <Navigate to={`/Taken/${encodeURIComponent(activePresses[0].name)}`} replace /> : <Navigate to="/" replace />} />
 
                 <Route path="/Taken/*" element={hasPermission('tasks_view') ? (
@@ -882,7 +889,7 @@ function MainApp() {
                           <Navigate to={`/Taken/${encodeURIComponent(activePresses[0]?.name || '')}`} replace />
                         )
                       } />
-                      {hasPermission('extern_view') && <Route path="Extern" element={<ExternalTasks tasks={groupedTasks} presses={presses} isEmbedded={true} />} />}
+                      {hasPermission('extern_view') && <Route path="Extern" element={<ExternalTasks tasks={groupedTasks} presses={presses} tags={tags} isEmbedded={true} />} />}
                       <Route path=":pressName" element={
                         <MaintenanceTable
                           tasks={currentPressTasks}
@@ -922,8 +929,8 @@ function MainApp() {
                 <Route path="/Beheer/:subtab" element={hasPermission('management_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
                 <Route path="/Analyses" element={<Navigate to="/Analyses/Rapport" replace />} />
-                <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
-                <Route path="/Analyses/:subtab/:subsubtab" element={(hasPermission('reports_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses/:subtab/:subsubtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
                 <Route path="/Rapport" element={<Navigate to="/Analyses/Rapport" replace />} />
                 <Route path="/Checklist" element={<Navigate to="/Analyses/Checklist" replace />} />

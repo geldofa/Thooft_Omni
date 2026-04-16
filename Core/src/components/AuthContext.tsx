@@ -69,7 +69,7 @@ export interface MaintenanceTask {
   updated: string;
 }
 
-export type UserRole = 'admin' | 'press' | 'meestergast' | 'waarnemer' | null;
+export type UserRole = string | null;
 export type PressType = string;
 
 export type Permission =
@@ -79,6 +79,7 @@ export type Permission =
   | 'drukwerken_view_all'
   | 'drukwerken_create'
   | 'reports_view'
+  | 'reports_archive_view'
   | 'checklist_view'
   | 'extern_view'
   | 'management_access'
@@ -103,7 +104,10 @@ export type Permission =
   | 'data_checker_view'
   | 'activity_ticker_view'
   | 'osint_view'
-  | 'drukwerken_trash_view';
+  | 'drukwerken_trash_view'
+  | 'planning_view'
+  | 'planning_edit'
+  | 'planning_settings';
 
 
 export interface RolePermissions {
@@ -279,6 +283,8 @@ interface AuthContextType {
   hasPermission: (permission: Permission) => boolean;
   rolePermissions: RolePermissions[];
   updateRolePermissions: (role: UserRole, permissions: Permission[]) => Promise<void>;
+  createRole: (name: string) => Promise<boolean>;
+  deleteRole: (role: string) => Promise<boolean>;
   // Backup functions
   listBackups: () => Promise<BackupInfo[]>;
   createBackup: (name?: string) => Promise<boolean>;
@@ -311,6 +317,9 @@ interface AuthContextType {
   recentCommits: string[];
   fetchRecentCommits: () => Promise<void>;
   appStartTime: number;
+  simulatedRole: string | null;
+  setSimulatedRole: (role: string | null) => void;
+  effectiveRole: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -320,6 +329,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
+  const [simulatedRole, setSimulatedRoleState] = useState<string | null>(() =>
+    sessionStorage.getItem('simulated_role') || null
+  );
+
+  const setSimulatedRole = (role: string | null) => {
+    setSimulatedRoleState(role);
+    if (role) sessionStorage.setItem('simulated_role', role);
+    else sessionStorage.removeItem('simulated_role');
+  };
   const [onboardingDismissedState, setOnboardingDismissedState] = useState<boolean>(() => {
     return localStorage.getItem('onboarding_dismissed') === 'true';
   });
@@ -414,60 +432,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mapDbRoleToUi = (dbRole: string): UserRole => {
     if (!dbRole) return 'press';
     const lowerRole = dbRole.toLowerCase();
-    let result: UserRole = 'press';
-    
-    if (lowerRole === 'admin') result = 'admin';
-    else if (lowerRole === 'meestergast') result = 'meestergast';
-    else if (lowerRole === 'waarnemer' || lowerRole === 'observer') result = 'waarnemer';
-    else if (lowerRole === 'operator' || lowerRole === 'press') result = 'press';
-    
-    // console.log(`[Auth] role map: "${dbRole}" -> "${result}"`);
-    return result;
+    // Backward-compat mappings for legacy DB values
+    if (lowerRole === 'operator') return 'press';
+    if (lowerRole === 'observer') return 'waarnemer';
+    // Legacy roles stored with capital first letter → normalize to lowercase
+    if (lowerRole === 'admin') return 'admin';
+    if (lowerRole === 'meestergast') return 'meestergast';
+    if (lowerRole === 'waarnemer') return 'waarnemer';
+    // Custom roles: preserve original casing from DB (e.g. "CEO" stays "CEO")
+    return dbRole;
   };
 
   const mapUiRoleToDb = (uiRole: UserRole): string => {
-    const roleMap: Record<string, string> = { 
-      'admin': 'Admin', 
-      'meestergast': 'Meestergast', 
+    // Fixed mappings for legacy roles that have canonical DB representations
+    const legacyMap: Record<string, string> = {
       'press': 'Operator',
-      'waarnemer': 'Waarnemer'
+      'admin': 'Admin',
+      'meestergast': 'Meestergast',
+      'waarnemer': 'Waarnemer',
     };
-    return roleMap[uiRole || 'press'] || 'Operator';
+    if (!uiRole) return 'Operator';
+    // Custom roles are stored as-is (no transformation)
+    return legacyMap[uiRole] ?? uiRole;
   };
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     if (!user) return false;
-    // Admins always have access to manage permissions to prevent lockout
-    if (user.role === 'admin' && (permission === 'manage_permissions' || permission === 'management_access')) return true;
+    const effectiveRole = simulatedRole || (user.role as string);
+    // Admins always have access to manage permissions to prevent lockout — but not when simulating
+    if (!simulatedRole && user.role === 'admin' && (permission === 'manage_permissions' || permission === 'management_access')) return true;
 
-    const roleData = rolePermissions.find(rp => 
-      rp.role?.toLowerCase() === (user.role as string)?.toLowerCase()
+    const roleData = rolePermissions.find(rp =>
+      rp.role?.toLowerCase() === effectiveRole?.toLowerCase()
     );
     
     // Fallback to coded defaults if no DB record found
     if (!roleData) {
       const codedDefaults: Record<string, Permission[]> = {
         'admin': [
-          'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
+          'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'reports_archive_view', 'checklist_view',
           'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
           'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
           'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
           'manage_themes', 'manage_notifications', 'manage_system_tasks',
-          'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view', 'drukwerken_trash_view'
+          'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view', 'drukwerken_trash_view',
+          'planning_view', 'planning_edit', 'planning_settings'
         ],
         'meestergast': [
           'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
-          'extern_view', 'logs_view', 'feedback_view', 'osint_view'
+          'extern_view', 'logs_view', 'feedback_view', 'osint_view',
+          'planning_view', 'planning_edit'
         ],
-        'press': ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view'],
+        'press': ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view', 'planning_view'],
         'waarnemer': [
-          'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+          'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'reports_archive_view', 'checklist_view',
           'extern_view', 'logs_view', 'feedback_view', 'production_analytics_view',
-          'maintenance_analytics_view', 'activity_ticker_view', 'osint_view'
+          'maintenance_analytics_view', 'activity_ticker_view', 'osint_view',
+          'planning_view'
         ]
       };
 
-      const defaultPerms = codedDefaults[(user.role as string)?.toLowerCase()] || [];
+      const defaultPerms = codedDefaults[effectiveRole?.toLowerCase()] || [];
       if (defaultPerms.includes(permission)) return true;
 
       // Also support hierarchy in defaults
@@ -475,7 +500,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (permission === 'drukwerken_view' && (defaultPerms.includes('drukwerken_view_all') || defaultPerms.includes('drukwerken_create'))) return true;
 
       if (user.role && Math.random() < 0.05) {
-        console.warn(`[Auth] Using coded fallbacks for role: "${user.role}" (DB missing data)`);
+        if (codedDefaults[effectiveRole?.toLowerCase()]) {
+          console.warn(`[Auth] Using coded fallbacks for role: "${user.role}" (DB missing data)`);
+        }
       }
       return false;
     }
@@ -488,6 +515,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (permission === 'drukwerken_view' && (roleData.permissions.includes('drukwerken_view_all') || roleData.permissions.includes('drukwerken_create'))) return true;
     if (permission === 'logs_view' && roleData.permissions.includes('logs_view_all')) return true;
     if (permission === 'feedback_view' && roleData.permissions.includes('feedback_manage')) return true;
+    // reports_view implies reports_archive_view
+    if (permission === 'reports_archive_view' && roleData.permissions.includes('reports_view')) return true;
     if (permission === 'reports_view' && (
       roleData.permissions.includes('maintenance_analytics_view') || 
       roleData.permissions.includes('production_analytics_view') ||
@@ -500,7 +529,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )) return true;
 
     return false;
-  }, [user, rolePermissions]);
+  }, [user, rolePermissions, simulatedRole]);
 
   // --- Data Fetching ---
   const fetchTestingMode = useCallback(async () => {
@@ -672,7 +701,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         {
           role: 'Admin',
           permissions: [
-            'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'checklist_view',
+            'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'drukwerken_create', 'reports_view', 'reports_archive_view', 'checklist_view',
             'extern_view', 'management_access', 'manage_personnel', 'manage_categories',
             'manage_tags', 'manage_presses', 'manage_accounts', 'manage_permissions',
             'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
@@ -695,7 +724,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         {
           role: 'Waarnemer',
           permissions: [
-            'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'checklist_view',
+            'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'reports_archive_view', 'checklist_view',
             'extern_view', 'logs_view', 'feedback_view', 'production_analytics_view',
             'maintenance_analytics_view', 'activity_ticker_view', 'osint_view'
           ]
@@ -718,21 +747,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         records = await pb.collection('role_permissions').getFullList();
       }
 
-      // Update state
-      const mapped = records.map((r: any) => ({
-        role: mapDbRoleToUi(r.role),
-        permissions: r.permissions as Permission[]
-      }));
+      // First pass: apply defaults in memory if DB records are corrupted
+      const mapped = records.map((r: any) => {
+        const def = defaults.find(d => d.role === r.role);
+        const isCorrupted = !r.permissions || r.permissions.length < 5;
+        return {
+          role: mapDbRoleToUi(r.role),
+          permissions: ((isCorrupted && def) ? def.permissions : r.permissions) as Permission[]
+        };
+      });
       setRolePermissions(mapped);
 
-      // Auto-repair for Admins: if a default role is empty, populate it
+      // Auto-repair for Admins: try to save rescued data to DB
       if (user?.role === 'admin' && records.length > 0) {
         let needsRefetch = false;
         for (const record of records) {
           const def = defaults.find(d => d.role === record.role);
-          if (def && (!record.permissions || record.permissions.length === 0)) {
-            console.log(`[Auth] Admin repairing empty permissions for: ${record.role}`);
+          if (def && (!record.permissions || record.permissions.length < 5)) {
+            console.log(`[Auth] Admin repairing corrupted permissions for: ${record.role}`);
             try {
+              // Write the full defaults back to the DB to rescue the role
               await pb.collection('role_permissions').update(record.id, { permissions: def.permissions });
               needsRefetch = true;
             } catch (e) {
@@ -780,22 +814,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateRolePermissions = async (role: UserRole, permissions: Permission[]) => {
     const dbRole = mapUiRoleToDb(role);
     try {
-      let record;
-      try {
-        record = await pb.collection('role_permissions').getFirstListItem(`role="${dbRole}"`);
-      } catch (e: any) {
-        if (e.status === 404) {
-          // Record missing, create it
-          await pb.collection('role_permissions').create({ role: dbRole, permissions });
-          setRolePermissions(prev => {
-            const exists = prev.some(rp => rp.role === role);
-            if (exists) return prev.map(rp => rp.role === role ? { ...rp, permissions } : rp);
-            return [...prev, { role, permissions }];
-          });
-          toast.success(`Rechten aangemaakt voor ${role}`);
-          return;
-        }
-        throw e;
+      // Case-insensitive lookup to avoid creating duplicate records
+      const all = await pb.collection('role_permissions').getFullList({ fields: 'id,role' });
+      const record = all.find(r => r.role?.toLowerCase() === dbRole.toLowerCase());
+
+      if (!record) {
+        // Record missing, create it
+        await pb.collection('role_permissions').create({ role: dbRole, permissions });
+        setRolePermissions(prev => {
+          const exists = prev.some(rp => rp.role === role);
+          if (exists) return prev.map(rp => rp.role === role ? { ...rp, permissions } : rp);
+          return [...prev, { role, permissions }];
+        });
+        toast.success(`Rechten aangemaakt voor ${role}`);
+        return;
       }
 
       await pb.collection('role_permissions').update(record.id, { permissions });
@@ -804,6 +836,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       console.error("Update permissions fully failed:", e);
       toast.error(`Kon rechten niet bijwerken: ${e.message}`);
+    }
+  };
+
+  const createRole = async (name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    // Store role name exactly as entered (preserves "CEO", "Manager", etc.)
+    const dbRole = trimmed;
+    try {
+      // Case-insensitive existence check: fetch all and compare lowercase
+      const existing = await pb.collection('role_permissions').getFullList({ fields: 'role' });
+      const alreadyExists = existing.some(r => r.role?.toLowerCase() === dbRole.toLowerCase());
+      if (alreadyExists) {
+        toast.error(`Rol "${dbRole}" bestaat al`);
+        return false;
+      }
+      await pb.collection('role_permissions').create({ role: dbRole, permissions: [] });
+      toast.success(`Rol "${dbRole}" aangemaakt`);
+      return true;
+    } catch (e: any) {
+      console.error('[createRole] error:', e.status, e.message, JSON.stringify(e.data));
+      toast.error(`Kon rol niet aanmaken: ${e.message}`);
+      return false;
+    }
+  };
+
+  const deleteRole = async (uiRole: string): Promise<boolean> => {
+    if (uiRole === 'admin') {
+      toast.error('De Admin rol kan niet verwijderd worden');
+      return false;
+    }
+    const dbRole = mapUiRoleToDb(uiRole);
+    try {
+      // Case-insensitive lookup: find the record matching this role
+      const all = await pb.collection('role_permissions').getFullList({ fields: 'id,role' });
+      const record = all.find(r => r.role?.toLowerCase() === dbRole.toLowerCase());
+      if (!record) {
+        toast.error(`Rol "${dbRole}" niet gevonden`);
+        return false;
+      }
+      await pb.collection('role_permissions').delete(record.id);
+      setRolePermissions(prev => prev.filter(rp => rp.role !== uiRole));
+      toast.success(`Rol "${dbRole}" verwijderd`);
+      return true;
+    } catch (e: any) {
+      toast.error(`Kon rol niet verwijderen: ${e.message}`);
+      return false;
     }
   };
 
@@ -1451,6 +1530,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []); // Remove user dependency to maintain subscription while logged out
 
+  // Polling fallback: check force_refresh_trigger every 60s for clients that miss the SSE event
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const record = await pb.collection('app_settings').getFirstListItem('key="force_refresh_trigger"');
+        const value = record?.value as string | undefined;
+        if (value) {
+          setRefreshTriggeredAt(prev => (prev !== value ? value : prev));
+        }
+      } catch { /* no record yet or offline */ }
+    };
+    const id = setInterval(poll, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const fetchRecentCommits = useCallback(async () => {
     try {
       const response = await fetch(`${pb.baseUrl}/api/custom/git/recent-commits`, {
@@ -1495,6 +1589,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasPermission,
       rolePermissions,
       updateRolePermissions,
+      createRole,
+      deleteRole,
       listBackups,
       createBackup,
       downloadBackup,
@@ -1526,6 +1622,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       recentCommits,
       fetchRecentCommits,
       appStartTime,
+      simulatedRole,
+      setSimulatedRole,
+      effectiveRole: simulatedRole ?? ((user?.role as string) || ''),
     }}>
       {children}
     </AuthContext.Provider>

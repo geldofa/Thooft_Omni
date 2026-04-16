@@ -417,7 +417,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         return acc;
     }, {} as Record<string, string>), [presses]);
 
-    const { user, hasPermission, getSystemSetting, addActivityLog } = useAuth();
+    const { user, hasPermission, getSystemSetting, addActivityLog, effectiveRole } = useAuth();
 
     const { subtab } = useParams<{ subtab: string }>();
     const navigate = useNavigate();
@@ -850,6 +850,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
             toast.error("Kan niet opslaan: Persgegevens nog niet geladen. Probeer het over enkele seconden opnieuw.");
             return;
         }
+
+        window.dispatchEvent(new CustomEvent('cancel-drukwerk-flush', { detail: werkorder.id }));
+
         try {
             const today = new Date();
             const formattedDate = format(today, 'yyyy-MM-dd');
@@ -1255,14 +1258,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     const effectivePress = useMemo(() => {
         // For press users, use their assigned press name
-        if (user?.role === 'press' && user.press) return user.press;
+        if (effectiveRole === 'press' && user?.press) return user.press;
         // For others, use the filter or the first active press
         if (pressFilter && pressFilter !== 'all') return pressFilter;
         return activePresses[0] || '';
     }, [user, pressFilter, activePresses]);
 
     const effectivePressId = useMemo(() => {
-        if (user?.role === 'press' && user.pressId) return user.pressId;
+        if (effectiveRole === 'press' && user?.pressId) return user.pressId;
         return pressMap[effectivePress] || '';
     }, [user, effectivePress, pressMap]);
 
@@ -1884,9 +1887,10 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         if (!deleteAction) return;
 
         if (deleteAction.type === 'werkorder') {
+            window.dispatchEvent(new CustomEvent('cancel-drukwerk-flush', { detail: deleteAction.id }));
             await handleDeleteWerkorder(deleteAction.id);
         } else if (deleteAction.type === 'katern' && deleteAction.secondaryId) {
-            // Check if it's the last katern to delete the whole order
+            window.dispatchEvent(new CustomEvent('cancel-drukwerk-flush', { detail: deleteAction.secondaryId }));
             const order = werkorders.find(wo => wo.id === deleteAction.id);
             if (order && order.katernen.length <= 1) {
                 await handleDeleteWerkorder(deleteAction.id);
@@ -1976,8 +1980,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     )}
 
                     {(() => {
-                        const showWerkorders = user?.role === 'press';
-                        const showFinished = (user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast' || (user?.role === 'press' && hasPermission('drukwerken_view')));
+                        const showWerkorders = effectiveRole === 'press';
+                        const showFinished = (effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && hasPermission('drukwerken_view')));
                         const showTrash = hasPermission('drukwerken_trash_view');
                         // Count visible tabs: Nieuw, Gedrukt, and Prullenbak
                         const tabCount = [showWerkorders, showFinished, showTrash].filter(Boolean).length;
@@ -2103,7 +2107,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </Select>
                                             </>
                                         )}
-                                        {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                        {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && (
                                             <Select value={pressFilter} onValueChange={setPressFilter}>
                                                 <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
                                                     <SelectValue placeholder="Alle Persen" />
@@ -2142,7 +2146,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         );
                     })()}
 
-                    {user?.role === 'press' && (
+                    {effectiveRole === 'press' && (
                         <TabsContent value="Nieuw">
                             <div className="space-y-4 max-h-[calc(100vh-150px)] overflow-y-auto relative pb-6 px-1">
                                 {werkorders.map((wo) => (
@@ -2278,7 +2282,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     fixedHeaderContent={() => (
                                         <>
                                             <TableRow className="border-b-0 bg-white h-10">
-                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
+                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
                                                 <TableHead colSpan={6} className="text-center bg-blue-100 border-r border-black">Data</TableHead>
                                                 <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black">Wissels</TableHead>
                                                 <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black">Berekening</TableHead>
@@ -2286,7 +2290,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black bg-white"></TableHead>
                                             </TableRow>
                                             <TableRow className="border-b border-black bg-white shadow-sm h-10">
-                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-slate-300">Pers</TableHead>}
+                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-slate-300">Pers</TableHead>}
                                                 <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r border-slate-300 bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
@@ -2363,7 +2367,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
                                         return (
                                             <>
-                                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && (
+                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && (
                                                     <TableCell className={cn("py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70", borderClass)} title={job.pressName}>
                                                         {job.pressName || '-'}
                                                     </TableCell>
@@ -2558,7 +2562,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                             const editLimit = getSystemSetting('drukwerken_edit_limit', 1);
                                                             const referenceDate = job.date || job.created;
                                                             const isWithinEditLimit = referenceDate ? differenceInDays(new Date(), new Date(referenceDate)) < Number(editLimit) : true;
-                                                            const canEdit = user?.role === 'admin' || user?.role === 'meestergast' || (user?.role === 'press' && isWithinEditLimit);
+                                                            const canEdit = effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && isWithinEditLimit);
 
                                                             if (!canEdit) return null;
 
@@ -2588,7 +2592,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 className={`table-fixed w-full ${FONT_SIZES.body}`}
                                             >
                                                 <colgroup>
-                                                    {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'meestergast') && <col style={{ width: COL_WIDTHS.press }} />}
+                                                    {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <col style={{ width: COL_WIDTHS.press }} />}
                                                     <col style={{ width: COL_WIDTHS.date }} />
                                                     <col style={{ width: COL_WIDTHS.orderNr }} />
                                                     <col style={{ width: COL_WIDTHS.orderName }} />

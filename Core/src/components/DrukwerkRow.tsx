@@ -323,6 +323,19 @@ export function DrukwerkRow({
 
     // ===================== FLUSH ON UNMOUNT =====================
 
+    useEffect(() => {
+        const handleCancelFlush = (e: any) => {
+            if (e.detail === werkorderId || e.detail === katern.id) {
+                if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+                if (autoFinishTimerRef.current) clearTimeout(autoFinishTimerRef.current);
+                autoSaveTimerRef.current = null;
+                autoFinishTimerRef.current = null;
+            }
+        };
+        window.addEventListener('cancel-drukwerk-flush', handleCancelFlush);
+        return () => window.removeEventListener('cancel-drukwerk-flush', handleCancelFlush);
+    }, [werkorderId, katern.id]);
+
     // Keep flushRef up to date with latest dependencies
     useEffect(() => {
         flushRef.current = () => {

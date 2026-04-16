@@ -1,7 +1,7 @@
 import { startTransition, Suspense, lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
-    Users, Tags, Factory, Key, Tag as TagIcon, Shield,
+    Users, Tags, Factory, Key, Tag as TagIcon, Shield, CalendarCog, RefreshCw,
     Calculator, Palette, Bell, CalendarClock, Settings,
     Upload, Database, Printer, Activity, ShieldCheck
 } from 'lucide-react';
@@ -27,6 +27,8 @@ const NotificationManagement = lazy(() => import('../management/NotificationMana
 const DrukwerkenReports = lazy(() => import('../DrukwerkenReports').then(m => ({ default: m.DrukwerkenReports })));
 const TickerSettingsPage = lazy(() => import('../management/TickerSettingsPage').then(m => ({ default: m.TickerSettingsPage })));
 const MaintenanceAnalytics = lazy(() => import('../MaintenanceAnalytics').then(m => ({ default: m.MaintenanceAnalytics })));
+const PlannerSettings = lazy(() => import('../management/PlannerSettings').then(m => ({ default: m.PlannerSettings })));
+const RotationBuilder = lazy(() => import('../management/RotationBuilder').then(m => ({ default: m.RotationBuilder })));
 
 export function UnifiedSettingsLayout() {
     const { hasPermission } = useAuth();
@@ -205,7 +207,7 @@ export function UnifiedSettingsLayout() {
             {
                 label: 'PDF Rapporten',
                 items: [
-                    ...(hasPermission('reports_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'PDF hub voor onderhoud' }] : []),
+                    ...(hasPermission('reports_view') || hasPermission('reports_archive_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'PDF hub voor onderhoud' }] : []),
                     ...(hasPermission('drukwerken_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'PDF hub voor drukwerken' }] : []),
                     ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Checklist voor onderhoud aanmaken' }] : []),
                 ]
@@ -227,10 +229,12 @@ export function UnifiedSettingsLayout() {
             {
                 label: 'Organisatie',
                 items: [
-                    ...(hasPermission('manage_personnel') ? [{ value: 'Personeel', label: 'Personeel', icon: Users, description: 'Operatoren,Ploegen & Externen' }] : []),
+                    ...(hasPermission('manage_personnel') ? [{ value: 'Personeel', label: 'Personeel', icon: Users, description: 'Operatoren, Teams & Externen' }] : []),
                     ...(hasPermission('manage_categories') ? [{ value: 'Categorie', label: 'Categorieën', icon: Tags, description: 'Taak groepering' }] : []),
                     ...(hasPermission('manage_tags') ? [{ value: 'Tags', label: 'Tags', icon: TagIcon, description: 'Highlights & Labels' }] : []),
                     ...(hasPermission('manage_presses') ? [{ value: 'Persen', label: 'Persen', icon: Factory, description: 'Machine park' }] : []),
+                    ...(hasPermission('management_access') ? [{ value: 'Planner', label: 'Planner', icon: CalendarCog, description: 'Ploegen & planning' }] : []),
+                    ...(hasPermission('management_access') ? [{ value: 'Rotatie', label: 'Rotatie', icon: RefreshCw, description: 'Ploegen schema\'s' }] : []),
                     ...(hasPermission('manage_parameters') ? [{ value: 'Parameters', label: 'Parameters', icon: Calculator, description: 'Productie berekening' }] : []),
                 ]
             },
@@ -301,6 +305,8 @@ export function UnifiedSettingsLayout() {
                         {activeTab === 'Categorie' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><CategoryManagement /></div>}
                         {activeTab === 'Tags' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><TagManagement /></div>}
                         {activeTab === 'Persen' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><PressManagement /></div>}
+                        {activeTab === 'Planner' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><PlannerSettings /></div>}
+                        {activeTab === 'Rotatie' && <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><RotationBuilder /></div>}
                         {activeTab === 'Parameters' && (
                             <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8"><ParameterManagement /></div>
                         )}

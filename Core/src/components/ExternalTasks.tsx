@@ -3,7 +3,7 @@ import { Card, CardContent, CardTitle } from './ui/card';
 import { ScrollArea, ScrollBar } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { GroupedTask } from './AuthContext';
+import { GroupedTask, Tag, EXTERNAL_TAG_NAME } from './AuthContext';
 import { getStatusInfo } from '../utils/StatusUtils';
 
 // --- Types ---
@@ -15,6 +15,7 @@ interface Press {
 interface ExternalTasksProps {
     tasks: GroupedTask[];
     presses: Press[];
+    tags?: Tag[];
     isEmbedded?: boolean;
 }
 
@@ -52,19 +53,28 @@ const getRelativeTimeString = (date: Date) => {
     return `Over ${diffYears} jaar`;
 };
 
-export function ExternalTasks({ tasks, presses, isEmbedded = false }: ExternalTasksProps) {
+export function ExternalTasks({ tasks, presses, tags = [], isEmbedded = false }: ExternalTasksProps) {
     const [viewMode, setViewMode] = useState('kanban');
+
+    // Resolve the ID of the system "Extern" tag (if any)
+    const externTagId = tags.find(t => t.naam === EXTERNAL_TAG_NAME)?.id;
 
     // Group tasks dynamically based on presses
     const activePresses = presses.filter(p => p.name !== 'Geen specifieke pers');
 
     const tasksByPress = activePresses.map(press => {
         // Collect all external subtasks for this press
+        // A subtask is external if:
+        //   - the is_external boolean is set, OR
+        //   - it carries the "Extern" tag
         const pressTasks = tasks
             .filter(group => group.pressId === press.id)
             .flatMap(group =>
                 group.subtasks
-                    .filter((sub: any) => sub.isExternal)
+                    .filter((sub: any) => {
+                        const isTagExternal = externTagId && Array.isArray(sub.tagIds) && sub.tagIds.includes(externTagId);
+                        return sub.isExternal || isTagExternal;
+                    })
                     .map(sub => ({
                         ...sub,
                         taskName: group.taskName,

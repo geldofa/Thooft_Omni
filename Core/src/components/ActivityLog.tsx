@@ -39,7 +39,7 @@ export interface ActivityLogEntry {
 // Interface removed as it's no longer necessary
 
 export function ActivityLog() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, simulatedRole } = useAuth();
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
@@ -134,8 +134,11 @@ export function ActivityLog() {
       if (hasPermission('logs_view_all')) {
         matchesPermission = true;
       } else if (hasPermission('logs_view')) {
-        const isOwnLog = log.user === user?.username || log.user === user?.name;
-        const isRelatedPress = user?.press && log.press === user.press;
+        const isOwnLog = !simulatedRole && (log.user === user?.username || log.user === user?.name);
+        // When simulating, or user has no assigned press: show all press logs
+        const isRelatedPress = simulatedRole
+          ? !!log.press
+          : (user?.press ? log.press === user.press : !!log.press);
         matchesPermission = !!(isOwnLog || isRelatedPress);
       } else {
         matchesPermission = false;
@@ -154,7 +157,7 @@ export function ActivityLog() {
 
       return matchesPermission && matchesSearch && matchesAction && matchesPress && matchesEntity;
     });
-  }, [activityLogs, searchQuery, filterAction, filterPress, filterEntity, user, hasPermission]);
+  }, [activityLogs, searchQuery, filterAction, filterPress, filterEntity, user, hasPermission, simulatedRole]);
 
   const handleClearFilters = () => {
     setSearchQuery('');

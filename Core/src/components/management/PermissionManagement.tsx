@@ -9,7 +9,7 @@ import {
     TableRow,
 } from '../ui/table';
 import { Checkbox } from '../ui/checkbox';
-import { Shield, Info, Settings, ClipboardList, Printer, Wrench, FileText, MessageSquare, BarChart2 } from 'lucide-react';
+import { Shield, Info, Settings, ClipboardList, Printer, Wrench, FileText, MessageSquare, BarChart2, PlusCircle, Trash2 } from 'lucide-react';
 import { PageHeader } from '../layout/PageHeader';
 import {
     Tooltip,
@@ -55,13 +55,13 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
         label: 'Analyse',
         icon: BarChart2,
         permissions: [
-            { key: 'reports_view', label: 'PDF Rapporten', description: 'Toegang tot de Rapportage sectie (PDF hubs).' },
+            { key: 'reports_view', label: 'PDF Rapporten (Volledig)', description: 'Archief bekijken, rapporten aanmaken én sjablonen aanmaken/bewerken/verwijderen.' },
+            { key: 'reports_archive_view', label: 'PDF Rapporten (Archief)', description: 'Archief bekijken, eenmalige exports maken en rapporten genereren via bestaande sjablonen. Geen beheer van sjablonen.' },
             { key: 'checklist_view', label: 'Checklist', description: 'Toegang tot de Checklist sectie.' },
             { key: 'maintenance_analytics_view', label: 'Onderhoud Statistieken', description: 'Interactieve charts voor onderhoud.' },
             { key: 'production_analytics_view', label: 'Productie Statistieken', description: 'Interactieve charts voor productie.' },
             { key: 'osint_view', label: 'OSINT Live Command', description: 'Toegang tot het real-time productie dashboard.' },
         ]
-
     },
     {
         id: 'beheer',
@@ -109,26 +109,54 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'feedback_view', label: 'Feedback Bekijken', description: 'Toegang tot feedback.' },
             { key: 'feedback_manage', label: 'Feedback Beheren', description: 'Handel feedback af.' },
         ]
+    },
+    {
+        id: 'planning',
+        label: 'Planning',
+        icon: ClipboardList,
+        permissions: [
+            { key: 'planning_view', label: 'Planning Bekijken', description: 'Toegang tot het werkrooster.' },
+            { key: 'planning_edit', label: 'Planning Bewerken', description: 'Shifts aanpassen in het werkrooster.' },
+            { key: 'planning_settings', label: 'Planning Instellingen', description: 'Rotatieschema\'s en plannerinstellingen beheren.' },
+        ]
     }
 ];
 
-const ROLES: { key: UserRole; label: string }[] = [
-    { key: 'admin', label: 'Admin' },
-    { key: 'meestergast', label: 'Meestergast' },
-    { key: 'press', label: 'Operator' },
-    { key: 'waarnemer', label: 'Waarnemer' },
-];
-
-// Permissions that are always locked for admins
+// Permissions that are always locked for the admin role
 const ADMIN_LOCKED: Permission[] = ['manage_permissions'];
 
+// System roles that cannot be deleted
+const SYSTEM_ROLES = ['admin'];
+
+// Display label for a role key
+const roleLabel = (role: string): string => {
+  const labels: Record<string, string> = { press: 'Operator', admin: 'Admin', meestergast: 'Meestergast', waarnemer: 'Waarnemer' };
+  return labels[role] ?? role;
+};
+
 export function PermissionManagement() {
-    const { rolePermissions, updateRolePermissions, getSystemSetting, updateSystemSetting } = useAuth();
+    const { rolePermissions, updateRolePermissions, createRole, deleteRole, getSystemSetting, updateSystemSetting } = useAuth();
     const [loading, setLoading] = useState<string | null>(null);
     const [editLimit, setEditLimit] = useState(getSystemSetting('drukwerken_edit_limit', 1));
-    const [splitPct, setSplitPct] = useState(50); // percentage for left panel
+    const [splitPct, setSplitPct] = useState(50);
     const containerRef = useRef<HTMLDivElement>(null);
     const isDragging = useRef(false);
+
+    // New-role form state
+    const [newRoleName, setNewRoleName] = useState('');
+    const [creatingRole, setCreatingRole] = useState(false);
+    const [deletingRole, setDeletingRole] = useState<string | null>(null);
+
+    // Derive the role list dynamically from the DB, admin always first
+    const roles: { key: UserRole; label: string }[] = [
+        ...rolePermissions
+            .map(rp => ({ key: rp.role as UserRole, label: roleLabel(rp.role as string) }))
+            .sort((a, b) => {
+                if (a.key === 'admin') return -1;
+                if (b.key === 'admin') return 1;
+                return (a.label).localeCompare(b.label);
+            })
+    ];
 
     const onDragStart = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -137,7 +165,7 @@ export function PermissionManagement() {
             if (!isDragging.current || !containerRef.current) return;
             const rect = containerRef.current.getBoundingClientRect();
             const pct = ((ev.clientX - rect.left) / rect.width) * 100;
-            setSplitPct(Math.min(Math.max(pct, 20), 80)); // clamp 20%–80%
+            setSplitPct(Math.min(Math.max(pct, 20), 80));
         };
         const onUp = () => {
             isDragging.current = false;
@@ -148,38 +176,46 @@ export function PermissionManagement() {
         window.addEventListener('mouseup', onUp);
     }, []);
 
-    const getPermissionsForRole = (role: UserRole): Permission[] => {
-        return rolePermissions.find(rp => rp.role === role)?.permissions || [];
-    };
+    const getPermissionsForRole = (role: UserRole): Permission[] =>
+        rolePermissions.find(rp => rp.role === role)?.permissions || [];
 
     const togglePermission = async (role: UserRole, permission: Permission) => {
-        const currentPermissions = getPermissionsForRole(role);
-        const newPermissions = currentPermissions.includes(permission)
-            ? currentPermissions.filter(p => p !== permission)
-            : [...currentPermissions, permission];
-
+        const current = getPermissionsForRole(role);
+        const next = current.includes(permission)
+            ? current.filter(p => p !== permission)
+            : [...current, permission];
         setLoading(`${role}-${permission}`);
-        await updateRolePermissions(role, newPermissions);
+        await updateRolePermissions(role, next);
         setLoading(null);
     };
 
     const toggleGroup = async (role: UserRole, group: PermissionGroup) => {
-        const currentPermissions = getPermissionsForRole(role);
+        const current = getPermissionsForRole(role);
         const groupKeys = group.permissions.map(p => p.key);
-        // Filter out always-locked keys for non-admin roles or always-locked ones
-        const toggleableKeys = role === 'admin'
+        const toggleable = role === 'admin'
             ? groupKeys.filter(k => !ADMIN_LOCKED.includes(k))
             : groupKeys;
-
-        const allPresent = toggleableKeys.every(k => currentPermissions.includes(k));
-
-        const newPermissions: Permission[] = allPresent
-            ? currentPermissions.filter(p => !toggleableKeys.includes(p))
-            : Array.from(new Set([...currentPermissions, ...toggleableKeys])) as Permission[];
-
+        const allPresent = toggleable.every(k => current.includes(k));
+        const next: Permission[] = allPresent
+            ? current.filter(p => !toggleable.includes(p))
+            : Array.from(new Set([...current, ...toggleable])) as Permission[];
         setLoading(`${role}-${group.id}-all`);
-        await updateRolePermissions(role, newPermissions);
+        await updateRolePermissions(role, next);
         setLoading(null);
+    };
+
+    const handleCreateRole = async () => {
+        if (!newRoleName.trim()) return;
+        setCreatingRole(true);
+        const ok = await createRole(newRoleName);
+        if (ok) setNewRoleName('');
+        setCreatingRole(false);
+    };
+
+    const handleDeleteRole = async (role: string) => {
+        setDeletingRole(role);
+        await deleteRole(role);
+        setDeletingRole(null);
     };
 
     const handleSaveLimit = async () => {
@@ -196,7 +232,7 @@ export function PermissionManagement() {
             />
 
             <div ref={containerRef} className="flex gap-0 items-start select-none">
-                {/* Left Card: Permissions */}
+                {/* Left Card: Permissions matrix */}
                 <div className="min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col" style={{ width: `${splitPct}%` }}>
                     <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50/50">
                         <Shield className="w-5 h-5 text-blue-600" />
@@ -210,7 +246,7 @@ export function PermissionManagement() {
                                 <TableHeader className="sticky top-0 z-10">
                                     <TableRow className="bg-white hover:bg-white shadow-sm">
                                         <TableHead className="w-[180px] font-medium text-gray-500 bg-white">Functionaliteit</TableHead>
-                                        {ROLES.map(role => (
+                                        {roles.map(role => (
                                             <TableHead key={role.key} className="text-center font-medium text-gray-500 w-[80px] bg-white">
                                                 {role.label}
                                             </TableHead>
@@ -218,88 +254,85 @@ export function PermissionManagement() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {PERMISSION_GROUPS.map((group) => {
-                                        return (
-                                            <React.Fragment key={group.id}>
-                                                {/* Group header row with select-all checkboxes */}
-                                                <TableRow className="bg-gray-50/60 hover:bg-gray-100/60 border-t border-gray-100">
-                                                    <TableCell className="py-2">
-                                                        <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                                            <group.icon className="w-3.5 h-3.5" />
-                                                            {group.label}
+                                    {PERMISSION_GROUPS.map((group) => (
+                                        <React.Fragment key={group.id}>
+                                            {/* Group header row */}
+                                            <TableRow className="bg-gray-50/60 hover:bg-gray-100/60 border-t border-gray-100">
+                                                <TableCell className="py-2">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                        <group.icon className="w-3.5 h-3.5" />
+                                                        {group.label}
+                                                    </div>
+                                                </TableCell>
+                                                {roles.map(role => {
+                                                    const perms = getPermissionsForRole(role.key);
+                                                    const groupKeys = group.permissions.map(p => p.key);
+                                                    const toggleable = role.key === 'admin'
+                                                        ? groupKeys.filter(k => !ADMIN_LOCKED.includes(k as Permission))
+                                                        : groupKeys;
+                                                    const allChecked = toggleable.every(k => perms.includes(k as Permission));
+                                                    const someChecked = toggleable.some(k => perms.includes(k as Permission));
+                                                    const isGroupLoading = loading === `${role.key}-${group.id}-all`;
+                                                    return (
+                                                        <TableCell key={role.key} className="text-center py-2">
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <div className="flex items-center justify-center">
+                                                                        <Checkbox
+                                                                            checked={allChecked}
+                                                                            data-state={!allChecked && someChecked ? 'indeterminate' : undefined}
+                                                                            disabled={isGroupLoading}
+                                                                            onCheckedChange={() => toggleGroup(role.key, group)}
+                                                                            className="border-gray-400"
+                                                                        />
+                                                                    </div>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p className="text-xs">{allChecked ? 'Alles deselecteren' : 'Alles selecteren'} voor {role.label}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+
+                                            {/* Individual permission rows */}
+                                            {group.permissions.map((perm) => (
+                                                <TableRow key={perm.key} className="hover:bg-gray-50/50">
+                                                    <TableCell className="pl-8 py-2.5">
+                                                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                            {perm.label}
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <button className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                                                                        <Info className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p className="max-w-xs text-xs">{perm.description}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
                                                         </div>
                                                     </TableCell>
-                                                    {ROLES.map(role => {
+                                                    {roles.map(role => {
                                                         const perms = getPermissionsForRole(role.key);
-                                                        const groupKeys = group.permissions.map(p => p.key);
-                                                        const toggleableKeys = role.key === 'admin'
-                                                            ? groupKeys.filter(k => !ADMIN_LOCKED.includes(k as Permission))
-                                                            : groupKeys;
-                                                        const allChecked = toggleableKeys.every(k => perms.includes(k as Permission));
-                                                        const someChecked = toggleableKeys.some(k => perms.includes(k as Permission));
-                                                        const isGroupLoading = loading === `${role.key}-${group.id}-all`;
-
+                                                        const isGranted = perms.includes(perm.key);
+                                                        const isItemLoading = loading === `${role.key}-${perm.key}`;
+                                                        const isLocked = role.key === 'admin' && ADMIN_LOCKED.includes(perm.key);
                                                         return (
-                                                            <TableCell key={role.key} className="text-center py-2">
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <div className="flex items-center justify-center">
-                                                                            <Checkbox
-                                                                                checked={allChecked}
-                                                                                data-state={!allChecked && someChecked ? 'indeterminate' : undefined}
-                                                                                disabled={isGroupLoading}
-                                                                                onCheckedChange={() => toggleGroup(role.key, group)}
-                                                                                className="border-gray-400"
-                                                                            />
-                                                                        </div>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p className="text-xs">{allChecked ? 'Alles deselecteren' : 'Alles selecteren'} voor {role.label}</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
+                                                            <TableCell key={role.key} className="text-center">
+                                                                <Checkbox
+                                                                    checked={isGranted}
+                                                                    disabled={isItemLoading || isLocked}
+                                                                    onCheckedChange={() => togglePermission(role.key, perm.key)}
+                                                                />
                                                             </TableCell>
                                                         );
                                                     })}
                                                 </TableRow>
-
-                                                {/* Individual permission rows */}
-                                                {group.permissions.map((perm) => (
-                                                    <TableRow key={perm.key} className="hover:bg-gray-50/50">
-                                                        <TableCell className="pl-8 py-2.5">
-                                                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                                                {perm.label}
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <button className="text-gray-300 hover:text-gray-500 flex-shrink-0">
-                                                                            <Info className="w-3.5 h-3.5" />
-                                                                        </button>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p className="max-w-xs text-xs">{perm.description}</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            </div>
-                                                        </TableCell>
-                                                        {ROLES.map(role => {
-                                                            const perms = getPermissionsForRole(role.key);
-                                                            const isGranted = perms.includes(perm.key);
-                                                            const isItemLoading = loading === `${role.key}-${perm.key}`;
-                                                            const isLocked = role.key === 'admin' && ADMIN_LOCKED.includes(perm.key);
-                                                            return (
-                                                                <TableCell key={role.key} className="text-center">
-                                                                    <Checkbox
-                                                                        checked={isGranted}
-                                                                        disabled={isItemLoading || isLocked}
-                                                                        onCheckedChange={() => togglePermission(role.key, perm.key)}
-                                                                    />
-                                                                </TableCell>
-                                                            );
-                                                        })}
-                                                    </TableRow>
-                                                ))}
-                                            </React.Fragment>
-                                        );
-                                    })}
+                                            ))}
+                                        </React.Fragment>
+                                    ))}
                                 </TableBody>
                             </Table>
                         </TooltipProvider>
@@ -314,8 +347,83 @@ export function PermissionManagement() {
                     <div className="w-0.5 h-full bg-gray-200 rounded-full group-hover:bg-blue-400 transition-colors" />
                 </div>
 
-                {/* Right Card: System values */}
+                {/* Right Cards */}
                 <div className="min-w-0 flex-shrink-0 space-y-6" style={{ width: `calc(${100 - splitPct}% - 20px)` }}>
+
+                    {/* Rollen beheren */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50/50">
+                            <Shield className="w-5 h-5 text-blue-600" />
+                            <h2 className="font-semibold text-gray-900">Rollen Beheren</h2>
+                        </div>
+
+                        <div className="p-4 space-y-3">
+                            {/* Existing roles */}
+                            <div className="space-y-1.5">
+                                {roles.map(role => {
+                                    const isSystem = SYSTEM_ROLES.includes(role.key as string);
+                                    const isDeleting = deletingRole === role.key;
+                                    return (
+                                        <div key={role.key} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <Shield className="w-3.5 h-3.5 text-gray-400" />
+                                                <span className="text-sm font-medium text-gray-700">{role.label}</span>
+                                                {isSystem && (
+                                                    <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">systeem</span>
+                                                )}
+                                            </div>
+                                            {!isSystem && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                                            disabled={isDeleting}
+                                                            onClick={() => handleDeleteRole(role.key as string)}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p className="text-xs">Rol "{role.label}" verwijderen</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Add new role */}
+                            <div className="pt-2 border-t border-gray-100">
+                                <Label className="text-xs text-gray-500 mb-1.5 block">Nieuwe rol toevoegen</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        placeholder="bijv. Supervisor"
+                                        value={newRoleName}
+                                        onChange={e => setNewRoleName(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleCreateRole()}
+                                        className="h-8 text-sm"
+                                    />
+                                    <Button
+                                        size="sm"
+                                        className="h-8 px-3 bg-blue-600 hover:bg-blue-700 flex-shrink-0"
+                                        disabled={!newRoleName.trim() || creatingRole}
+                                        onClick={handleCreateRole}
+                                    >
+                                        <PlusCircle className="w-3.5 h-3.5 mr-1" />
+                                        Toevoegen
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1.5">
+                                    Na aanmaken verschijnt de rol direct als kolom in de rechtenmatrix.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Systeemwaarden */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                         <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50/50">
                             <Settings className="w-5 h-5 text-gray-600" />

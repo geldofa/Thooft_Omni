@@ -1,14 +1,28 @@
 import { useAuth } from '../AuthContext';
 import { APP_VERSION, APP_NAME } from '../../config';
 import {
-  MoveRight,
   Download,
-  RotateCcw
+  RotateCcw,
+  CalendarCog,
+  ChevronDown,
+  LogOut,
+  User,
+  FlaskConical
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { HeaderActivityTicker } from './HeaderActivityTicker';
-import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { NAVIGATION_CONFIG, NavItemConfig } from '../../config/navigationConfig';
+
+const WeekPlannerOverlay = lazy(() => import('../WeekPlanner').then(m => ({ default: m.WeekPlanner })));
 
 interface HeaderProps {
   activeTab: string;
@@ -80,8 +94,22 @@ function HeaderClock() {
 }
 
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
-  const { user, logout, hasPermission, updateAvailable, latestVersion, setShowUpdateDialog } = useAuth();
+  const { user, logout, hasPermission, updateAvailable, latestVersion, setShowUpdateDialog, simulatedRole, setSimulatedRole, rolePermissions } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const availableRoles = rolePermissions.map(rp => rp.role).filter(r => r !== 'admin');
   const [isFlushModalOpen, setIsFlushModalOpen] = useState(false);
+  const [planningOverlayOpen, setPlanningOverlayOpen] = useState(false);
+
+  const canEditPlanning = hasPermission('planning_edit');
+  const canViewPlanning = hasPermission('planning_view');
+
+  const handlePlanningClick = () => {
+    if (canEditPlanning) {
+      startTransition(() => setActiveTab('/werkrooster'));
+    } else {
+      setPlanningOverlayOpen(prev => !prev);
+    }
+  };
 
   const navItems = useMemo<NavItemConfig[]>(() => {
     return NAVIGATION_CONFIG.filter(item => {
@@ -111,7 +139,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
   return (
     <>
-      <header className="border-b border-gray-100 sticky top-0 z-50 h-20 flex items-center bg-white shadow-sm">
+      <header className="border-b border-gray-100 sticky top-0 z-50 h-20 flex items-center bg-white shadow-sm" onClick={() => setPlanningOverlayOpen(false)}>
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-8">
 
           {/* --- LEFT: BRANDING --- */}
@@ -168,12 +196,12 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           <HeaderActivityTicker />
 
           {/* --- RIGHT: USER & LOGOUT --- */}
-          <div className="flex-shrink-0 flex items-center gap-6 ml-4">
+          <div className="flex-shrink-0 flex items-center gap-3 ml-4">
             <HeaderClock />
             {import.meta.env.DEV && (
               <button
                 onClick={() => setIsFlushModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 text-rose-600 rounded-full hover:bg-rose-100 transition-all active:scale-95 cursor-pointer border border-rose-100 group shadow-sm"
+                className="flex items-center gap-2 px-4 h-12 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 transition-all active:scale-95 cursor-pointer border border-rose-100 group shadow-sm"
                 title="Flush Cache & Reload (DEV ONLY)"
               >
                 <RotateCcw className="w-4 h-4 group-hover:rotate-[-90deg] transition-transform" />
@@ -183,37 +211,127 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             {updateAvailable && (
               <button
                 onClick={() => setShowUpdateDialog(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors animate-pulse cursor-pointer border border-amber-200"
+                className="flex items-center gap-2 px-4 h-12 bg-amber-100 text-amber-700 rounded-2xl hover:bg-amber-200 transition-colors animate-pulse cursor-pointer border border-amber-200"
                 title={`Update beschikbaar: ${latestVersion}`}
               >
                 <Download className="w-4 h-4" />
                 <span className="text-xs font-bold hidden xl:inline">Update Beschikbaar</span>
               </button>
             )}
-            <div className="text-right sm:block">
-              <div className="text-sm font-bold text-blue-600 leading-tight">
-                {user.name || 'Beheerder'}
-              </div>
-              <div className="text-xs text-gray-500 capitalize leading-tight">
-                {user.role}
-              </div>
-            </div>
+            {canViewPlanning && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handlePlanningClick(); }}
+                className={`flex items-center gap-2 px-4 h-12 rounded-2xl transition-all active:scale-150 cursor-pointer border shadow-sm ${(planningOverlayOpen || activeTab.startsWith('/werkrooster'))
+                  ? 'bg-violet-600 text-white border-violet-700 shadow-violet-100'
+                  : 'bg-violet-50 text-violet-700 border-violet-100 hover:bg-violet-100'
+                  }`}
+                title="Planning tonen/verbergen"
+              >
+                <CalendarCog className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-wider hidden xl:inline">Planning</span>
+              </button>
+            )}
 
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveTab('/');
-                logout();
-              }}
-              className="group flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 active:scale-95 transition-all"
-              title="Uitloggen"
-            >
-              <span className="hidden sm:inline">Uitloggen</span>
-              <MoveRight className="w-4 h-4 text-blue-400 group-hover:translate-x-1 transition-transform" />
-            </button>
+            {isAdmin && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className={`flex items-center gap-2 px-3 h-12 rounded-2xl transition-all active:scale-95 cursor-pointer border shadow-sm ${
+                      simulatedRole
+                        ? 'bg-amber-400 text-amber-950 border-amber-500 animate-pulse'
+                        : 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100'
+                    }`}
+                    title="Rol simuleren"
+                  >
+                    <FlaskConical className="w-4 h-4" />
+                    {simulatedRole && (
+                      <div className="text-left">
+                        <div className="text-[10px] font-black uppercase tracking-wider leading-tight">Simulatie</div>
+                        <div className="text-[10px] leading-tight capitalize font-medium">{simulatedRole}</div>
+                      </div>
+                    )}
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuLabel className="text-xs text-slate-500 font-normal">Simuleer als rol</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {availableRoles.map(role => (
+                    <DropdownMenuItem
+                      key={role}
+                      onClick={() => setSimulatedRole(role)}
+                      className={`capitalize cursor-pointer ${simulatedRole === role ? 'font-bold text-amber-700 bg-amber-50' : ''}`}
+                    >
+                      {simulatedRole === role && <FlaskConical className="w-3.5 h-3.5 mr-2 text-amber-600" />}
+                      {simulatedRole !== role && <span className="w-3.5 h-3.5 mr-2" />}
+                      {role}
+                    </DropdownMenuItem>
+                  ))}
+                  {simulatedRole && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setSimulatedRole(null)}
+                        className="text-slate-500 cursor-pointer"
+                      >
+                        <span className="w-3.5 h-3.5 mr-2" />
+                        Terug naar admin
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 px-3 h-12 bg-slate-50 text-slate-700 rounded-2xl hover:bg-slate-100 transition-all active:scale-95 cursor-pointer border border-slate-100 shadow-sm">
+                  <User className="w-4 h-4 text-blue-600" />
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-blue-600 leading-tight">{user.name || 'Beheerder'}</div>
+                    <div className="text-[10px] text-gray-400 capitalize leading-tight">{user.role}</div>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="font-bold text-sm text-slate-800">{user.name || 'Beheerder'}</div>
+                  <div className="text-xs text-slate-400 capitalize">{user.role}</div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => { setActiveTab('/'); logout(); }}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Uitloggen
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header >
+      {planningOverlayOpen && !canEditPlanning && (
+        <div
+          className="fixed top-20 inset-x-0 bottom-0 z-[45] bg-black/30 backdrop-blur-sm"
+          onClick={() => setPlanningOverlayOpen(false)}
+        >
+          {/* Panel — stop propagation so clicks inside don't close */}
+          <div
+            className="relative mx-auto w-[90%] mt-6 bg-white rounded-2xl shadow-2xl overflow-auto max-h-[calc(100vh-8rem)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 sm:px-6 lg:px-8 py-4">
+              <Suspense fallback={<div className="p-4 text-center text-gray-500">Laden...</div>}>
+                <WeekPlannerOverlay />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmationModal
         open={isFlushModalOpen}
         onOpenChange={setIsFlushModalOpen}

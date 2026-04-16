@@ -61,7 +61,7 @@ export interface MaintenanceTask {
   updated: string;
 }
 
-export type UserRole = 'admin' | 'press' | 'meestergast' | null;
+export type UserRole = 'admin' | 'press' | 'meestergast' | 'waarnemer' | null;
 export type PressType = string;
 
 export type Permission =
@@ -71,6 +71,7 @@ export type Permission =
   | 'drukwerken_view_all'
   | 'drukwerken_create'
   | 'reports_view'
+  | 'reports_archive_view'
   | 'checklist_view'
   | 'extern_view'
   | 'management_access'

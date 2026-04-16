@@ -32,20 +32,43 @@ import {
 import { toast } from 'sonner';
 
 export function PasswordManagement() {
-  const { user, hasPermission, addActivityLog } = useAuth();
+  const { user, hasPermission, addActivityLog, rolePermissions } = useAuth();
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [presses, setPresses] = useState<Press[]>([]);
   const [operators, setOperators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Derive available roles dynamically from the DB
+  const availableRoles: { key: string; label: string }[] = rolePermissions
+    .map(rp => ({
+      key: rp.role as string,
+      label: rp.role ? (rp.role.charAt(0).toUpperCase() + rp.role.slice(1)) : '',
+    }))
+    .sort((a, b) => {
+      if (a.key === 'admin') return -1;
+      if (b.key === 'admin') return 1;
+      return a.label.localeCompare(b.label);
+    });
+
+  // Backward-compat: DB stores "Admin"/"Operator"/etc.
   const mapDbRoleToUi = (dbRole: string): UserRole => {
-    const roleMap: Record<string, UserRole> = { 'Admin': 'admin', 'Meestergast': 'meestergast', 'Operator': 'press', 'Waarnemer': 'waarnemer' };
-    return roleMap[dbRole] || 'press';
+    if (!dbRole) return 'press';
+    const lowerRole = dbRole.toLowerCase();
+    if (lowerRole === 'operator') return 'press';
+    if (lowerRole === 'observer') return 'waarnemer';
+    if (lowerRole === 'admin') return 'admin';
+    if (lowerRole === 'meestergast') return 'meestergast';
+    if (lowerRole === 'waarnemer') return 'waarnemer';
+    return dbRole as UserRole; // Preserve custom casing like "CEO"
   };
 
   const mapUiRoleToDb = (uiRole: UserRole): string => {
-    const roleMap: Record<string, string> = { 'admin': 'Admin', 'meestergast': 'Meestergast', 'press': 'Operator', 'waarnemer': 'Waarnemer' };
-    return roleMap[uiRole || 'press'] || 'Operator';
+    if (!uiRole) return 'Operator';
+    if (uiRole === 'press') return 'Operator';
+    if (uiRole === 'admin') return 'Admin';
+    if (uiRole === 'meestergast') return 'Meestergast';
+    if (uiRole === 'waarnemer') return 'Waarnemer';
+    return uiRole; // Preserve custom casing like "CEO"
   };
 
   const fetchData = useCallback(async () => {
@@ -401,7 +424,7 @@ export function PasswordManagement() {
                 <TableCell>{account.name || '-'}</TableCell>
                 <TableCell>
                   <Badge variant={account.role === 'admin' ? 'default' : account.role === 'meestergast' ? 'secondary' : account.role === 'waarnemer' ? 'outline' : 'outline'}>
-                    {account.role === 'admin' ? 'Admin' : account.role === 'meestergast' ? 'Meestergast' : account.role === 'waarnemer' ? 'Waarnemer' : 'Pers'}
+                    {account.role === 'admin' ? 'Admin' : account.role === 'meestergast' ? 'Meestergast' : account.role === 'waarnemer' ? 'Waarnemer' : account.role === 'press' ? 'Pers' : account.role}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -498,10 +521,11 @@ export function PasswordManagement() {
                   <SelectValue placeholder="Selecteer rol" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="meestergast">Meestergast</SelectItem>
-                  <SelectItem value="press">Pers (Press Operator)</SelectItem>
-                  <SelectItem value="waarnemer">Waarnemer</SelectItem>
+                  {availableRoles.map(role => (
+                    <SelectItem key={role.key} value={role.key}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

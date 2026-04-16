@@ -22,7 +22,7 @@ function parseGitLog(): any[] {
         const body = lines.slice(3).join('\n').trim();
         
         let version = null;
-        const versionMatch = subject.match(/^(\d+\.\d+\.\d+)\s*[|]?\s*(.*)/);
+        const versionMatch = subject.match(/^(\d+\.\d+\.\d+)\s*[|l]?\s*(.*)/);
         if (versionMatch) {
           version = versionMatch[1];
           subject = versionMatch[2].trim();

@@ -1,5 +1,21 @@
 [
   {
+    "id": "5c3e32ea2031bfc72c3374b911437a7c9596c9e1",
+    "version": "1.14.0",
+    "date": "2026-04-08",
+    "title": "Opmerkingen bij drukwerken",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "9b7d399bc38f2c09a8411fc4e9442bbe845ee432",
+    "version": "1.13.0",
+    "date": "2026-04-08",
+    "title": "Digitale Checklist Vanaf nu worden checklists digitaal beschikbaar gemaakt als een extra lijst voor bij geplande onderhoudsmomenten met mogelijkheid tot printen.",
+    "body": "Aanpassingen Drukwerken:\n- Pagina's -> Blz\n- Aangepaste breedtes\n- wanneer een versie vastgezet als voltooid blijft dit onthouden",
+    "type": "chore"
+  },
+  {
     "id": "a579252222de66fa53848d56ae31af74a5c40769",
     "version": "1.12.7",
     "date": "2026-04-07",
@@ -11,7 +27,7 @@
     "id": "b62dddb99117e5b62068832c739e1df9687d445a",
     "version": "1.12.6",
     "date": "2026-04-07",
-    "title": "l Overzicht verbeteringen",
+    "title": "Overzicht verbeteringen",
     "body": "",
     "type": "chore"
   },
@@ -381,22 +397,6 @@
     "date": "2026-03-02",
     "title": "Samenvattingen v2 in werkende staat",
     "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "5ac4a5f3356e4cc079343d9909192d5f134fe850",
-    "version": "1.5.0",
-    "date": "2026-03-02",
-    "title": "Samenvattingen v2 voorbereiding Bugfixes: - Operators op meerdere persen - Ploegen op meerdere persen - Tag Higlights werken opnieuw - Calculatie bij x1 rekenende hij enkel bij het herselecteren van 1",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "9630a71369f9b6bb540c1c480b7582ca9cd307d9",
-    "version": "1.4.0",
-    "date": "2026-02-23",
-    "title": "Samenvattingen",
-    "body": "- (Meestergast) Mogelijkheid tot het creëren van Samenvattingen & ook automatisch op ingesteld tijdstip.\n- (Meestergast) Download pagina met de lijst van  gemaakte samenvattingen",
     "type": "chore"
   }
 ]
