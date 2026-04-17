@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Search, CheckCircle, AlertTriangle, ShieldCheck, Database, Loader2, Trash2, Copy, Calculator, Clock, EyeOff, Pencil, X, Save } from 'lucide-react';
+import { Search, CheckCircle, AlertTriangle, ShieldCheck, Database, Loader2, Trash2, Copy, Calculator, Clock, EyeOff, Pencil, Save } from 'lucide-react';
 import { pb } from '../AuthContext';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';

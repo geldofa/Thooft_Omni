@@ -1,5 +1,13 @@
 [
   {
+    "id": "1a92212c261cd451ddc2fa5bc2e18a4209ed1058",
+    "version": "1.16.0",
+    "date": "2026-04-17",
+    "title": "Datachecker Drukwerken",
+    "body": "Een nieuwe datachecker die helpt met het zoeken van duplicaten, 0-orders en fout ingegeven benamingen",
+    "type": "feature"
+  },
+  {
     "id": "2920e4720466e7d039678a0781ed255d85b00ea8",
     "version": "1.15.0",
     "date": "2026-04-16",
@@ -388,14 +396,6 @@
     "version": "1.5.3",
     "date": "2026-03-02",
     "title": "Hotfix migrations",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "905d18f67147711e967e230f0e87c61fe94d509d",
-    "version": "1.5.2",
-    "date": "2026-03-02",
-    "title": "Hotfix ploegen",
     "body": "",
     "type": "bug"
   }
