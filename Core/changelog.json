@@ -1,5 +1,13 @@
 [
   {
+    "id": "51e56cacc54a19b9439c2430fbc8a2c94055dc59",
+    "version": "1.16.1",
+    "date": "2026-04-17",
+    "title": "Typo",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "1a92212c261cd451ddc2fa5bc2e18a4209ed1058",
     "version": "1.16.0",
     "date": "2026-04-17",
@@ -388,14 +396,6 @@
     "version": "1.5.4",
     "date": "2026-03-02",
     "title": "Hotfix multiploegen",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "b5ba1861bc8288cfd1d9240fd7c4fc0b31e33fb4",
-    "version": "1.5.3",
-    "date": "2026-03-02",
-    "title": "Hotfix migrations",
     "body": "",
     "type": "bug"
   }

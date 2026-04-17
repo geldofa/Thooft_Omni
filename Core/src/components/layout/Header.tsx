@@ -113,6 +113,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
   const navItems = useMemo<NavItemConfig[]>(() => {
     return NAVIGATION_CONFIG.filter(item => {
+      if (item.anyPermission) return item.anyPermission.some(p => hasPermission(p));
       return hasPermission(item.permission);
     });
   }, [hasPermission]);

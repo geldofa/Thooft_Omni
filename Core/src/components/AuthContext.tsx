@@ -517,11 +517,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (permission === 'feedback_view' && roleData.permissions.includes('feedback_manage')) return true;
     // reports_view implies reports_archive_view
     if (permission === 'reports_archive_view' && roleData.permissions.includes('reports_view')) return true;
-    if (permission === 'reports_view' && (
-      roleData.permissions.includes('maintenance_analytics_view') || 
-      roleData.permissions.includes('production_analytics_view') ||
-      roleData.permissions.includes('checklist_view')
-    )) return true;
     if (permission === 'management_access' && (
       roleData.permissions.includes('manage_personnel') || 
       roleData.permissions.includes('manage_accounts') ||

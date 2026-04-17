@@ -23,6 +23,7 @@ export interface NavItemConfig {
     icon: any;
     description: string;
     permission: Permission;
+    anyPermission?: Permission[];
     color: string;
     isTall?: boolean;
     subtabs?: (activePresses: Press[], hasPermission: (p: Permission) => boolean) => SubtabConfig[];
@@ -65,6 +66,7 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         icon: FileBarChart,
         description: 'Bekijk onderhoudsgeschiedenis en analyses',
         permission: 'reports_archive_view',
+        anyPermission: ['reports_archive_view', 'reports_view', 'checklist_view', 'drukwerken_view', 'maintenance_analytics_view', 'production_analytics_view'],
         color: 'bg-purple-600',
         subtabs: (_activePresses, hasPermission) => [
             // Group: Rapporten
