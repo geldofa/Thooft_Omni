@@ -21,6 +21,7 @@ import { ProductionAnalytics } from '../ProductionAnalytics';
 import { SystemTasks } from '../SystemTasks';
 import { ToolboxContent } from '../Toolbox';
 import { DataChecker } from '../management/DataChecker';
+import { DrukwerkenDataChecker } from '../management/DrukwerkenDataChecker';
 
 const ParameterManagement = lazy(() => import('../management/ParameterManagement').then(m => ({ default: m.ParameterManagement })));
 const NotificationManagement = lazy(() => import('../management/NotificationManagement').then(m => ({ default: m.NotificationManagement })));
@@ -260,6 +261,7 @@ export function UnifiedSettingsLayout() {
                     ] : []),
                     ...(hasPermission('data_checker_view') ? [
                         { value: 'Fixes', label: 'Data Checker', icon: ShieldCheck, description: 'Logboek vs Database' },
+                        { value: 'DrukwerkenFixes', label: 'Data Checker Drukwerken', icon: ShieldCheck, description: 'Duplicaten & berekeningsfouten' },
                     ] : []),
                     ...(hasPermission('toolbox_access') ? [
                         { value: 'Backup', label: 'Backup & Herstel', icon: Database, description: 'Cloud & snapshots' },
@@ -272,7 +274,7 @@ export function UnifiedSettingsLayout() {
     sidebarGroups = sidebarGroups.filter(g => g.items.length > 0);
 
     const onSelect = (value: string) => {
-        const isToolboxValue = ['Tools', 'Import', 'Fixes', 'Backup'].includes(value);
+        const isToolboxValue = ['Tools', 'Import', 'Fixes', 'DrukwerkenFixes', 'Backup'].includes(value);
         const isAnalysesValue = ['Rapport', 'Checklist', 'Drukwerken', 'Extern', 'statistieken/onderhoud', 'statistieken/productie'].includes(value);
         const prefix = isAnalysesValue ? 'Analyses' : isToolboxValue ? 'Toolbox' : 'Beheer';
         startTransition(() => navigate(`/${prefix}/${value}`));
@@ -331,6 +333,7 @@ export function UnifiedSettingsLayout() {
 
                         {/* Toolbox screens */}
                         {activeTab === 'Fixes' && <DataChecker />}
+                        {activeTab === 'DrukwerkenFixes' && <DrukwerkenDataChecker />}
                         {['Tools', 'Import', 'Backup'].includes(activeTab) && (
                             <div className="max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8">
                                 <ToolboxContent onNavigateHome={() => navigate('/')} />

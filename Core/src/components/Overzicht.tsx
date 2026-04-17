@@ -14,7 +14,6 @@ import { pb } from './AuthContext';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { cn } from './ui/utils';
-import { ScrollArea } from './ui/scroll-area';
 
 // --- Types ---
 
@@ -166,8 +165,8 @@ const Chip = ({
 
 // --- Day separator ---
 
-const DaySeparator = ({ date }: { date: Date }) => (
-  <div className="flex items-end gap-1 mt-3 mb-0.5 first:mt-0 opacity-50 select-none">
+const DaySeparator = ({ date, isFirst = false }: { date: Date; isFirst?: boolean }) => (
+  <div className={cn('flex items-end gap-1 mb-0.5 opacity-50 select-none', isFirst ? '!mt-2' : 'mt-3')}>
     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest whitespace-nowrap">
       {format(date, 'EEEE d MMM', { locale: nl }).toUpperCase()}
     </span>
@@ -217,13 +216,13 @@ export const Overzicht = () => {
     if (!es) return;
 
     const handleError = () => setIsOnline(false);
-    const handleOpen  = () => setIsOnline(true);
+    const handleOpen = () => setIsOnline(true);
 
     es.addEventListener('error', handleError);
-    es.addEventListener('open',  handleOpen);
+    es.addEventListener('open', handleOpen);
     return () => {
       es.removeEventListener('error', handleError);
-      es.removeEventListener('open',  handleOpen);
+      es.removeEventListener('open', handleOpen);
     };
   }, []);
 
@@ -588,9 +587,9 @@ export const Overzicht = () => {
 
     const nodes: React.ReactNode[] = [];
 
-    sortedDays.forEach(([dayStr, items]) => {
+    sortedDays.forEach(([dayStr, items], dayIdx) => {
       const dayDate = new Date(dayStr + 'T12:00:00');
-      nodes.push(<DaySeparator key={`d-${dayStr}`} date={dayDate} />);
+      nodes.push(<DaySeparator key={`d-${dayStr}`} date={dayDate} isFirst={dayIdx === 0} />);
 
       // Sort items within day by voltooid_op desc
       const sorted = [...items].sort((a, b) => {
@@ -720,9 +719,9 @@ export const Overzicht = () => {
 
     const nodes: React.ReactNode[] = [];
 
-    sortedDays.forEach(([dayStr, tasks]) => {
+    sortedDays.forEach(([dayStr, tasks], dayIdx) => {
       const dayDate = new Date(dayStr + 'T12:00:00');
-      nodes.push(<DaySeparator key={`d-${dayStr}`} date={dayDate} />);
+      nodes.push(<DaySeparator key={`d-${dayStr}`} date={dayDate} isFirst={dayIdx === 0} />);
 
       // Sort by last_date desc within day
       const sorted = [...tasks].sort((a, b) =>
@@ -741,8 +740,8 @@ export const Overzicht = () => {
         const expandedOps = task.expand?.assigned_operator;
         const operatorNames: string[] = expandedOps
           ? (Array.isArray(expandedOps) ? expandedOps : [expandedOps]).map(
-              (o: any) => o.naam || o.name || 'Onbekend',
-            )
+            (o: any) => o.naam || o.name || 'Onbekend',
+          )
           : [];
 
         nodes.push(
@@ -813,7 +812,7 @@ export const Overzicht = () => {
   );
 
   return (
-    <div className="p-6 flex flex-col gap-4 h-[calc(100vh-56px)] overflow-hidden bg-background/50 font-sans">
+    <div className="px-6 pt-4 pb-4 flex flex-col gap-4 h-[calc(100vh-80px)] overflow-hidden bg-background/50 font-sans">
       <div className="flex flex-col gap-0 shrink-0">
         {/* HEADER: KPI Strip */}
         <div className="flex items-stretch gap-6 shrink-0">
@@ -981,7 +980,7 @@ export const Overzicht = () => {
       {/* BOTTOM: Orders & Onderhoud streams */}
       <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
         {/* Orders */}
-        <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0">
+        <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0 gap-0">
           <div className="py-2 px-4 border-b flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -1004,21 +1003,21 @@ export const Overzicht = () => {
               />
             </div>
           </div>
-          <ScrollArea className="flex-1 p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
             <div className="flex flex-col">{renderOrders()}</div>
-          </ScrollArea>
+          </div>
         </Card>
 
         {/* Onderhoud */}
-        <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0">
+        <Card className="flex-1 flex flex-col overflow-hidden bg-card border shadow-sm min-h-0 gap-0">
           <div className="py-2 px-4 border-b flex items-center shrink-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Onderhoud
             </span>
           </div>
-          <ScrollArea className="flex-1 p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
             <div className="flex flex-col">{renderOnderhoud()}</div>
-          </ScrollArea>
+          </div>
         </Card>
       </div>
     </div>

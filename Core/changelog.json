@@ -1,5 +1,13 @@
 [
   {
+    "id": "2920e4720466e7d039678a0781ed255d85b00ea8",
+    "version": "1.15.0",
+    "date": "2026-04-16",
+    "title": "Auth optimalisaties, personeelsplanning & waarnemers",
+    "body": "- Waarnemers kunnen live data volgen en exports van analyses maken.\n- Geen broncode aanpassingen meer nodig bij het aanmaken van nieuwe rechtenschema's\n- Eerste basis voor de personeelsplanning te integreren in OMNI.\n- Kleine aanpassing aan Onderhoudstaken - Extern\n-",
+    "type": "feature"
+  },
+  {
     "id": "5c3e32ea2031bfc72c3374b911437a7c9596c9e1",
     "version": "1.14.0",
     "date": "2026-04-08",
@@ -390,13 +398,5 @@
     "title": "Hotfix ploegen",
     "body": "",
     "type": "bug"
-  },
-  {
-    "id": "0f5f23290661def551ea5051ec220918d36b456a",
-    "version": "1.5.1",
-    "date": "2026-03-02",
-    "title": "Samenvattingen v2 in werkende staat",
-    "body": "",
-    "type": "chore"
   }
 ]
