@@ -1,5 +1,13 @@
 [
   {
+    "id": "a7dd53f6462395db7df00e77c97b55c3f0ce5613",
+    "version": "1.16.2",
+    "date": "2026-04-17",
+    "title": "Startpagina logica",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "51e56cacc54a19b9439c2430fbc8a2c94055dc59",
     "version": "1.16.1",
     "date": "2026-04-17",
@@ -388,14 +396,6 @@
     "version": "1.5.5",
     "date": "2026-03-03",
     "title": "Hotfix Multiploegen v2",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "5fc9cc03fe62a991fb294419032468afd747eb54",
-    "version": "1.5.4",
-    "date": "2026-03-02",
-    "title": "Hotfix multiploegen",
     "body": "",
     "type": "bug"
   }

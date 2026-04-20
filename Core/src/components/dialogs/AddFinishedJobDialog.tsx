@@ -20,6 +20,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Trash2, Plus, ArrowUpLeft, AlertCircle, MessageSquare } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
+import { Badge } from '../ui/badge';
+import { getLangChipColors } from '../../utils/jdf-parser';
+import { cn } from '../ui/utils';
+
+const LANG_PREFIX_RE = /^(NL|FR|DE|EN)\s*-\s*/i;
+
+function parseVersionPrefix(version: string): { prefix: string; label: string } {
+    const match = version.match(LANG_PREFIX_RE);
+    if (!match) return { prefix: '', label: version };
+    return { prefix: match[1].toUpperCase(), label: version.slice(match[0].length).trim() };
+}
 
 interface AddFinishedJobDialogProps {
     open: boolean;
@@ -323,12 +334,31 @@ export function AddFinishedJobDialog({
                                                 <TableCell className="align-top py-2 relative">
                                                     <div className="flex flex-col gap-1 w-full">
                                                         <div className="flex gap-1 items-center w-full">
-                                                            <Input 
-                                                                value={job.version} 
-                                                                onChange={(e) => handleJobChange(job.id, 'version', e.target.value)} 
-                                                                className="h-9 px-2 bg-white border-gray-200 flex-1 min-w-[80px]" 
-                                                                placeholder="Versie"
-                                                            />
+                                                            {(() => {
+                                                                const { prefix, label } = parseVersionPrefix(job.version);
+                                                                const colors = getLangChipColors(prefix);
+                                                                return (
+                                                                    <div className="flex items-center gap-1 h-9 px-2 bg-white border border-gray-200 rounded-md flex-1 min-w-[80px] overflow-hidden">
+                                                                        {prefix && (
+                                                                            <Badge
+                                                                                variant="outline"
+                                                                                className={cn('text-[10px] px-1.5 h-4 font-bold border flex-shrink-0', colors.bg, colors.text, colors.border)}
+                                                                            >
+                                                                                {prefix}
+                                                                            </Badge>
+                                                                        )}
+                                                                        <input
+                                                                            value={label}
+                                                                            onChange={(e) => {
+                                                                                const newVersion = prefix ? `${prefix} - ${e.target.value}` : e.target.value;
+                                                                                handleJobChange(job.id, 'version', newVersion);
+                                                                            }}
+                                                                            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm h-full"
+                                                                            placeholder="Versie"
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                             <Button
                                                                 type="button"
                                                                 variant="ghost"

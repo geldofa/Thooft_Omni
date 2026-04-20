@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/t
 
 
 import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
+import { JdfImportDialog } from './dialogs/JdfImportDialog';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import {
     evaluateFormula,
@@ -431,6 +432,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
+    const [isJdfImportOpen, setIsJdfImportOpen] = useState(false);
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
@@ -1980,7 +1982,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     )}
 
                     {(() => {
-                        const showWerkorders = effectiveRole === 'press';
+                        const showWerkorders = effectiveRole === 'press' || effectiveRole === 'admin' || effectiveRole === 'meestergast';
                         const showFinished = (effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && hasPermission('drukwerken_view')));
                         const showTrash = hasPermission('drukwerken_trash_view');
                         // Count visible tabs: Nieuw, Gedrukt, and Prullenbak
@@ -2036,6 +2038,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     {activeTab === 'Nieuw' && hasPermission('drukwerken_create') && (
                                         <Button onClick={() => handleWerkorderSubmit(defaultWerkorderData)}>
                                             <Plus className="w-4 h-4 mr-2" /> Werkorder
+                                        </Button>
+                                    )}
+                                    {activeTab === 'Nieuw' && hasPermission('management_access') && (
+                                        <Button variant="outline" onClick={() => setIsJdfImportOpen(true)}>
+                                            <Plus className="w-4 h-4 mr-2" /> Via JDF
                                         </Button>
                                     )}
                                     {activeTab === 'Gedrukt' && (
@@ -2146,7 +2153,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         );
                     })()}
 
-                    {effectiveRole === 'press' && (
+                    {(effectiveRole === 'press' || effectiveRole === 'admin' || effectiveRole === 'meestergast') && (
                         <TabsContent value="Nieuw">
                             <div className="space-y-4 max-h-[calc(100vh-150px)] overflow-y-auto relative pb-6 px-1">
                                 {werkorders.map((wo) => (
@@ -2689,6 +2696,47 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     </TabsContent>
                 </div>
             </Tabs>
+
+            <JdfImportDialog
+                open={isJdfImportOpen}
+                onOpenChange={setIsJdfImportOpen}
+                pressMap={pressMap}
+                onImport={(jobs) => {
+                    if (jobs.length === 0) return;
+                    const first = jobs[0];
+                    const newWerkorderId = Date.now().toString();
+                    const katernen: Katern[] = jobs.map((job, i) => ({
+                        id: `${newWerkorderId}-${i + 1}`,
+                        version: job.version,
+                        pages: job.pages,
+                        exOmw: job.exOmw || '1',
+                        netRun: null,
+                        startup: i === 0,
+                        c4_4: null,
+                        c4_0: null,
+                        c1_0: null,
+                        c1_1: null,
+                        c4_1: null,
+                        maxGross: null,
+                        green: null,
+                        red: null,
+                        delta: null,
+                        deltaPercentage: null,
+                    }));
+                    const newWerkorder: Werkorder = {
+                        id: newWerkorderId,
+                        orderNr: first.orderNr,
+                        orderName: first.orderName,
+                        orderDate: new Date().toISOString().split('T')[0],
+                        katernen,
+                    };
+                    setWerkorders(prev => {
+                        const next = [newWerkorder, ...prev];
+                        syncToLocalStorage(next);
+                        return next;
+                    });
+                }}
+            />
 
             {
                 isAddJobDialogOpen && (

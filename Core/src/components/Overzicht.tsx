@@ -276,9 +276,7 @@ export const Overzicht = () => {
         ? `((voltooid_op >= "${startStr}" && voltooid_op < "${endStr}") || (date >= "${startStr}" && date < "${endStr}"))`
         : `(voltooid_op >= "${startStr}" || date >= "${startStr}")`;
 
-      const yearFilter = endStr
-        ? `((voltooid_op >= "${yearStr}" && voltooid_op < "${endStr}") || (date >= "${yearStr}" && date < "${endStr}"))`
-        : `(voltooid_op >= "${yearStr}" || date >= "${yearStr}")`;
+      const yearFilter = `(voltooid_op >= "${yearStr}" || date >= "${yearStr}")`;
 
       const fetchJobsResilient = async (filter: string) => {
         try {
