@@ -360,14 +360,19 @@ function runJdfScan(options) {
     } catch (e) { /* use default */ }
     if (jdfPath.charAt(jdfPath.length - 1) !== '/') jdfPath += '/';
 
+    console.log("[JDF Scan] Starting scan at: " + jdfPath + (force ? " (FORCE)" : ""));
     var entries;
     try {
         entries = $os.readDir(jdfPath);
     } catch (e) {
+        console.log("[JDF Scan] ReadDir failed: " + e);
         result.skipped = true;
         result.error = "Directory niet leesbaar: " + jdfPath;
         return result;
     }
+
+    var totalFiles = entries ? entries.length : 0;
+    console.log("[JDF Scan] Total entries found: " + totalFiles);
 
     result.files_found = entries ? entries.length : 0;
     if (!entries || entries.length === 0) {
@@ -396,8 +401,17 @@ function runJdfScan(options) {
         var name = entry.name();
 
         var nameLower = name.toLowerCase();
-        var isXml = nameLower.indexOf('.xml') !== -1;
-        if (entry.isDir() || !isXml) continue;
+        var isXml = nameLower.indexOf('.xml') !== -1 || nameLower.indexOf('.jdf') !== -1;
+        if (entry.isDir()) {
+            console.log("[JDF Scan] Skipping directory: " + name);
+            continue;
+        }
+        if (!isXml) {
+            console.log("[JDF Scan] Skipping non-JDF file: " + name);
+            continue;
+        }
+
+        console.log("[JDF Scan] Processing file: " + name);
 
         var filePath = jdfPath + name;
         var fileSize = 0;
