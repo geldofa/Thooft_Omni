@@ -43,6 +43,7 @@ services:
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GDRIVE_CLIENT_ID=${GDRIVE_CLIENT_ID}
       - GDRIVE_CLIENT_SECRET=${GDRIVE_CLIENT_SECRET}
+      - JDF_PATH=/pb/jdf/
     restart: unless-stopped
     container_name: thooft_db
     depends_on:

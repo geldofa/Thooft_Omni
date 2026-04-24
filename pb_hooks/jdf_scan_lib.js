@@ -345,10 +345,10 @@ function runJdfScan(options) {
     var force = options && options.force;
     var result = { files_found: 0, new_records: 0, updated_records: 0, skipped: false };
 
-    var jdfPath = '/pb/jdf/';
+    var jdfPath = $os.getenv("JDF_PATH") || '/pb/jdf/';
     try {
         var setting = $app.findFirstRecordByFilter("app_settings", 'key = "jdf_folder_path"');
-        if (setting) {
+        if (setting && !$os.getenv("JDF_PATH")) { // Only use DB setting if env var is not set
             var raw = String(setting.get("value") || '');
             // JSON fields round-trip as their JSON-encoded text (e.g. "/pb/jdf/"),
             // so strip the enclosing quotes if present.
