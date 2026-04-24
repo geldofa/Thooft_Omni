@@ -89,7 +89,12 @@ export type Permission =
   | 'feedback_manage'
   | 'manage_themes'
   | 'manage_notifications'
-  | 'manage_system_tasks';
+  | 'manage_system_tasks'
+  | 'jdf_gebruiken'
+  | 'jdf_bekijken_eigen'
+  | 'jdf_bekijken_alle'
+  | 'jdf_filters_bewerken'
+  | 'jdf_importeren';
 
 export interface RolePermissions {
   role: UserRole;

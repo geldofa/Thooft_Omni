@@ -17,12 +17,32 @@ export interface Katern {
     red: number | null;
     delta: number | null;
     deltaPercentage: number | null;
+    wissel?: string;
+    oplage?: number | null;
     opmerking?: string;
     is_finished?: boolean;
     locked?: boolean;
     dbGreen?: number | null; // Last saved green value in PB (for 50% deviation check)
     dbRed?: number | null;   // Last saved red value in PB
     voltooid_op?: string | null;
+    // JDF import fields (read-only)
+    volgorde?: number | string | null;
+    pagination?: number | string | null;
+    signatureId?: string | null;
+    // CMYK / Papier fields
+    cmyk_naam?: string;
+    papier_id?: string;
+    papier_klasse?: string;
+    papier_proef_profiel?: string;
+    papier_gram?: number | null;
+    front_k?: number | null;
+    front_c?: number | null;
+    front_m?: number | null;
+    front_y?: number | null;
+    back_k?: number | null;
+    back_c?: number | null;
+    back_m?: number | null;
+    back_y?: number | null;
 }
 
 export interface FinishedPrintJob {
@@ -46,6 +66,8 @@ export interface FinishedPrintJob {
     red: number | null;
     delta_number: number | null;
     delta_percentage: number | null;
+    wissel?: string;
+    oplage?: number | null;
     opmerkingen?: string;
     delta: number | null;
     performance: string;
@@ -55,6 +77,23 @@ export interface FinishedPrintJob {
     is_finished?: boolean;
     locked?: boolean;
     voltooid_op?: string | null;
+    // JDF import fields
+    volgorde?: number | string | null;
+    pagination?: number | string | null;
+    // CMYK / Papier fields
+    cmyk_naam?: string;
+    papier_id?: string;
+    papier_klasse?: string;
+    papier_proef_profiel?: string;
+    papier_gram?: number | null;
+    front_k?: number | null;
+    front_c?: number | null;
+    front_m?: number | null;
+    front_y?: number | null;
+    back_k?: number | null;
+    back_c?: number | null;
+    back_m?: number | null;
+    back_y?: number | null;
 }
 
 export interface CalculatedField {

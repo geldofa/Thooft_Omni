@@ -117,5 +117,7 @@ export function jdfVersionsToJobs(
         ...base,
         id: `jdf-${Date.now()}-${i}`,
         version: v.version,
+        volgorde: i + 1,
+        pagination: parsed.pages,
     }));
 }

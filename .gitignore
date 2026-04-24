@@ -41,3 +41,6 @@ Core/scripts/
 
 # Docker
 docker-compose.override.yml
+
+# JDF production files
+jdf/

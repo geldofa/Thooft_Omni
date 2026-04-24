@@ -12,7 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown, CornerDownRight } from 'lucide-react';
+import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown, CornerDownRight, Package } from 'lucide-react';
 import { cn } from './ui/utils';
 import { TableVirtuoso } from 'react-virtuoso';
 import { formatNumber } from '../utils/formatNumber';
@@ -24,6 +24,10 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/t
 
 import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
 import { JdfImportDialog } from './dialogs/JdfImportDialog';
+import { JdfOrderPicker, JdfOrder } from './dialogs/JdfOrderPicker';
+import { JdfOverview } from './JdfOverview';
+import { Densiteiten } from './Densiteiten';
+import { PapierBeheer } from './PapierBeheer';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 import {
     evaluateFormula,
@@ -32,6 +36,7 @@ import {
     CalculatedField
 } from '../utils/drukwerken-utils';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { VersionLabelFilter, applyVersionLabelFilter } from '../utils/jdf-filter-utils';
 
 interface Press {
     id: string;
@@ -426,13 +431,17 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         const lower = subtab?.toLowerCase();
         if (lower === 'gedrukt') return 'Gedrukt';
         if (lower === 'prullenbak') return 'Prullenbak';
+        if (lower === 'jdf') return 'JDF';
+        if (lower === 'densiteiten') return 'Densiteiten';
+        if (lower === 'papier') return 'Papier';
         return 'Nieuw';
-    })() as 'Gedrukt' | 'Nieuw' | 'Prullenbak';
+    })() as 'Gedrukt' | 'Nieuw' | 'Prullenbak' | 'JDF' | 'Densiteiten' | 'Papier';
 
 
     const [isAddJobDialogOpen, setIsAddJobDialogOpen] = useState(false);
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
     const [isJdfImportOpen, setIsJdfImportOpen] = useState(false);
+    const [isJdfPickerOpen, setIsJdfPickerOpen] = useState(false);
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
@@ -440,6 +449,17 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
     // Validation State
     const [validationErrors, setValidationErrors] = useState<Record<string, Record<string, boolean>>>({});
+    const [versionLabelFilters, setVersionLabelFilters] = useState<VersionLabelFilter[]>([]);
+
+    useEffect(() => {
+        pb.collection('app_settings').getFirstListItem('key = "version_label_filters"')
+            .then(rec => {
+                const val = rec?.value;
+                if (Array.isArray(val) && val.length > 0) setVersionLabelFilters(val as VersionLabelFilter[]);
+            })
+            .catch(() => { /* geen filters opgeslagen */ });
+    }, []);
+
 
     // Parameters state - one set per press
     const [parameters, setParameters] = useState<Record<string, Record<string, any>>>(() => {
@@ -503,6 +523,20 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         red: null,
         delta: 0,
         deltaPercentage: 0,
+        // CMYK / Papier
+        cmyk_naam: '',
+        papier_id: '',
+        papier_klasse: '',
+        papier_proef_profiel: '',
+        papier_gram: 0,
+        front_k: 0,
+        front_c: 0,
+        front_m: 0,
+        front_y: 0,
+        back_k: 0,
+        back_c: 0,
+        back_m: 0,
+        back_y: 0,
     };
 
     // --- Locked Katernen Browser Cache Handled by DrukwerkenCache ---
@@ -526,7 +560,14 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     orderName: '',
                     orderDate: new Date().toISOString().split('T')[0],
                     katernen: [
-                        { id: '1-1', version: '', pages: null, exOmw: '', netRun: null, startup: true, c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0, maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0 }
+                        {
+                            id: '1-1', version: '', pages: null, exOmw: '', netRun: null, startup: true,
+                            c4_4: 0, c4_0: 0, c1_0: 0, c1_1: 0, c4_1: 0,
+                            maxGross: 0, green: null, red: null, delta: 0, deltaPercentage: 0,
+                            cmyk_naam: '', papier_id: '', papier_klasse: '', papier_proef_profiel: '', papier_gram: 0,
+                            front_k: 0, front_c: 0, front_m: 0, front_y: 0,
+                            back_k: 0, back_c: 0, back_m: 0, back_y: 0
+                        }
                     ]
                 }
             ];
@@ -601,7 +642,21 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     is_finished: match.is_finished || k.is_finished,
                                     dbGreen: match.green,
                                     dbRed: match.red,
-                                    voltooid_op: match.voltooid_op
+                                    voltooid_op: match.voltooid_op,
+                                    // CMYK / Papier
+                                    cmyk_naam: match.cmyk_naam,
+                                    papier_id: match.papier_id,
+                                    papier_klasse: match.papier_klasse,
+                                    papier_proef_profiel: match.papier_proef_profiel,
+                                    papier_gram: match.papier_gram,
+                                    front_k: match.front_k,
+                                    front_c: match.front_c,
+                                    front_m: match.front_m,
+                                    front_y: match.front_y,
+                                    back_k: match.back_k,
+                                    back_c: match.back_c,
+                                    back_m: match.back_m,
+                                    back_y: match.back_y,
                                 };
                             }
                         } catch (e) {
@@ -661,6 +716,20 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         red: null,
         delta: null,
         deltaPercentage: null,
+        // CMYK / Papier
+        cmyk_naam: '',
+        papier_id: '',
+        papier_klasse: '',
+        papier_proef_profiel: '',
+        papier_gram: 0,
+        front_k: 0,
+        front_c: 0,
+        front_m: 0,
+        front_y: 0,
+        back_k: 0,
+        back_c: 0,
+        back_m: 0,
+        back_y: 0,
     };
 
     const handleWerkorderSubmit = useCallback((werkorderData: Omit<Werkorder, 'id' | 'katernen'>) => {
@@ -702,7 +771,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         katernen: wo.katernen.map(k => {
                             if (k.id === katernId) {
                                 // For number inputs, handle empty string and convert to number
-                                if (['pages', 'netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red'].includes(field)) {
+                                if (['pages', 'netRun', 'c4_4', 'c4_0', 'c1_0', 'c1_1', 'c4_1', 'green', 'red', 'front_k', 'front_c', 'front_m', 'front_y', 'back_k', 'back_c', 'back_m', 'back_y', 'papier_gram'].includes(field)) {
                                     const parsedValue = parseFloat(value);
                                     let numValue: number | null = isNaN(parsedValue) ? null : parsedValue;
 
@@ -1801,6 +1870,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                 exOmw: job.exOmw,
                 netRun: job.netRun || 0,
                 startup: job.startup,
+                wissel: job.wissel || '',
+                oplage: job.oplage || null,
                 c4_4: job.c4_4 || 0,
                 c4_0: job.c4_0 || 0,
                 c1_0: job.c1_0 || 0,
@@ -1968,6 +2039,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     };
 
 
+    const showWerkorders = effectiveRole === 'press' || effectiveRole === 'admin' || effectiveRole === 'meestergast';
+    const showFinished = (effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && hasPermission('drukwerken_view')));
+    const showTrash = hasPermission('drukwerken_trash_view');
+    const showJdf = hasPermission('jdf_gebruiken') || hasPermission('jdf_bekijken_eigen') || hasPermission('jdf_bekijken_alle') || hasPermission('jdf_importeren');
+
     return (
         <TooltipProvider delayDuration={300}>
             <Tabs value={activeTab} onValueChange={(value) => navigate(`/Drukwerken/${value}`)} className="w-full">
@@ -1982,11 +2058,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     )}
 
                     {(() => {
-                        const showWerkorders = effectiveRole === 'press' || effectiveRole === 'admin' || effectiveRole === 'meestergast';
-                        const showFinished = (effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && hasPermission('drukwerken_view')));
-                        const showTrash = hasPermission('drukwerken_trash_view');
-                        // Count visible tabs: Nieuw, Gedrukt, and Prullenbak
-                        const tabCount = [showWerkorders, showFinished, showTrash].filter(Boolean).length;
+                        // Count visible tabs: Nieuw, Gedrukt, Prullenbak, JDF
+                        const tabCount = [showWerkorders, showFinished, showTrash, showJdf].filter(Boolean).length;
                         const hasTabs = tabCount > 1;
 
                         return (
@@ -2000,8 +2073,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             {showFinished && (
                                                 <TabsTrigger value="Gedrukt" className="tab-pill-trigger">Gedrukt</TabsTrigger>
                                             )}
+                                            <TabsTrigger value="Densiteiten" className="tab-pill-trigger">Densiteiten</TabsTrigger>
+                                            <TabsTrigger value="Papier" className="tab-pill-trigger">Papier</TabsTrigger>
                                             {hasPermission('drukwerken_trash_view') && (
                                                 <TabsTrigger value="Prullenbak" className="tab-pill-trigger">Prullenbak</TabsTrigger>
+                                            )}
+                                            {showJdf && (
+                                                <TabsTrigger value="JDF" className="tab-pill-trigger">JDF</TabsTrigger>
                                             )}
                                         </TabsList>
                                     )}
@@ -2043,6 +2121,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     {activeTab === 'Nieuw' && hasPermission('management_access') && (
                                         <Button variant="outline" onClick={() => setIsJdfImportOpen(true)}>
                                             <Plus className="w-4 h-4 mr-2" /> Via JDF
+                                        </Button>
+                                    )}
+                                    {activeTab === 'Nieuw' && hasPermission('jdf_importeren') && user?.press && (
+                                        <Button variant="outline" onClick={() => setIsJdfPickerOpen(true)}>
+                                            <Package className="w-4 h-4 mr-2" /> Beschikbare Orders
                                         </Button>
                                     )}
                                     {activeTab === 'Gedrukt' && (
@@ -2212,6 +2295,11 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <col style={{ width: COL_WIDTHS.deltaPercent }} />
                                                 <col style={{ width: COL_WIDTHS.actions }} />
                                             </colgroup>
+                                            {(() => {
+                                                const isJdfOrder = wo.katernen.some(k => k.signatureId != null);
+                                                const hideVolgorde = !isJdfOrder || wo.katernen.length <= 1;
+                                                const hideKatern = !isJdfOrder || wo.katernen.every(k => k.signatureId === '001' || k.signatureId === 1 as any);
+                                                return (<>
                                             <TableHeader>
                                                 <TableRow className="border-b-0 sticky top-0 z-40 bg-white h-10">
                                                     <TableHead colSpan={4} className="text-center bg-blue-100 border-r border-black sticky top-0 z-40">Data</TableHead>
@@ -2221,7 +2309,19 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                     <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
                                                 </TableRow>
                                                 <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm h-10">
-                                                    <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">Version</TableHead>
+                                                    <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">
+                                                        <div className="flex items-center gap-0">
+                                                            {!hideVolgorde && <>
+                                                                <span className="w-[64px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Volgorde</span>
+                                                                <div className="self-stretch w-px bg-gray-300 mx-1.5 flex-shrink-0" />
+                                                            </>}
+                                                            {!hideKatern && <>
+                                                                <span className="w-[52px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Katern</span>
+                                                                <div className="self-stretch w-px bg-black mx-1.5 flex-shrink-0" />
+                                                            </>}
+                                                            <span className="ml-1.5">Versie</span>
+                                                        </div>
+                                                    </TableHead>
                                                     <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Blz</TableHead>
                                                     <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
                                                     <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
@@ -2240,29 +2340,38 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {wo.katernen.map((katern) => (
-                                                    <DrukwerkRow
-                                                        key={katern.id}
-                                                        werkorderId={wo.id}
-                                                        katern={katern}
-                                                        orderNr={wo.orderNr}
-                                                        orderName={wo.orderName}
-                                                        effectivePress={effectivePress}
-                                                        effectivePressId={effectivePressId}
-                                                        parameters={parameters}
-                                                        activePresses={activePresses}
-                                                        outputConversions={outputConversions}
-                                                        pressMap={pressMap}
-                                                        calculatedFields={calculatedFields}
-                                                        onKaternChange={handleKaternChange}
-                                                        onDeleteKatern={requestDeleteKatern}
-                                                        onAutoSaved={handleAutoSaved}
-                                                        addActivityLog={addActivityLog}
-                                                        user={user}
-                                                        hasPermission={hasPermission}
-                                                    />
-                                                ))}
+                                                {(() => {
+                                                    const hideVolgorde = wo.katernen.length <= 1;
+                                                    const hideKatern = wo.katernen.every(k => k.signatureId === '001' || k.signatureId === 1 as any);
+                                                    return wo.katernen.map((katern) => (
+                                                        <DrukwerkRow
+                                                            key={katern.id}
+                                                            werkorderId={wo.id}
+                                                            katern={katern}
+                                                            orderNr={wo.orderNr}
+                                                            orderName={wo.orderName}
+                                                            effectivePress={effectivePress}
+                                                            effectivePressId={effectivePressId}
+                                                            parameters={parameters}
+                                                            activePresses={activePresses}
+                                                            outputConversions={outputConversions}
+                                                            pressMap={pressMap}
+                                                            calculatedFields={calculatedFields}
+                                                            onKaternChange={handleKaternChange}
+                                                            onDeleteKatern={requestDeleteKatern}
+                                                            onAutoSaved={handleAutoSaved}
+                                                            addActivityLog={addActivityLog}
+                                                            user={user}
+                                                            hasPermission={hasPermission}
+                                                            hideVolgorde={hideVolgorde}
+                                                            hideKatern={hideKatern}
+
+                                                        />
+                                                    ));
+                                                })()}
                                             </TableBody>
+                                        </>);
+                                        })()}
                                         </Table>
                                         <div className="flex justify-between items-center mt-2">
                                             <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
@@ -2629,6 +2738,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         </Card>
                     </TabsContent>
 
+                    <TabsContent value="Densiteiten">
+                        <Densiteiten />
+                    </TabsContent>
+                    <TabsContent value="Papier">
+                        <PapierBeheer />
+                    </TabsContent>
+
                     <TabsContent value="Prullenbak">
                         <Card>
                             <CardContent className="p-0">
@@ -2694,8 +2810,120 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             </CardContent>
                         </Card>
                     </TabsContent>
+
+                    {showJdf && (
+                        <TabsContent value="JDF">
+                            <div className="max-h-[calc(100vh-150px)] overflow-y-auto pb-6 px-1">
+                                <JdfOverview />
+                            </div>
+                        </TabsContent>
+                    )}
                 </div>
             </Tabs>
+
+            <JdfOrderPicker
+                open={isJdfPickerOpen}
+                onOpenChange={setIsJdfPickerOpen}
+                pressId={effectivePressId}
+                pressName={effectivePress}
+                printedOrderNrs={(() => {
+                    const set = new Set<string>();
+                    finishedJobs.forEach(j => { if (j.orderNr) set.add(String(j.orderNr)); });
+                    return set;
+                })()}
+                onSelect={(order: JdfOrder) => {
+                    const newWerkorderId = Date.now().toString();
+                    const hasKaternen = Array.isArray(order.katernen) && order.katernen.length > 0;
+                    const makeKaternBase = (wissel: string, oplage: number | null, version: string, i: number) => ({
+                        id: `${newWerkorderId}-${i + 1}`,
+                        version,
+                        pages: order.paginas || null,
+                        exOmw: order.ex_omw || '1',
+                        netRun: oplage,
+                        startup: i === 0,
+                        wissel,
+                        oplage,
+                        c4_4: (i > 0 && wissel === '4/4') ? 1 : null,
+                        c4_0: (i > 0 && wissel === '4/0') ? 1 : null,
+                        c1_0: (i > 0 && wissel === '1/0') ? 1 : null,
+                        c1_1: (i > 0 && wissel === '1/1') ? 1 : null,
+                        c4_1: (i > 0 && wissel === '4/1') ? 1 : null,
+                        maxGross: null,
+                        green: null,
+                        red: null,
+                        delta: null,
+                        deltaPercentage: null,
+                    });
+                    let katernen: Katern[];
+                    if (hasKaternen) {
+                        katernen = order.katernen.map((k, i) => {
+                            const versieNames = Array.isArray(k.versies)
+                                ? k.versies.filter((v: string) => v && v !== 'COMM')
+                                : [];
+                            const versionLabel = versieNames.length > 0
+                                ? versieNames.join(', ')
+                                : '';
+                            return {
+                                ...makeKaternBase(k.wissel || '', k.oplage ?? null, versionLabel, i),
+                                pages: k.pagination || order.paginas || null,
+                                exOmw: k.exOmw || order.ex_omw || '1',
+                                volgorde: k.volgorde ?? (i + 1),
+                                pagination: k.pagination,
+                                signatureId: k.signatureId || null,
+                            };
+                        });
+                    } else {
+                        const versies = Array.isArray(order.versies) ? order.versies : [];
+                        katernen = versies.map((v: any, i: number) => ({
+                            ...makeKaternBase(v.wissel || '', v.oplage ?? null, v.version || '', i),
+                            volgorde: i + 1,
+                        }));
+                    }
+                    // Apply version label filters at import time
+                    if (versionLabelFilters.length > 0) {
+                        katernen = katernen.map(k => {
+                            const label = applyVersionLabelFilter(k, katernen, versionLabelFilters);
+                            return label ? { ...k, version: label } : k;
+                        });
+                    }
+
+                    if (katernen.length === 0) {
+                        katernen.push({
+                            id: `${newWerkorderId}-1`,
+                            version: '',
+                            pages: order.paginas || null,
+                            exOmw: order.ex_omw || '1',
+                            netRun: null,
+                            startup: true,
+                            c4_4: null,
+                            c4_0: null,
+                            c1_0: null,
+                            c1_1: null,
+                            c4_1: null,
+                            maxGross: null,
+                            green: null,
+                            red: null,
+                            delta: null,
+                            deltaPercentage: null,
+                        });
+                    }
+                    if (order.filtered_versie && order.aantal_versies <= 1) {
+                        katernen = katernen.map(k => ({ ...k, version: order.filtered_versie! }));
+                    }
+                    const newWerkorder: Werkorder = {
+                        id: newWerkorderId,
+                        orderNr: order.order_nummer,
+                        orderName: order.order_naam,
+                        orderDate: new Date().toISOString().split('T')[0],
+                        katernen,
+                    };
+                    setWerkorders(prev => {
+                        const next = [newWerkorder, ...prev];
+                        syncToLocalStorage(next);
+                        return next;
+                    });
+                }}
+            />
 
             <JdfImportDialog
                 open={isJdfImportOpen}
@@ -2712,6 +2940,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         exOmw: job.exOmw || '1',
                         netRun: null,
                         startup: i === 0,
+                        volgorde: job.volgorde,
+                        pagination: job.pagination,
                         c4_4: null,
                         c4_0: null,
                         c1_0: null,

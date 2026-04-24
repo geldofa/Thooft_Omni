@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
     CalendarClock, PlayCircle, RefreshCw, CheckCircle2,
-    Clock, AlertCircle, Loader2, Database
+    Clock, AlertCircle, Loader2, Database, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from './ui/utils';
@@ -22,12 +22,13 @@ type TaskStatus = 'idle' | 'pending' | 'running' | 'done' | 'failed';
 interface ScheduledTask {
     id: string;
     name: string;
-    type: 'report' | 'backup';
+    type: 'report' | 'backup' | 'jdf';
     interval: string;
     lastRun: Date | null;
     nextRun: Date | null;
     status: TaskStatus;
     preset?: any;
+    description?: string;
 }
 
 
@@ -101,12 +102,13 @@ export function SystemTasks() {
         setIsLoading(true);
         try {
             // 1. Fetch data in parallel
-            const [presets, archiveFiles, backupsRes] = await Promise.all([
+            const [presets, archiveFiles, backupsRes, jdfScan] = await Promise.all([
                 pb.collection('maintenance_reports').getFullList({ sort: 'name' }),
                 pb.collection('report_files').getFullList({ sort: '-generated_at' }),
                 fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/backups`, {
                     headers: { 'Authorization': pb.authStore.token }
-                }).then(res => res.ok ? res.json() : [])
+                }).then(res => res.ok ? res.json() : []),
+                pb.collection('app_settings').getFirstListItem('key = "jdf_last_scan"').catch(() => null)
             ]);
 
             // 2. Map Report Presets
@@ -147,7 +149,23 @@ export function SystemTasks() {
                 status: 'idle', // Backups are handled by PB directly or cron
             };
 
-            setTasks([...reportTasks, backupTask]);
+            // 4. Map JDF Watcher
+            const jdfLast = jdfScan?.value?.timestamp ? new Date(jdfScan.value.timestamp) : null;
+            const jdfNext = jdfLast ? new Date(jdfLast.getTime() + 5 * 60 * 1000) : null;
+            const jdfTask: ScheduledTask = {
+                id: 'jdf_scan',
+                name: 'JDF Mapscanner',
+                type: 'jdf',
+                interval: 'Elke 5 minuten',
+                lastRun: jdfLast,
+                nextRun: jdfNext,
+                status: 'idle',
+                description: jdfScan?.value
+                    ? `${jdfScan.value.files_found ?? 0} bestanden, ${jdfScan.value.new_records ?? 0} nieuw, ${jdfScan.value.updated_records ?? 0} bijgewerkt`
+                    : 'Scant de JDF-map en synchroniseert orders',
+            };
+
+            setTasks([...reportTasks, backupTask, jdfTask]);
         } catch (e) {
             console.error('[SystemTasks] Fetch failed:', e);
             toast.error('Fout bij ophalen taken');
@@ -182,6 +200,22 @@ export function SystemTasks() {
                 toast.success(`Systeem Backup gestart`);
                 // Give it a moment then refresh
                 setTimeout(fetchTasks, 2000);
+            } else if (task.type === 'jdf') {
+                const res = await fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/jdf/scan`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': pb.authStore.token,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!res.ok) throw new Error(`JDF scan failed: ${res.status}`);
+                const data = await res.json();
+                if (data.skipped) {
+                    toast.warning(data.error || 'JDF scan overgeslagen');
+                } else {
+                    toast.success(`JDF scan voltooid: ${data.new_records} nieuw, ${data.updated_records} bijgewerkt`);
+                }
+                setTimeout(fetchTasks, 500);
             } else {
                 // Trigger Report Generation via shared utility
                 if (!task.preset) return;
@@ -264,10 +298,14 @@ export function SystemTasks() {
                                             <TableCell className="pl-6">
                                                 <div className="flex items-center gap-2">
                                                     <div className={cn("p-1.5 rounded-md",
-                                                        task.type === 'backup' ? "bg-amber-50" : "bg-indigo-50"
+                                                        task.type === 'backup' ? "bg-amber-50"
+                                                        : task.type === 'jdf' ? "bg-blue-50"
+                                                        : "bg-indigo-50"
                                                     )}>
                                                         {task.type === 'backup' ? (
                                                             <Database className="w-3.5 h-3.5 text-amber-500" />
+                                                        ) : task.type === 'jdf' ? (
+                                                            <FileText className="w-3.5 h-3.5 text-blue-500" />
                                                         ) : task.preset?.auto_generate ? (
                                                             <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
                                                         ) : (
@@ -276,7 +314,7 @@ export function SystemTasks() {
                                                     </div>
                                                     <div>
                                                         <p className="font-bold text-sm text-slate-800">{task.name}</p>
-                                                        <p className="text-[10px] text-slate-400">{task.preset?.description || (task.type === 'backup' ? 'Volledige database backup zip' : '')}</p>
+                                                        <p className="text-[10px] text-slate-400">{task.description || task.preset?.description || (task.type === 'backup' ? 'Volledige database backup zip' : '')}</p>
                                                     </div>
                                                 </div>
                                             </TableCell>

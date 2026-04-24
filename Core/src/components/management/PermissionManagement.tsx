@@ -48,6 +48,10 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'drukwerken_view_all', label: 'Alle Drukwerken Zien', description: 'Mogelijkheid om drukwerken van alle persen te zien.' },
             { key: 'drukwerken_create', label: 'Drukwerken Aanmaken', description: 'Mogelijkheid om nieuwe werkorders toe te voegen.' },
             { key: 'drukwerken_trash_view', label: 'Prullenbak Bekijken', description: 'Toegang tot verwijderde drukwerken en herstelmogelijkheden.' },
+            { key: 'jdf_bekijken_eigen', label: 'JDF Bekijken (eigen pers)', description: 'JDF-pagina zien, gefilterd op de eigen toegewezen pers.' },
+            { key: 'jdf_bekijken_alle', label: 'JDF Bekijken (alle persen)', description: 'JDF-pagina zien met orders van alle persen.' },
+            { key: 'jdf_filters_bewerken', label: 'JDF Filters Bewerken', description: 'Naamfilters en versielabelfilters aanmaken en opslaan. Bekijken is altijd toegestaan.' },
+            { key: 'jdf_importeren', label: 'JDF Orders Importeren', description: 'Beschikbare JDF-orders importeren als geplande werkorder. Vereist een toegewezen pers; importeert enkel orders van die pers.' },
         ]
     },
     {

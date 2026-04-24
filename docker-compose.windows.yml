@@ -21,22 +21,14 @@ services:
     restart: unless-stopped
     container_name: thooft_omni
 
-  db_init:
-    image: docker.io/geldofa/thooft_omni:latest
-    command: ["sync"]
-    volumes:
-      - pb_migrations_relay:/relay/migrations
-      - pb_hooks_relay:/relay/hooks
-    container_name: thooft_db_init
-
   db:
     image: alpine:latest
     ports:
       - "8090:8090"
     volumes:
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data:/pb/pb_data"
-      - pb_migrations_relay:/pb/pb_migrations:ro
-      - pb_hooks_relay:/pb/pb_hooks:ro
+      - ./pb_migrations:/pb/pb_migrations:ro
+      - ./pb_hooks:/pb/pb_hooks:ro
     environment:
       - POCKETBASE_ADMIN_EMAIL=${ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -45,8 +37,6 @@ services:
     restart: unless-stopped
     container_name: thooft_db
     depends_on:
-      db_init:
-        condition: service_completed_successfully
       rclone:
         condition: service_started
     command: >
@@ -74,7 +64,3 @@ services:
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data\\backups:/backups"
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
-
-volumes:
-  pb_migrations_relay:
-  pb_hooks_relay:

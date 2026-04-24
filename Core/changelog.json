@@ -1,5 +1,13 @@
 [
   {
+    "id": "85720cf489275842962244da5706b061b5641f30",
+    "version": "1.16.3",
+    "date": "2026-04-20",
+    "title": "Eerste basisstenen voor JDF koppeling",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "a7dd53f6462395db7df00e77c97b55c3f0ce5613",
     "version": "1.16.2",
     "date": "2026-04-17",
@@ -388,14 +396,6 @@
     "version": "1.5.6",
     "date": "2026-03-03",
     "title": "Hotfix 6",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "a23e53952937e47310ff37e6c5d7dd4668130da6",
-    "version": "1.5.5",
-    "date": "2026-03-03",
-    "title": "Hotfix Multiploegen v2",
     "body": "",
     "type": "bug"
   }

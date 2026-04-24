@@ -18,14 +18,6 @@ services:
     restart: unless-stopped
     container_name: beta_thooft_omni
 
-  db_init:
-    image: docker.io/geldofa/thooft_omni:latest
-    command: ["sync"]
-    volumes:
-      - ./pb_migrations:/pb/pb_migrations:ro
-      - ./pb_hooks:/pb/pb_hooks:ro
-    container_name: beta_thooft_db_init
-
   db:
     image: alpine:latest
     ports:
@@ -42,8 +34,6 @@ services:
     restart: unless-stopped
     container_name: beta_thooft_db
     depends_on:
-      db_init:
-        condition: service_completed_successfully
       rclone:
         condition: service_started
     command: >
@@ -71,7 +61,3 @@ services:
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data_beta\\backups:/backups"
     command: "rcd --rc-addr :5572 --rc-no-auth"
     restart: unless-stopped
-
-volumes:
-  pb_migrations_relay_beta:
-  pb_hooks_relay_beta:

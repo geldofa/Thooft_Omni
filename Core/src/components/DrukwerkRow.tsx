@@ -10,7 +10,9 @@ import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
 import { Textarea } from './ui/textarea';
+import { Label } from './ui/label';
 import { Trash2, Pencil, MessageSquare } from 'lucide-react';
+import { CmykIcon } from './ui/CmykIcon';
 import { cn } from './ui/utils';
 import { formatNumber } from '../utils/formatNumber';
 import { format } from 'date-fns';
@@ -40,6 +42,9 @@ export interface DrukwerkRowProps {
     addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
     user: User | null;
     hasPermission: (perm: Permission) => boolean;
+    hideVolgorde?: boolean;
+    hideKatern?: boolean;
+
 }
 
 export function DrukwerkRow({
@@ -60,6 +65,9 @@ export function DrukwerkRow({
     addActivityLog,
     user,
     hasPermission,
+    hideVolgorde = false,
+    hideKatern = false,
+
 }: DrukwerkRowProps) {
 
     // ===================== REFS =====================
@@ -74,8 +82,41 @@ export function DrukwerkRow({
     // ===================== UI STATE =====================
     const [pulseActive, setPulseActive] = useState(false);
     const [showComment, setShowComment] = useState(false);
+    const [showCmyk, setShowCmyk] = useState(false);
     const [commentValue, setCommentValue] = useState(katern.opmerking || '');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // ===================== PAPIER DATA =====================
+    interface PapierRecord {
+        id: string;
+        naam: string;
+        klasse: string;
+        proef_profiel: string;
+        gram_per_m2: number | null;
+        start_front_k?: number;
+        start_front_c?: number;
+        start_front_m?: number;
+        start_front_y?: number;
+        start_back_k?: number;
+        start_back_c?: number;
+        start_back_m?: number;
+        start_back_y?: number;
+    }
+    const [papierList, setPapierList] = useState<PapierRecord[]>([]);
+    const papierFetchedRef = useRef(false);
+
+    // ===================== FETCH PAPIER =====================
+    useEffect(() => {
+        if (showCmyk && !papierFetchedRef.current) {
+            papierFetchedRef.current = true;
+            pb.collection('papier').getFullList<PapierRecord>({
+                sort: 'naam',
+                filter: katern.papier_id ? `actief = true || id = "${katern.papier_id}"` : 'actief = true'
+            })
+                .then(setPapierList)
+                .catch(err => console.error('[DrukwerkRow] Failed to fetch papier:', err));
+        }
+    }, [showCmyk]);
 
     // ===================== SYNC REFS WITH PROPS =====================
     useEffect(() => { latestKaternRef.current = katern; }, [katern]);
@@ -173,6 +214,22 @@ export function DrukwerkRow({
             is_finished: overrides?.is_finished ?? (k.is_finished || false),
             locked: overrides?.locked ?? (k.locked || false),
             voltooid_op: k.voltooid_op || ((Number(k.green) + Number(k.red) > 0) ? new Date().toISOString() : null),
+            wissel: k.wissel || '',
+            oplage: k.oplage || 0,
+            // CMYK / Papier
+            cmyk_naam: k.cmyk_naam || '',
+            papier_id: k.papier_id || '',
+            papier_klasse: k.papier_klasse || '',
+            papier_proef_profiel: k.papier_proef_profiel || '',
+            papier_gram: k.papier_gram || 0,
+            front_k: k.front_k || 0,
+            front_c: k.front_c || 0,
+            front_m: k.front_m || 0,
+            front_y: k.front_y || 0,
+            back_k: k.back_k || 0,
+            back_c: k.back_c || 0,
+            back_m: k.back_m || 0,
+            back_y: k.back_y || 0,
         };
     }, [effectivePress, effectivePressId, parameters, activePresses, outputConversions, getFormulaForColumn]);
 
@@ -345,19 +402,19 @@ export function DrukwerkRow({
             if (hasActiveSave || hasActiveFinish) {
                 if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
                 if (autoFinishTimerRef.current) clearTimeout(autoFinishTimerRef.current);
-                
+
                 autoSaveTimerRef.current = null;
                 autoFinishTimerRef.current = null;
 
                 const k = latestKaternRef.current;
-                
+
                 // If we were about to finish, or if we are finishing now, ensure we lock
                 const shouldLock = hasActiveFinish || (Number(k.green) > 0 && Number(k.red) > 0);
 
                 if (!isSavingRef.current && canAutoSave(k)) {
                     // Fire-and-forget — component is unmounting
                     const pbData = buildPbData(k, shouldLock ? { is_finished: true, locked: true } : undefined);
-                    
+
                     if (k.originalId) {
                         pb.collection('drukwerken').update(k.originalId, pbData).catch(e =>
                             console.error('[DrukwerkRow] Flush update failed:', e)
@@ -472,13 +529,13 @@ export function DrukwerkRow({
         green: (Number(katern.green) || 0) * divider,
         red: (Number(katern.red) || 0) * divider,
         maxGross: maxGrossVal,
-        delta_number: 0, 
+        delta_number: 0,
     };
 
     // Pre-calculate delta_number so it's available for delta_percentage formula
     const deltaFormula = getFormulaForColumn('delta_number');
-    const calculatedDelta = deltaFormula 
-        ? evaluateFormula(deltaFormula.formula, initialJobForEvaluation, parameters, activePresses) 
+    const calculatedDelta = deltaFormula
+        ? evaluateFormula(deltaFormula.formula, initialJobForEvaluation, parameters, activePresses)
         : 0;
 
     const jobForEvaluation: any = {
@@ -506,284 +563,513 @@ export function DrukwerkRow({
             >
                 {/* Version */}
                 <TableCell>
-                    <div className="flex gap-2 items-center">
+                    <div className="flex gap-0 items-center">
+                        {!hideVolgorde && (katern.volgorde !== undefined && katern.volgorde !== null) && (
+                            <>
+                                <div className="flex flex-col items-center justify-center min-w-[64px] h-9 bg-gray-50 border border-gray-200 rounded-md shadow-sm flex-shrink-0">
+                                    <span className="text-[9px] uppercase text-gray-400 font-bold leading-none mb-0.5"></span>
+                                    <span className="text-[11px] font-bold text-gray-700 leading-none">{katern.volgorde}</span>
+                                </div>
+                                <div className="self-stretch w-px bg-gray-300 mx-1.5 flex-shrink-0" />
+                            </>
+                        )}
+                        {!hideKatern && (katern.signatureId !== undefined && katern.signatureId !== null) && (
+                            <>
+                                <div className="flex flex-col items-center justify-center min-w-[52px] h-9 bg-gray-50 border border-gray-200 rounded-md shadow-sm flex-shrink-0">
+                                    <span className="text-[9px] uppercase text-gray-400 font-bold leading-none mb-0.5"></span>
+                                    <span className="text-[11px] font-bold text-gray-700 leading-none">{katern.signatureId}</span>
+                                </div>
+                                <div className="self-stretch w-px bg-black mx-1.5 flex-shrink-0" />
+                            </>
+                        )}
                         <Input
                             value={katern.version}
                             onChange={(e) => handleChange('version', e.target.value)}
-                            className={inputBaseClass(isLocked)}
+                            className={cn(inputBaseClass(isLocked), "flex-1")}
                             disabled={isLocked}
                         />
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn("h-8 w-8 p-0 flex-shrink-0 transition-colors", showComment || commentValue ? "text-blue-600 bg-blue-50" : "text-gray-400 hover:text-blue-600")}
-                            onClick={() => setShowComment(!showComment)}
-                            title="Opmerkingen"
-                        >
-                            <MessageSquare className="w-4 h-4" />
-                        </Button>
+                        <div className="w-2 flex-shrink-0" />
+                        <div className={cn(
+                            "inline-flex items-center border rounded-md h-10 bg-white shadow-sm hover:shadow-md transition-all duration-300",
+                            (() => {
+                                const hasComment = !!commentValue;
+                                const hasDensityData = !!(katern.papier_id || katern.cmyk_naam || katern.front_k || katern.front_c || katern.front_m || katern.front_y || katern.back_k || katern.back_c || katern.back_m || katern.back_y);
+                                return (hasComment || hasDensityData || showComment || showCmyk) ? "border-gray-300 bg-gray-50/50" : "border-gray-200";
+                            })()
+                        )}>
+                            {(() => {
+                                const hasComment = !!commentValue;
+                                return (
+                                    <>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className={cn(
+                                                "h-full min-w-[40px] rounded-none group/btn1 justify-center p-0 transition-colors duration-300",
+                                                (showComment || hasComment)
+                                                    ? "text-blue-600 bg-blue-50/50"
+                                                    : "text-gray-400 hover:text-blue-600 hover:bg-blue-50/30"
+                                            )}
+                                            onClick={() => setShowComment(!showComment)}
+                                        >
+                                            <span className="flex items-center justify-center">
+                                                <span className="flex items-center justify-center w-10 h-10 flex-shrink-0">
+                                                    <MessageSquare
+                                                        className="size-5"
+                                                        fill={(showComment || hasComment) ? "currentColor" : "none"}
+                                                    />
+                                                </span>
+                                                <span className={cn(
+                                                    "font-semibold text-[13px] whitespace-nowrap overflow-hidden transition-all duration-300 delay-300 group-hover/btn1:delay-0",
+                                                    (showComment || hasComment)
+                                                        ? "opacity-100 max-w-[150px] ml-1 pr-3"
+                                                        : "opacity-0 max-w-0 group-hover/btn1:opacity-100 group-hover/btn1:max-w-[150px] group-hover/btn1:ml-1 group-hover/btn1:pr-3"
+                                                )}>
+                                                    opmerking
+                                                </span>
+                                            </span>
+                                        </Button>
+                                        <div className="self-stretch w-px bg-gray-200 flex-shrink-0" />
+                                    </>
+                                );
+                            })()}
+
+                            {(() => {
+                                const hasDensityData = !!(katern.papier_id || katern.cmyk_naam || katern.front_k || katern.front_c || katern.front_m || katern.front_y || katern.back_k || katern.back_c || katern.back_m || katern.back_y);
+                                return (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn(
+                                            "h-full min-w-[40px] rounded-none group/btn2 justify-center p-0 transition-colors duration-300",
+                                            (showCmyk || hasDensityData)
+                                                ? "text-green-600 bg-green-50/50"
+                                                : "text-gray-400 hover:text-green-600 hover:bg-green-50/30"
+                                        )}
+                                        onClick={() => setShowCmyk(!showCmyk)}
+                                    >
+                                        <span className="flex items-center justify-center">
+                                            <span className="flex items-center justify-center w-10 h-10 flex-shrink-0">
+                                                <CmykIcon
+                                                    className="!w-7 !h-6 shrink-0"
+                                                    colored={showCmyk || hasDensityData}
+                                                />
+                                            </span>
+                                            <span className={cn(
+                                                "font-semibold text-[13px] whitespace-nowrap overflow-hidden transition-all duration-300 delay-300 group-hover/btn2:delay-0",
+                                                (showCmyk || hasDensityData)
+                                                    ? "opacity-100 max-w-[150px] ml-1 pr-3"
+                                                    : "opacity-0 max-w-0 group-hover/btn2:opacity-100 group-hover/btn2:max-w-[150px] group-hover/btn2:ml-1 group-hover/btn2:pr-3"
+                                            )}>
+                                                Densiteit
+                                            </span>
+                                        </span>
+                                    </Button>
+                                );
+                            })()}
+                        </div>
                     </div>
                 </TableCell>
 
-            {/* Pages */}
-            <TableCell className="text-right">
-                <FormattedNumberInput
-                    value={katern.pages || null}
-                    onChange={(val) => handleChange('pages', val)}
-                    className={cn(inputBaseClass(isLocked), "text-right")}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* Ex/Omw */}
-            <TableCell>
-                <Select
-                    value={String(katern.exOmw || '1')}
-                    onValueChange={(val) => handleChange('exOmw', val)}
-                    disabled={isLocked}
-                >
-                    <SelectTrigger className={cn(inputBaseClass(isLocked), "text-center")}>
-                        <SelectValue placeholder="Deler" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {(() => {
-                            const pressExOmwKeys = Object.keys(outputConversions[effectivePressId] || {})
-                                .sort((a, b) => Number(a) - Number(b));
-                            const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
-                            return options.map(val => (
-                                <SelectItem key={val} value={val}>{val}</SelectItem>
-                            ));
-                        })()}
-                    </SelectContent>
-                </Select>
-            </TableCell>
-
-            {/* Net Run (Oplage) */}
-            <TableCell className="text-right border-r border-black">
-                <FormattedNumberInput
-                    value={katern.netRun || null}
-                    onChange={(val) => handleChange('netRun', val)}
-                    className={cn(inputBaseClass(isLocked), "text-right")}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* Startup */}
-            <TableCell className="text-center">
-                <Checkbox
-                    checked={katern.startup}
-                    onCheckedChange={(checked) => handleChange('startup', checked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* Color channels: 4/4 */}
-            <TableCell className="px-0">
-                <FormattedNumberInput
-                    value={katern.c4_4 || null}
-                    onChange={(val) => handleChange('c4_4', val)}
-                    className={smallInputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* 4/0 */}
-            <TableCell className="px-0">
-                <FormattedNumberInput
-                    value={katern.c4_0 || null}
-                    onChange={(val) => handleChange('c4_0', val)}
-                    className={smallInputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* 1/0 */}
-            <TableCell className="px-0">
-                <FormattedNumberInput
-                    value={katern.c1_0 || null}
-                    onChange={(val) => handleChange('c1_0', val)}
-                    className={smallInputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* 1/1 */}
-            <TableCell className="px-0">
-                <FormattedNumberInput
-                    value={katern.c1_1 || null}
-                    onChange={(val) => handleChange('c1_1', val)}
-                    className={smallInputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* 4/1 */}
-            <TableCell className="px-0 border-r border-black">
-                <FormattedNumberInput
-                    value={katern.c4_1 || null}
-                    onChange={(val) => handleChange('c4_1', val)}
-                    className={smallInputBaseClass(isLocked)}
-                    disabled={isLocked}
-                />
-            </TableCell>
-
-            {/* Max Gross */}
-            <TableCell className="text-right border-r border-black">
-                <div className="flex flex-col items-center">
-                    <FormulaResultWithTooltip
-                        formula={maxGrossFormula?.formula || ''}
-                        job={jobWithOrderInfo}
-                        variant="maxGross"
-                        parameters={parameters}
-                        activePresses={activePresses}
-                        result={maxGrossVal !== null ? maxGrossVal : 0}
-                        outputConversions={outputConversions}
-                        pressMap={pressMap}
-                    />
-                </div>
-            </TableCell>
-
-            {/* Green (Goed) */}
-            <TableCell className="text-right">
-                <div className="flex flex-col items-end">
+                {/* Pages */}
+                <TableCell className="text-right">
                     <FormattedNumberInput
-                        value={katern.green}
-                        onChange={(val) => handleChange('green', val)}
+                        value={katern.pages || null}
+                        onChange={(val) => handleChange('pages', val)}
                         className={cn(inputBaseClass(isLocked), "text-right")}
                         disabled={isLocked}
                     />
-                    {divider > 1 && (
-                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                            <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </TableCell>
+                </TableCell>
 
-            {/* Red (Mislukt) */}
-            <TableCell className="text-right border-r border-black">
-                <div className="flex flex-col items-end">
+                {/* Ex/Omw */}
+                <TableCell>
+                    <Select
+                        value={String(katern.exOmw || '1')}
+                        onValueChange={(val) => handleChange('exOmw', val)}
+                        disabled={isLocked}
+                    >
+                        <SelectTrigger className={cn(inputBaseClass(isLocked), "text-center")}>
+                            <SelectValue placeholder="Deler" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {(() => {
+                                const pressExOmwKeys = Object.keys(outputConversions[effectivePressId] || {})
+                                    .sort((a, b) => Number(a) - Number(b));
+                                const options = pressExOmwKeys.length > 0 ? pressExOmwKeys : ['1', '2', '4'];
+                                return options.map(val => (
+                                    <SelectItem key={val} value={val}>{val}</SelectItem>
+                                ));
+                            })()}
+                        </SelectContent>
+                    </Select>
+                </TableCell>
+
+                {/* Net Run (Oplage) */}
+                <TableCell className="text-right border-r border-black">
                     <FormattedNumberInput
-                        value={katern.red}
-                        onChange={(val) => handleChange('red', val)}
+                        value={katern.netRun || null}
+                        onChange={(val) => handleChange('netRun', val)}
                         className={cn(inputBaseClass(isLocked), "text-right")}
                         disabled={isLocked}
                     />
-                    {divider > 1 && (
-                        <div className="min-h-[12px] mb-1 flex items-center pr-2">
-                            <span className="text-[9px] text-gray-900 font-medium leading-none">
-                                {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </TableCell>
+                </TableCell>
 
-            {/* Delta */}
-            <TableCell className="text-right font-medium">
-                {(() => {
-                    const f = getFormulaForColumn('delta_number');
-                    const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
-                    const res = Number(resRaw) || 0;
-                    return (
+                {/* Startup */}
+                <TableCell className="text-center">
+                    <Checkbox
+                        checked={katern.startup}
+                        onCheckedChange={(checked) => handleChange('startup', checked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* Color channels: 4/4 */}
+                <TableCell className="px-0">
+                    <FormattedNumberInput
+                        value={katern.c4_4 || null}
+                        onChange={(val) => handleChange('c4_4', val)}
+                        className={smallInputBaseClass(isLocked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* 4/0 */}
+                <TableCell className="px-0">
+                    <FormattedNumberInput
+                        value={katern.c4_0 || null}
+                        onChange={(val) => handleChange('c4_0', val)}
+                        className={smallInputBaseClass(isLocked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* 1/0 */}
+                <TableCell className="px-0">
+                    <FormattedNumberInput
+                        value={katern.c1_0 || null}
+                        onChange={(val) => handleChange('c1_0', val)}
+                        className={smallInputBaseClass(isLocked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* 1/1 */}
+                <TableCell className="px-0">
+                    <FormattedNumberInput
+                        value={katern.c1_1 || null}
+                        onChange={(val) => handleChange('c1_1', val)}
+                        className={smallInputBaseClass(isLocked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* 4/1 */}
+                <TableCell className="px-0 border-r border-black">
+                    <FormattedNumberInput
+                        value={katern.c4_1 || null}
+                        onChange={(val) => handleChange('c4_1', val)}
+                        className={smallInputBaseClass(isLocked)}
+                        disabled={isLocked}
+                    />
+                </TableCell>
+
+                {/* Max Gross */}
+                <TableCell className="text-right border-r border-black">
+                    <div className="flex flex-col items-center">
                         <FormulaResultWithTooltip
-                            formula={f?.formula || ''}
-                            job={jobWithCalculatedMaxGross}
+                            formula={maxGrossFormula?.formula || ''}
+                            job={jobWithOrderInfo}
+                            variant="maxGross"
                             parameters={parameters}
                             activePresses={activePresses}
-                            variant="delta"
-                            result={res}
+                            result={maxGrossVal !== null ? maxGrossVal : 0}
                             outputConversions={outputConversions}
                             pressMap={pressMap}
                         />
-                    );
-                })()}
-            </TableCell>
+                    </div>
+                </TableCell>
 
-            {/* Delta % */}
-            <TableCell className="text-right font-medium border-r border-black">
-                {(() => {
-                    const f = getFormulaForColumn('delta_percentage');
-                    if (f) {
-                        const resultRaw = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
-                        let numericValue = typeof resultRaw === 'number'
-                            ? resultRaw
-                            : parseFloat((resultRaw as string || '0').replace(/\./g, '').replace(',', '.'));
-                        
-                        // Normalization logic: if result is around 1 (e.g., 0.95), convert to relative (e.g., -0.05)
-                        if (numericValue > 0.5) {
-                            numericValue -= 1;
-                        }
+                {/* Green (Goed) */}
+                <TableCell className="text-right">
+                    <div className="flex flex-col items-end">
+                        <FormattedNumberInput
+                            value={katern.green}
+                            onChange={(val) => handleChange('green', val)}
+                            className={cn(inputBaseClass(isLocked), "text-right")}
+                            disabled={isLocked}
+                        />
+                        {divider > 1 && (
+                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                    {((Number(katern.green) || 0) * divider).toLocaleString('nl-BE')}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </TableCell>
 
+                {/* Red (Mislukt) */}
+                <TableCell className="text-right border-r border-black">
+                    <div className="flex flex-col items-end">
+                        <FormattedNumberInput
+                            value={katern.red}
+                            onChange={(val) => handleChange('red', val)}
+                            className={cn(inputBaseClass(isLocked), "text-right")}
+                            disabled={isLocked}
+                        />
+                        {divider > 1 && (
+                            <div className="min-h-[12px] mb-1 flex items-center pr-2">
+                                <span className="text-[9px] text-gray-900 font-medium leading-none">
+                                    {((Number(katern.red) || 0) * divider).toLocaleString('nl-BE')}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </TableCell>
+
+                {/* Delta */}
+                <TableCell className="text-right font-medium">
+                    {(() => {
+                        const f = getFormulaForColumn('delta_number');
+                        const resRaw = f ? evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses) : 0;
+                        const res = Number(resRaw) || 0;
                         return (
                             <FormulaResultWithTooltip
-                                formula={f.formula}
+                                formula={f?.formula || ''}
                                 job={jobWithCalculatedMaxGross}
                                 parameters={parameters}
                                 activePresses={activePresses}
-                                decimals={2}
-                                result={numericValue * 100}
+                                variant="delta"
+                                result={res}
                                 outputConversions={outputConversions}
                                 pressMap={pressMap}
-                                suffix="%"
-                                hideTooltip={true}
                             />
                         );
-                    }
-                    let dp = katern.deltaPercentage || 0;
-                    if (dp > 0.5) dp -= 1;
-                    return `${formatNumber(dp * 100, 2)}%`;
-                })()}
-            </TableCell>
+                    })()}
+                </TableCell>
 
-            {/* Actions */}
-            <TableCell className="border-r border-black">
-                <div className="flex gap-0.5 items-center justify-center">
-                    {isLocked && (
+                {/* Delta % */}
+                <TableCell className="text-right font-medium border-r border-black">
+                    {(() => {
+                        const f = getFormulaForColumn('delta_percentage');
+                        if (f) {
+                            const resultRaw = evaluateFormula(f.formula, jobForEvaluation, parameters, activePresses);
+                            let numericValue = typeof resultRaw === 'number'
+                                ? resultRaw
+                                : parseFloat((resultRaw as string || '0').replace(/\./g, '').replace(',', '.'));
+
+                            // Normalization logic: if result is around 1 (e.g., 0.95), convert to relative (e.g., -0.05)
+                            if (numericValue > 0.5) {
+                                numericValue -= 1;
+                            }
+
+                            return (
+                                <FormulaResultWithTooltip
+                                    formula={f.formula}
+                                    job={jobWithCalculatedMaxGross}
+                                    parameters={parameters}
+                                    activePresses={activePresses}
+                                    decimals={2}
+                                    result={numericValue * 100}
+                                    outputConversions={outputConversions}
+                                    pressMap={pressMap}
+                                    suffix="%"
+                                    hideTooltip={true}
+                                />
+                            );
+                        }
+                        let dp = katern.deltaPercentage || 0;
+                        if (dp > 0.5) dp -= 1;
+                        return `${formatNumber(dp * 100, 2)}%`;
+                    })()}
+                </TableCell>
+
+                {/* Actions */}
+                <TableCell className="border-r border-black">
+                    <div className="flex gap-0.5 items-center justify-center">
+                        {isLocked && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="hover:bg-blue-100 text-blue-600 h-8 w-8 p-0"
+                                onClick={handleUnlock}
+                                title="Ontgrendelen"
+                            >
+                                <Pencil className="w-4 h-4" />
+                            </Button>
+                        )}
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="hover:bg-blue-100 text-blue-600 h-8 w-8 p-0"
-                            onClick={handleUnlock}
-                            title="Ontgrendelen"
-                        >
-                            <Pencil className="w-4 h-4" />
-                        </Button>
-                    )}
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="hover:bg-red-100 text-red-500 h-8 w-8 p-0"
-                        onClick={() => onDeleteKatern(werkorderId, katern.id)}
-                        disabled={isLocked}
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
-                </div>
-            </TableCell>
-        </TableRow>
-        {showComment && (
-            <TableRow className={cn("bg-blue-50/10", isLocked && "bg-gray-50/50")}>
-                <TableCell colSpan={16} className="p-0 border-b-0">
-                    <div className="mx-4 my-2 pl-4 py-2 border-l-2 border-blue-400 bg-white/60 shadow-sm rounded-r-md">
-                        <Textarea
-                            ref={textareaRef}
-                            value={commentValue}
-                            onChange={(e) => {
-                                setCommentValue(e.target.value);
-                                adjustTextareaHeight();
-                            }}
-                            onBlur={handleCommentBlur}
-                            placeholder="Voeg hier een opmerking toe voor deze versie..."
-                            className="min-h-[40px] resize-none border-0 focus-visible:ring-0 px-0 rounded-none shadow-none text-sm bg-transparent overflow-hidden"
+                            className="hover:bg-red-100 text-red-500 h-8 w-8 p-0"
+                            onClick={() => onDeleteKatern(werkorderId, katern.id)}
                             disabled={isLocked}
-                        />
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
                     </div>
                 </TableCell>
             </TableRow>
-        )}
+            {showComment && (
+                <TableRow className={cn("bg-blue-50/10", isLocked && "bg-gray-50/50")}>
+                    <TableCell colSpan={16} className="p-0 border-b-0">
+                        <div className="mx-4 my-2 pl-4 py-2 border-l-2 border-blue-400 bg-white/60 shadow-sm rounded-r-md">
+                            <Textarea
+                                ref={textareaRef}
+                                value={commentValue}
+                                onChange={(e) => {
+                                    setCommentValue(e.target.value);
+                                    adjustTextareaHeight();
+                                }}
+                                onBlur={handleCommentBlur}
+                                placeholder="Voeg hier een opmerking toe voor deze versie..."
+                                className="min-h-[40px] resize-none border-0 focus-visible:ring-0 px-0 rounded-none shadow-none text-sm bg-transparent overflow-hidden"
+                                disabled={isLocked}
+                            />
+                        </div>
+                    </TableCell>
+                </TableRow>
+            )}
+            {showCmyk && (
+                <TableRow className={cn("bg-green-50/10", isLocked && "bg-gray-50/50")}>
+                    <TableCell colSpan={16} className="p-0 border-b-0">
+                        <div className="mx-4 my-2 pl-4 py-3 border-l-2 border-green-400 bg-white/60 shadow-sm rounded-r-md">
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                                {/* Col 1 - Row 1: Naam */}
+                                <div className="flex flex-col gap-1">
+                                    <Label className="text-xs text-gray-500">Naam</Label>
+                                    <Input
+                                        value={katern.cmyk_naam || ''}
+                                        onChange={(e) => handleChange('cmyk_naam', e.target.value)}
+                                        placeholder="bv. Basis - roze insteker"
+                                        className={cn("h-9 border-gray-200", isLocked ? "bg-gray-100 text-gray-500" : "bg-white")}
+                                        disabled={isLocked}
+                                    />
+                                </div>
+                                {/* Col 2 - Row 1: Front KCMY */}
+                                <div className="flex items-end gap-2">
+                                    <Label className="text-xs font-semibold text-gray-600 w-10 pb-1">Front</Label>
+                                    {(['K', 'C', 'M', 'Y'] as const).map(channel => {
+                                        const fieldKey = `front_${channel.toLowerCase()}` as keyof Katern;
+                                        const colorMap = { K: 'border-gray-800', C: 'border-cyan-500', M: 'border-pink-500', Y: 'border-yellow-500' };
+                                        return (
+                                            <div key={`front-${channel}`} className="flex flex-col items-center gap-0.5">
+                                                <Label className="text-[10px] text-gray-400">{channel}</Label>
+                                                <FormattedNumberInput
+                                                    value={katern[fieldKey] as number | null}
+                                                    onChange={(val) => handleChange(fieldKey, val)}
+                                                    decimals={2}
+                                                    className={cn(
+                                                        "h-8 w-[80px] text-center text-xs border-b-2 rounded-sm",
+                                                        colorMap[channel],
+                                                        isLocked ? "bg-gray-100 text-gray-500" : "bg-white"
+                                                    )}
+                                                    placeholder="0,00"
+                                                    disabled={isLocked}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {/* Col 1 - Row 2: Papier, Klasse, Proefprofiel, gr/m² */}
+                                <div className="flex flex-wrap gap-3 items-end">
+                                    <div className="flex flex-col gap-1 min-w-[160px] flex-1">
+                                        <Label className="text-xs text-gray-500">Papier</Label>
+                                        <Select
+                                            value={katern.papier_id || ''}
+                                            onValueChange={(val) => {
+                                                const selected = papierList.find(p => p.id === val);
+                                                handleChange('papier_id', val);
+                                                if (selected) {
+                                                    handleChange('papier_klasse', selected.klasse || '');
+                                                    handleChange('papier_proef_profiel', selected.proef_profiel || '');
+                                                    handleChange('papier_gram', selected.gram_per_m2);
+
+                                                    // Only apply start densities if they are not all 0 and current densities are 0
+                                                    const hasStartDensities = (selected.start_front_k || 0) + (selected.start_front_c || 0) + (selected.start_front_m || 0) + (selected.start_front_y || 0) > 0;
+                                                    const currentFrontDensities = (katern.front_k || 0) + (katern.front_c || 0) + (katern.front_m || 0) + (katern.front_y || 0);
+
+                                                    if (hasStartDensities && currentFrontDensities === 0) {
+                                                        handleChange('front_k', selected.start_front_k || 0);
+                                                        handleChange('front_c', selected.start_front_c || 0);
+                                                        handleChange('front_m', selected.start_front_m || 0);
+                                                        handleChange('front_y', selected.start_front_y || 0);
+                                                        handleChange('back_k', selected.start_back_k || 0);
+                                                        handleChange('back_c', selected.start_back_c || 0);
+                                                        handleChange('back_m', selected.start_back_m || 0);
+                                                        handleChange('back_y', selected.start_back_y || 0);
+                                                    }
+                                                }
+                                            }}
+                                            disabled={isLocked}
+                                        >
+                                            <SelectTrigger className={cn("h-9 bg-white border-gray-200", isLocked && "bg-gray-100 text-gray-500")}>
+                                                <SelectValue placeholder="Selecteer papier..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {papierList.map(p => (
+                                                    <SelectItem key={p.id} value={p.id}>
+                                                        {p.naam}{p.gram_per_m2 ? ` (${p.gram_per_m2} gr)` : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-[100px]">
+                                        <Label className="text-xs text-gray-500">Klasse</Label>
+                                        <Input
+                                            value={katern.papier_klasse || ''}
+                                            readOnly
+                                            className="h-9 bg-gray-50 border-gray-200 text-gray-600"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-[120px]">
+                                        <Label className="text-xs text-gray-500">Proefprofiel</Label>
+                                        <Input
+                                            value={katern.papier_proef_profiel || ''}
+                                            readOnly
+                                            className="h-9 bg-gray-50 border-gray-200 text-gray-600"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-[70px]">
+                                        <Label className="text-xs text-gray-500">gr/m²</Label>
+                                        <Input
+                                            value={katern.papier_gram != null ? String(katern.papier_gram) : ''}
+                                            readOnly
+                                            className="h-9 bg-gray-50 border-gray-200 text-gray-600 text-right"
+                                        />
+                                    </div>
+                                </div>
+                                {/* Col 2 - Row 2: Back KCMY */}
+                                <div className="flex items-end gap-2">
+                                    <Label className="text-xs font-semibold text-gray-600 w-10 pb-1">Back</Label>
+                                    {(['K', 'C', 'M', 'Y'] as const).map(channel => {
+                                        const fieldKey = `back_${channel.toLowerCase()}` as keyof Katern;
+                                        const colorMap = { K: 'border-gray-800', C: 'border-cyan-500', M: 'border-pink-500', Y: 'border-yellow-500' };
+                                        return (
+                                            <div key={`back-${channel}`} className="flex flex-col items-center gap-0.5">
+                                                <Label className="text-[10px] text-gray-400">{channel}</Label>
+                                                <FormattedNumberInput
+                                                    value={katern[fieldKey] as number | null}
+                                                    onChange={(val) => handleChange(fieldKey, val)}
+                                                    decimals={2}
+                                                    className={cn(
+                                                        "h-8 w-[80px] text-center text-xs border-b-2 rounded-sm",
+                                                        colorMap[channel],
+                                                        isLocked ? "bg-gray-100 text-gray-500" : "bg-white"
+                                                    )}
+                                                    placeholder="0,00"
+                                                    disabled={isLocked}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </TableCell>
+                </TableRow>
+            )}
         </>
     );
 }

@@ -69,10 +69,26 @@ class DrukwerkenCacheService {
             pressId: r.pers || '',
             pressName: (!hasPermission('drukwerken_view_all') && user?.pressId === r.pers) ? user?.press : (r.expand?.pers?.naam || ''),
             created: r.created,
+            wissel: r.wissel || '',
+            oplage: r.oplage || null,
             opmerkingen: r.opmerking || '',
             is_finished: !!r.is_finished,
             locked: !!r.locked,
             voltooid_op: r.voltooid_op || null,
+            // CMYK / Papier fields
+            cmyk_naam: r.cmyk_naam || '',
+            papier_id: r.papier_id || '',
+            papier_klasse: r.papier_klasse || '',
+            papier_proef_profiel: r.papier_proef_profiel || '',
+            papier_gram: r.papier_gram || 0,
+            front_k: r.front_k || 0,
+            front_c: r.front_c || 0,
+            front_m: r.front_m || 0,
+            front_y: r.front_y || 0,
+            back_k: r.back_k || 0,
+            back_c: r.back_c || 0,
+            back_m: r.back_m || 0,
+            back_y: r.back_y || 0,
         };
     }
 
