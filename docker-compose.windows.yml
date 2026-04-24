@@ -35,6 +35,7 @@ services:
       - "8090:8090"
     volumes:
       - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\pb_data:/pb/pb_data"
+      - "${OMNI_DOCS_PATH:-C:\\Users\\Public\\Documents\\Docker}\\jdf:/pb/jdf"
       - pb_migrations_relay:/pb/pb_migrations:ro
       - pb_hooks_relay:/pb/pb_hooks:ro
     environment:

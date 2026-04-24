@@ -33,6 +33,7 @@ services:
       - "127.0.0.1:8091:8090"
     volumes:
       - ./pb_data_beta:/pb/pb_data
+      - ./jdf_beta:/pb/jdf
       - pb_migrations_relay_beta:/pb/pb_migrations:ro
       - pb_hooks_relay_beta:/pb/pb_hooks:ro
     environment:
