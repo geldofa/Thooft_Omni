@@ -177,7 +177,7 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
         const dateB = b.target_print_date || '9999-12-31';
         return dateA.localeCompare(dateB);
     });
-    const printedOrders = orders.filter(o => printedOrderNrs.has(String(o.order_nummer)));
+    // const printedOrders = orders.filter(o => printedOrderNrs.has(String(o.order_nummer)));
 
     const handleSelect = (order: JdfOrder) => {
         const { orderNaam, versie } = applyJdfFilter(order.order_naam, filters);

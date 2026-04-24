@@ -1,5 +1,13 @@
 [
   {
+    "id": "114870c3d9dc8a2856366120466b05c8aef0177b",
+    "version": "1.17.0",
+    "date": "2026-04-24",
+    "title": "Drukwerken - Densiteiten - Werkfiche koppeling",
+    "body": "Deze update brengt 2 nieuwe functie voor drukwerken met zich mee.\n1. Densiteiten kunnen nu ook in OMNI worden opgeslagen.\n- deze zijn gelinkt aan het gedrukte order en kan via de pagina Densiteiten worden terug bekeken na opslaan.\n- dit wordt nog verder uitgebouwd met filter enzo later\n\n2. de gegevens die op de werkfiche te vinden zijn kunnen we nu automatisch gaan invullen bij nieuwe orders.\nDISCLAIMER:\n- Dit is nog in verdere ontwikkeling dus controleer altijd wat er is ingevuld!\n- Niet alle orders zullen altijd beschikbaar zijn totdat er een automatische synchronisatie is toegevoegd.",
+    "type": "feature"
+  },
+  {
     "id": "85720cf489275842962244da5706b061b5641f30",
     "version": "1.16.3",
     "date": "2026-04-20",
@@ -388,14 +396,6 @@
     "version": "1.5.7",
     "date": "2026-03-03",
     "title": "Hotfix 7",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "1f4df6ef2cd846255455f1fdc9ad440c60abf7e3",
-    "version": "1.5.6",
-    "date": "2026-03-03",
-    "title": "Hotfix 6",
     "body": "",
     "type": "bug"
   }
