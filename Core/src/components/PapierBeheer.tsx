@@ -4,7 +4,7 @@ import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, Package, Plus, Pencil, Trash2, Save, X, Settings2, CheckCircle2, XCircle } from 'lucide-react';
+import { Package, Plus, Pencil, Trash2, Save, X, Settings2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
@@ -12,7 +12,6 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { ConfirmationModal } from './ui/ConfirmationModal';
@@ -51,12 +50,11 @@ interface KlasseInstelling {
 
 interface PapierBeheerProps {
     searchQuery: string;
-    setSearchQuery: (q: string) => void;
     isSettingsOpen: boolean;
     setIsSettingsOpen: (open: boolean) => void;
 }
 
-export function PapierBeheer({ searchQuery, setSearchQuery, isSettingsOpen, setIsSettingsOpen }: PapierBeheerProps) {
+export function PapierBeheer({ searchQuery, isSettingsOpen, setIsSettingsOpen }: PapierBeheerProps) {
     const [papers, setPapers] = useState<PapierRecord[]>([]);
     const [instellingen, setInstellingen] = useState<KlasseInstelling[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -470,22 +468,22 @@ export function PapierBeheer({ searchQuery, setSearchQuery, isSettingsOpen, setI
                                                 <TableCell className="font-bold text-xs">{inst.klasse}</TableCell>
                                                 <TableCell>
                                                     <div className="flex gap-1">
-                                                        <ShifterInput value={inst.front_k} onChange={(v) => handleUpdateInst(inst.id, 'front_k', v)} />
-                                                        <ShifterInput value={inst.front_c} onChange={(v) => handleUpdateInst(inst.id, 'front_c', v)} />
-                                                        <ShifterInput value={inst.front_m} onChange={(v) => handleUpdateInst(inst.id, 'front_m', v)} />
-                                                        <ShifterInput value={inst.front_y} onChange={(v) => handleUpdateInst(inst.id, 'front_y', v)} />
+                                                        <ShifterInput value={inst.front_k} onChange={(v: number) => handleUpdateInst(inst.id, 'front_k', v)} />
+                                                        <ShifterInput value={inst.front_c} onChange={(v: number) => handleUpdateInst(inst.id, 'front_c', v)} />
+                                                        <ShifterInput value={inst.front_m} onChange={(v: number) => handleUpdateInst(inst.id, 'front_m', v)} />
+                                                        <ShifterInput value={inst.front_y} onChange={(v: number) => handleUpdateInst(inst.id, 'front_y', v)} />
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex gap-1">
-                                                        <ShifterInput value={inst.back_k} onChange={(v) => handleUpdateInst(inst.id, 'back_k', v)} />
-                                                        <ShifterInput value={inst.back_c} onChange={(v) => handleUpdateInst(inst.id, 'back_c', v)} />
-                                                        <ShifterInput value={inst.back_m} onChange={(v) => handleUpdateInst(inst.id, 'back_m', v)} />
-                                                        <ShifterInput value={inst.back_y} onChange={(v) => handleUpdateInst(inst.id, 'back_y', v)} />
+                                                        <ShifterInput value={inst.back_k} onChange={(v: number) => handleUpdateInst(inst.id, 'back_k', v)} />
+                                                        <ShifterInput value={inst.back_c} onChange={(v: number) => handleUpdateInst(inst.id, 'back_c', v)} />
+                                                        <ShifterInput value={inst.back_m} onChange={(v: number) => handleUpdateInst(inst.id, 'back_m', v)} />
+                                                        <ShifterInput value={inst.back_y} onChange={(v: number) => handleUpdateInst(inst.id, 'back_y', v)} />
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleDeleteInst(inst.id)}>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => setDeleteInstId(inst.id)}>
                                                         <Trash2 className="size-3" />
                                                     </Button>
                                                 </TableCell>
@@ -968,7 +966,14 @@ export function PapierBeheer({ searchQuery, setSearchQuery, isSettingsOpen, setI
     }
 }
 
-function ColorInput({ label, value, onChange, colorClass }: any) {
+interface ColorInputProps {
+    label: string;
+    value: number | undefined | null;
+    onChange: (v: number) => void;
+    colorClass?: string;
+}
+
+function ColorInput({ label, value, onChange, colorClass }: ColorInputProps) {
     return (
         <div className="flex flex-col gap-1">
             <Label className="text-[10px] uppercase text-gray-400">{label}</Label>
@@ -986,7 +991,13 @@ function ColorInput({ label, value, onChange, colorClass }: any) {
     );
 }
 
-function ShifterInput({ value, onChange, className }: any) {
+interface ShifterInputProps {
+    value: number | undefined | null;
+    onChange: (v: number) => void;
+    className?: string;
+}
+
+function ShifterInput({ value, onChange, className }: ShifterInputProps) {
     return (
         <Input
             className={cn("h-8 w-14 text-[10px]", className)}

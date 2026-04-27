@@ -2787,7 +2787,6 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     <TabsContent value="Papier">
                         <PapierBeheer
                             searchQuery={papierSearchQuery}
-                            setSearchQuery={setPapierSearchQuery}
                             isSettingsOpen={isPapierSettingsOpen}
                             setIsSettingsOpen={setIsPapierSettingsOpen}
                         />
