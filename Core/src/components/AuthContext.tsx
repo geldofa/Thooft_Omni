@@ -98,11 +98,10 @@ export type Permission =
   | 'manage_themes'
   | 'manage_notifications'
   | 'manage_system_tasks'
-  | 'jdf_gebruiken'
-  | 'jdf_bekijken_eigen'
-  | 'jdf_bekijken_alle'
-  | 'jdf_filters_bewerken'
-  | 'jdf_importeren'
+  | 'werkfiches_bekijken_eigen'
+  | 'werkfiches_bekijken_alle'
+  | 'werkfiches_importeren'
+  | 'werkfiches_filters_instellingen'
   | 'production_analytics_view'
   | 'maintenance_analytics_view'
   | 'manage_ticker'
@@ -112,7 +111,12 @@ export type Permission =
   | 'drukwerken_trash_view'
   | 'planning_view'
   | 'planning_edit'
-  | 'planning_settings';
+  | 'planning_settings'
+  | 'papier_bekijken'
+  | 'papier_aanpassen'
+  | 'werkorders_instellingen'
+  | 'densiteiten_bekijken_eigen'
+  | 'densiteiten_bekijken_alle';
 
 
 export interface RolePermissions {
@@ -481,19 +485,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'toolbox_access', 'logs_view', 'logs_view_all', 'feedback_view', 'feedback_manage',
           'manage_themes', 'manage_notifications', 'manage_system_tasks',
           'production_analytics_view', 'maintenance_analytics_view', 'manage_ticker', 'data_checker_view', 'activity_ticker_view', 'osint_view', 'drukwerken_trash_view',
-          'planning_view', 'planning_edit', 'planning_settings'
+          'planning_view', 'planning_edit', 'planning_settings',
+          'papier_bekijken', 'papier_aanpassen', 'werkorders_instellingen',
+          'werkfiches_bekijken_eigen', 'werkfiches_bekijken_alle', 'werkfiches_importeren', 'werkfiches_filters_instellingen',
+          'densiteiten_bekijken_eigen', 'densiteiten_bekijken_alle'
         ],
         'meestergast': [
           'tasks_view', 'tasks_edit', 'drukwerken_view', 'drukwerken_view_all', 'checklist_view',
           'extern_view', 'logs_view', 'feedback_view', 'osint_view',
-          'planning_view', 'planning_edit'
+          'planning_view', 'planning_edit',
+          'papier_bekijken', 'werkorders_instellingen',
+          'werkfiches_bekijken_alle', 'werkfiches_importeren', 'werkfiches_filters_instellingen',
+          'densiteiten_bekijken_eigen', 'densiteiten_bekijken_alle'
         ],
-        'press': ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view', 'planning_view'],
+        'press': ['tasks_view', 'drukwerken_view', 'drukwerken_create', 'feedback_view', 'planning_view', 'werkfiches_bekijken_eigen', 'densiteiten_bekijken_eigen'],
         'waarnemer': [
           'tasks_view', 'drukwerken_view', 'drukwerken_view_all', 'reports_view', 'reports_archive_view', 'checklist_view',
           'extern_view', 'logs_view', 'feedback_view', 'production_analytics_view',
           'maintenance_analytics_view', 'activity_ticker_view', 'osint_view',
-          'planning_view'
+          'planning_view',
+          'papier_bekijken', 'werkfiches_bekijken_alle', 'densiteiten_bekijken_alle'
         ]
       };
 
@@ -523,10 +534,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // reports_view implies reports_archive_view
     if (permission === 'reports_archive_view' && roleData.permissions.includes('reports_view')) return true;
     if (permission === 'management_access' && (
-      roleData.permissions.includes('manage_personnel') || 
+      roleData.permissions.includes('manage_personnel') ||
       roleData.permissions.includes('manage_accounts') ||
       roleData.permissions.includes('manage_permissions')
     )) return true;
+    if (permission === 'papier_bekijken' && roleData.permissions.includes('papier_aanpassen')) return true;
+    if (permission === 'werkfiches_bekijken_eigen' && roleData.permissions.includes('werkfiches_bekijken_alle')) return true;
+    if (permission === 'densiteiten_bekijken_eigen' && roleData.permissions.includes('densiteiten_bekijken_alle')) return true;
 
     return false;
   }, [user, rolePermissions, simulatedRole]);

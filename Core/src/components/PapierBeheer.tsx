@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { pb } from './AuthContext';
+import { pb, useAuth } from './AuthContext';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -12,6 +12,9 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { ConfirmationModal } from './ui/ConfirmationModal';
 
 interface PapierRecord {
@@ -46,32 +49,48 @@ interface KlasseInstelling {
     back_y: number;
 }
 
-export function PapierBeheer() {
+interface PapierBeheerProps {
+    searchQuery: string;
+    setSearchQuery: (q: string) => void;
+    isSettingsOpen: boolean;
+    setIsSettingsOpen: (open: boolean) => void;
+}
+
+export function PapierBeheer({ searchQuery, setSearchQuery, isSettingsOpen, setIsSettingsOpen }: PapierBeheerProps) {
     const [papers, setPapers] = useState<PapierRecord[]>([]);
     const [instellingen, setInstellingen] = useState<KlasseInstelling[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [editingPaper, setEditingPaper] = useState<Partial<PapierRecord> | null>(null);
     const [deletePaperId, setDeletePaperId] = useState<string | null>(null);
     const [deleteInstId, setDeleteInstId] = useState<string | null>(null);
     const [newKlasseName, setNewKlasseName] = useState('');
+    const [newPresetName, setNewPresetName] = useState('');
+    const [newPresetType, setNewPresetType] = useState<'Coated' | 'Uncoated'>('Coated');
     const [isAddKlasseOpen, setIsAddKlasseOpen] = useState(false);
+    const [isAddPresetOpen, setIsAddPresetOpen] = useState(false);
+    const [proefPresets, setProefPresets] = useState<any[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
     const [bulkEdit, setBulkEdit] = useState<{ klasse?: string; fabrikant?: string; proef_profiel?: string; actief?: boolean }>({});
     const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+    const [syncFrontBack, setSyncFrontBack] = useState(true);
+
+    const { hasPermission, effectiveRole } = useAuth();
+    const isPress = effectiveRole?.toLowerCase() === 'press';
+    const canEdit = hasPermission('papier_aanpassen');
 
     const fetchAll = async () => {
         setIsLoading(true);
         try {
-            const [paperList, instList] = await Promise.all([
+            const [paperList, instList, presetList] = await Promise.all([
                 pb.collection('papier').getFullList<PapierRecord>({ sort: 'naam' }),
-                pb.collection('papier_klasse_instellingen').getFullList<KlasseInstelling>({ sort: 'klasse' })
+                pb.collection('papier_klasse_instellingen').getFullList<any>({ sort: 'klasse' }),
+                pb.collection('proef_presets').getFullList<any>({ sort: 'naam' })
             ]);
             setPapers(paperList);
             setInstellingen(instList);
+            setProefPresets(presetList);
         } catch (error) {
             console.error('[PapierBeheer] Fetch error:', error);
             toast.error('Fout bij ophalen gegevens');
@@ -86,17 +105,22 @@ export function PapierBeheer() {
 
     const filteredPapers = useMemo(() => {
         const q = searchQuery.toLowerCase();
-        return papers
-            .filter(p =>
-                p.naam.toLowerCase().includes(q) ||
-                p.klasse?.toLowerCase().includes(q) ||
-                p.fabrikant?.toLowerCase().includes(q)
-            )
-            .sort((a, b) => {
-                if (!!a.actief !== !!b.actief) return a.actief ? -1 : 1;
-                return a.naam.localeCompare(b.naam);
-            });
-    }, [papers, searchQuery]);
+        let list = papers.filter(p =>
+            p.naam.toLowerCase().includes(q) ||
+            p.klasse?.toLowerCase().includes(q) ||
+            p.fabrikant?.toLowerCase().includes(q)
+        );
+
+        // Filter for press role: only show active papers
+        if (isPress) {
+            list = list.filter(p => p.actief);
+        }
+
+        return list.sort((a, b) => {
+            if (!!a.actief !== !!b.actief) return a.actief ? -1 : 1;
+            return a.naam.localeCompare(b.naam);
+        });
+    }, [papers, searchQuery, isPress]);
 
     const allVisibleSelected = filteredPapers.length > 0 && filteredPapers.every(p => selectedIds.has(p.id));
     const someVisibleSelected = filteredPapers.some(p => selectedIds.has(p.id));
@@ -146,6 +170,11 @@ export function PapierBeheer() {
         try {
             await pb.collection('papier').delete(deletePaperId);
             toast.success('Papier verwijderd');
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(deletePaperId);
+                return next;
+            });
             setDeletePaperId(null);
             fetchAll();
         } catch (error) {
@@ -154,50 +183,19 @@ export function PapierBeheer() {
         }
     };
 
-    const ColorInput = ({ label, value, onChange, colorClass }: any) => (
-        <div className="flex flex-col gap-1">
-            <Label className="text-[10px] uppercase text-gray-400">{label}</Label>
-            <Input 
-                type="number" 
-                step="0.01"
-                value={value || 0} 
-                onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-                className={cn("h-8 text-xs font-bold", colorClass)}
-            />
-        </div>
-    );
+
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 rounded-lg">
-                        <Package className="text-blue-600 size-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-900">Papier Beheer</h1>
-                        <p className="text-sm text-gray-500">Beheer alle papier varianten en standaard densiteiten</p>
-                    </div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center gap-1">
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="relative w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-                        <Input 
-                            placeholder="Zoek op naam, fabrikant..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 bg-gray-50 border-gray-200 h-9"
-                        />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => setIsSettingsOpen(true)}>
-                        <Settings2 className="size-4 mr-2" />
-                        Instellingen
-                    </Button>
+                {canEdit && (
                     <Button size="sm" onClick={() => { setEditingPaper({ actief: true }); setIsEditDialogOpen(true); }}>
                         <Plus className="size-4 mr-2" />
                         Nieuw Papier
                     </Button>
-                </div>
+                )}
             </div>
 
             {selectedIds.size > 0 && (
@@ -209,18 +207,22 @@ export function PapierBeheer() {
                         </Button>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleBulkSetActief(true)}>
-                            <CheckCircle2 className="size-4 mr-2 text-green-600" /> Activeren
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleBulkSetActief(false)}>
-                            <XCircle className="size-4 mr-2 text-gray-500" /> Deactiveren
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => { setBulkEdit({}); setIsBulkEditOpen(true); }}>
-                            <Pencil className="size-4 mr-2" /> Bewerken
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50" onClick={() => setIsBulkDeleteOpen(true)}>
-                            <Trash2 className="size-4 mr-2" /> Verwijderen
-                        </Button>
+                        {canEdit && (
+                            <>
+                                <Button variant="outline" size="sm" onClick={() => handleBulkSetActief(true)}>
+                                    <CheckCircle2 className="size-4 mr-2 text-green-600" /> Activeren
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => handleBulkSetActief(false)}>
+                                    <XCircle className="size-4 mr-2 text-gray-500" /> Deactiveren
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => { setBulkEdit({}); setIsBulkEditOpen(true); }}>
+                                    <Pencil className="size-4 mr-2" /> Bewerken
+                                </Button>
+                                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50" onClick={() => setIsBulkDeleteOpen(true)}>
+                                    <Trash2 className="size-4 mr-2" /> Verwijderen
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -230,11 +232,13 @@ export function PapierBeheer() {
                     <TableHeader className="bg-gray-50">
                         <TableRow>
                             <TableHead className="w-[40px]">
-                                <Checkbox
-                                    checked={allVisibleSelected ? true : (someVisibleSelected ? 'indeterminate' : false)}
-                                    onCheckedChange={toggleSelectAll}
-                                    aria-label="Selecteer alle papieren"
-                                />
+                                {canEdit && (
+                                    <Checkbox
+                                        checked={allVisibleSelected ? true : (someVisibleSelected ? 'indeterminate' : false)}
+                                        onCheckedChange={toggleSelectAll}
+                                        aria-label="Selecteer alle papieren"
+                                    />
+                                )}
                             </TableHead>
                             <TableHead>Fabrikant</TableHead>
                             <TableHead>Product</TableHead>
@@ -242,8 +246,12 @@ export function PapierBeheer() {
                             <TableHead>Proefpreset</TableHead>
                             <TableHead className="text-center">Front KCMY</TableHead>
                             <TableHead className="text-center">Back KCMY</TableHead>
-                            <TableHead className="text-center w-[80px]">Status</TableHead>
-                            <TableHead className="w-[100px] text-right">Acties</TableHead>
+                            {!isPress && (
+                                <>
+                                    <TableHead className="text-center w-[80px]">Status</TableHead>
+                                    <TableHead className="w-[100px] text-right">Acties</TableHead>
+                                </>
+                            )}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -255,11 +263,13 @@ export function PapierBeheer() {
                             filteredPapers.map(paper => (
                                 <TableRow key={paper.id} className={cn("hover:bg-blue-50/30", !paper.actief && "opacity-60")}>
                                     <TableCell>
-                                        <Checkbox
-                                            checked={selectedIds.has(paper.id)}
-                                            onCheckedChange={() => toggleSelect(paper.id)}
-                                            aria-label={`Selecteer ${paper.naam}`}
-                                        />
+                                        {canEdit && (
+                                            <Checkbox
+                                                checked={selectedIds.has(paper.id)}
+                                                onCheckedChange={() => toggleSelect(paper.id)}
+                                                aria-label={`Selecteer ${paper.naam}`}
+                                            />
+                                        )}
                                     </TableCell>
                                     <TableCell className="font-medium text-gray-500">{paper.fabrikant || '—'}</TableCell>
                                     <TableCell className="font-bold">{paper.naam}</TableCell>
@@ -268,40 +278,40 @@ export function PapierBeheer() {
                                     </TableCell>
                                     <TableCell className="text-sm text-gray-600">{paper.proef_profiel || '—'}</TableCell>
                                     <TableCell>
-                                        <div className="flex justify-center gap-1">
-                                            {[paper.start_front_k, paper.start_front_c, paper.start_front_m, paper.start_front_y].map((v, i) => (
-                                                <div key={i} className="text-[10px] font-bold px-1 rounded bg-gray-100">{v || 0}</div>
-                                            ))}
-                                        </div>
+                                        <DensityChips paper={paper} side="front" instellingen={instellingen} />
                                     </TableCell>
                                     <TableCell>
-                                        <div className="flex justify-center gap-1">
-                                            {[paper.start_back_k, paper.start_back_c, paper.start_back_m, paper.start_back_y].map((v, i) => (
-                                                <div key={i} className="text-[10px] font-bold px-1 rounded bg-gray-100">{v || 0}</div>
-                                            ))}
-                                        </div>
+                                        <DensityChips paper={paper} side="back" instellingen={instellingen} />
                                     </TableCell>
-                                    <TableCell className="text-center">
-                                        <button 
-                                            onClick={() => handleToggleActief(paper.id, paper.actief)}
-                                            className={cn(
-                                                "px-2 py-1 rounded-full text-[10px] font-bold transition-colors",
-                                                paper.actief ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-                                            )}
-                                        >
-                                            {paper.actief ? 'ACTIEF' : 'INACTIEF'}
-                                        </button>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingPaper(paper); setIsEditDialogOpen(true); }}>
-                                                <Pencil className="size-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => setDeletePaperId(paper.id)}>
-                                                <Trash2 className="size-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                                    {!isPress && (
+                                        <>
+                                            <TableCell className="text-center">
+                                                <button
+                                                    disabled={!canEdit}
+                                                    onClick={() => handleToggleActief(paper.id, paper.actief)}
+                                                    className={cn(
+                                                        "px-2 py-1 rounded-full text-[10px] font-bold transition-colors",
+                                                        paper.actief ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-400 hover:bg-gray-200",
+                                                        !canEdit && "cursor-default opacity-80"
+                                                    )}
+                                                >
+                                                    {paper.actief ? 'ACTIEF' : 'INACTIEF'}
+                                                </button>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {canEdit && (
+                                                    <div className="flex justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingPaper(paper); setIsEditDialogOpen(true); }}>
+                                                            <Pencil className="size-4" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => setDeletePaperId(paper.id)}>
+                                                            <Trash2 className="size-4" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </TableCell>
+                                        </>
+                                    )}
                                 </TableRow>
                             ))
                         )}
@@ -315,63 +325,98 @@ export function PapierBeheer() {
                     <DialogHeader>
                         <DialogTitle>{editingPaper?.id ? 'Papier Bewerken' : 'Nieuw Papier Toevoegen'}</DialogTitle>
                     </DialogHeader>
-                    <div className="grid grid-cols-2 gap-4 py-4">
-                        <div className="space-y-4">
-                            <div className="grid gap-2">
-                                <Label>Fabrikant</Label>
-                                <Input value={editingPaper?.fabrikant || ''} onChange={e => setEditingPaper({...editingPaper!, fabrikant: e.target.value})} placeholder="Bijv. Sappi" />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Product (Naam)</Label>
-                                <Input value={editingPaper?.naam || ''} onChange={e => setEditingPaper({...editingPaper!, naam: e.target.value})} placeholder="Bijv. Galerie Fine" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="grid gap-2">
-                                    <Label>Klasse</Label>
-                                    <Input value={editingPaper?.klasse || ''} onChange={e => setEditingPaper({...editingPaper!, klasse: e.target.value})} placeholder="Bijv. 1" />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Gram (g/m²)</Label>
-                                    <Input type="number" value={editingPaper?.gram_per_m2 || ''} onChange={e => setEditingPaper({...editingPaper!, gram_per_m2: parseInt(e.target.value) || null})} />
-                                </div>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Proefpreset (Profiel)</Label>
-                                <Input value={editingPaper?.proef_profiel || ''} onChange={e => setEditingPaper({...editingPaper!, proef_profiel: e.target.value})} placeholder="Bijv. FOGRA51" />
-                            </div>
-                            <div className="flex items-center gap-2 pt-2">
-                                <input 
-                                    type="checkbox" 
-                                    id="paper-actief"
-                                    checked={editingPaper?.actief ?? true} 
-                                    onChange={e => setEditingPaper({...editingPaper!, actief: e.target.checked})} 
-                                    className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <Label htmlFor="paper-actief" className="cursor-pointer">Dit papier is actief en zichtbaar in lijsten</Label>
-                            </div>
+                    <div className="flex flex-col gap-4 py-4">
+                        <div className="flex items-center gap-2 px-1">
+                            <Checkbox
+                                id="sync-paper"
+                                checked={syncFrontBack}
+                                onCheckedChange={(c) => setSyncFrontBack(!!c)}
+                            />
+                            <Label htmlFor="sync-paper" className="text-sm font-semibold text-blue-700 cursor-pointer">Front & Back densiteiten koppelen</Label>
                         </div>
-                        <div className="space-y-4">
-                            <div className="grid gap-2">
-                                <Label>Start Densiteiten Front (KCMY)</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <ColorInput label="K" value={editingPaper?.start_front_k} onChange={(v: number) => setEditingPaper({...editingPaper!, start_front_k: v})} colorClass="border-gray-800" />
-                                    <ColorInput label="C" value={editingPaper?.start_front_c} onChange={(v: number) => setEditingPaper({...editingPaper!, start_front_c: v})} colorClass="border-cyan-500" />
-                                    <ColorInput label="M" value={editingPaper?.start_front_m} onChange={(v: number) => setEditingPaper({...editingPaper!, start_front_m: v})} colorClass="border-pink-500" />
-                                    <ColorInput label="Y" value={editingPaper?.start_front_y} onChange={(v: number) => setEditingPaper({...editingPaper!, start_front_y: v})} colorClass="border-yellow-500" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-4">
+                                <div className="grid gap-2">
+                                    <Label>Fabrikant</Label>
+                                    <Input value={editingPaper?.fabrikant || ''} onChange={e => setEditingPaper({ ...editingPaper!, fabrikant: e.target.value })} placeholder="Bijv. Sappi" />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Proefpreset (Profiel)</Label>
+                                    <Select
+                                        value={editingPaper?.proef_profiel || ''}
+                                        onValueChange={v => setEditingPaper({ ...editingPaper!, proef_profiel: v })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Kies een proefprofiel..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {proefPresets.map(p => (
+                                                <SelectItem key={p.id} value={p.naam}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{p.naam}</span>
+                                                        <Badge variant="outline" className={cn(
+                                                            "text-[9px] px-1 py-0 h-4",
+                                                            p.type === 'Coated' ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-orange-50 text-orange-600 border-orange-200"
+                                                        )}>
+                                                            {p.type}
+                                                        </Badge>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                            {proefPresets.length === 0 && (
+                                                <div className="p-2 text-xs text-gray-500 italic text-center">Geen presets gevonden.</div>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Product (Naam)</Label>
+                                    <Input value={editingPaper?.naam || ''} onChange={e => setEditingPaper({ ...editingPaper!, naam: e.target.value })} placeholder="Bijv. Galerie Fine" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid gap-2">
+                                        <Label>Klasse</Label>
+                                        <Input value={editingPaper?.klasse || ''} onChange={e => setEditingPaper({ ...editingPaper!, klasse: e.target.value })} placeholder="Bijv. 1" />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>Gram (g/m²)</Label>
+                                        <Input type="number" value={editingPaper?.gram_per_m2 || ''} onChange={e => setEditingPaper({ ...editingPaper!, gram_per_m2: parseInt(e.target.value) || null })} />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id="paper-actief"
+                                        checked={editingPaper?.actief ?? true}
+                                        onChange={e => setEditingPaper({ ...editingPaper!, actief: e.target.checked })}
+                                        className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <Label htmlFor="paper-actief" className="cursor-pointer">Dit papier is actief en zichtbaar in lijsten</Label>
                                 </div>
                             </div>
-                            <div className="grid gap-2">
-                                <Label>Start Densiteiten Back (KCMY)</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <ColorInput label="K" value={editingPaper?.start_back_k} onChange={(v: number) => setEditingPaper({...editingPaper!, start_back_k: v})} colorClass="border-gray-800" />
-                                    <ColorInput label="C" value={editingPaper?.start_back_c} onChange={(v: number) => setEditingPaper({...editingPaper!, start_back_c: v})} colorClass="border-cyan-500" />
-                                    <ColorInput label="M" value={editingPaper?.start_back_m} onChange={(v: number) => setEditingPaper({...editingPaper!, start_back_m: v})} colorClass="border-pink-500" />
-                                    <ColorInput label="Y" value={editingPaper?.start_back_y} onChange={(v: number) => setEditingPaper({...editingPaper!, start_back_y: v})} colorClass="border-yellow-500" />
+                            <div className="space-y-4">
+                                <div className="grid gap-2">
+                                    <Label>Start Densiteiten Front (KCMY)</Label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <ColorInput label="K" value={editingPaper?.start_front_k} onChange={(v: number) => handlePaperColorChange('front', 'k', v)} colorClass="border-gray-800" />
+                                        <ColorInput label="C" value={editingPaper?.start_front_c} onChange={(v: number) => handlePaperColorChange('front', 'c', v)} colorClass="border-cyan-500" />
+                                        <ColorInput label="M" value={editingPaper?.start_front_m} onChange={(v: number) => handlePaperColorChange('front', 'm', v)} colorClass="border-pink-500" />
+                                        <ColorInput label="Y" value={editingPaper?.start_front_y} onChange={(v: number) => handlePaperColorChange('front', 'y', v)} colorClass="border-yellow-500" />
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Opmerking</Label>
-                                <Textarea value={editingPaper?.opmerking || ''} onChange={e => setEditingPaper({...editingPaper!, opmerking: e.target.value})} className="h-20" />
+                                <div className="grid gap-2">
+                                    <Label>Start Densiteiten Back (KCMY)</Label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <ColorInput label="K" value={editingPaper?.start_back_k} onChange={(v: number) => handlePaperColorChange('back', 'k', v)} colorClass="border-gray-800" />
+                                        <ColorInput label="C" value={editingPaper?.start_back_c} onChange={(v: number) => handlePaperColorChange('back', 'c', v)} colorClass="border-cyan-500" />
+                                        <ColorInput label="M" value={editingPaper?.start_back_m} onChange={(v: number) => handlePaperColorChange('back', 'm', v)} colorClass="border-pink-500" />
+                                        <ColorInput label="Y" value={editingPaper?.start_back_y} onChange={(v: number) => handlePaperColorChange('back', 'y', v)} colorClass="border-yellow-500" />
+                                    </div>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Opmerking</Label>
+                                    <Textarea value={editingPaper?.opmerking || ''} onChange={e => setEditingPaper({ ...editingPaper!, opmerking: e.target.value })} className="h-20" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -382,57 +427,134 @@ export function PapierBeheer() {
                 </DialogContent>
             </Dialog>
 
-            {/* Settings Dialog (Klasse Instellingen) */}
+            {/* Settings Dialog (Papier Instellingen) */}
             <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-                <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+                <DialogContent className="sm:max-w-[1000px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Standaard Densiteiten per Klasse</DialogTitle>
-                        <DialogDescription>Stel de standaard start-densiteiten in voor elke papierklasse.</DialogDescription>
+                        <DialogTitle>Papier Instellingen</DialogTitle>
+                        <DialogDescription>Beheer de standaard densiteiten en proefpresets.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Klasse</TableHead>
-                                    <TableHead>Front KCMY</TableHead>
-                                    <TableHead>Back KCMY</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {instellingen.map(inst => (
-                                    <TableRow key={inst.id}>
-                                        <TableCell className="font-bold">{inst.klasse}</TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.front_k} onChange={e => handleUpdateInst(inst.id, 'front_k', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.front_c} onChange={e => handleUpdateInst(inst.id, 'front_c', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.front_m} onChange={e => handleUpdateInst(inst.id, 'front_m', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.front_y} onChange={e => handleUpdateInst(inst.id, 'front_y', e.target.value)} />
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.back_k} onChange={e => handleUpdateInst(inst.id, 'back_k', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.back_c} onChange={e => handleUpdateInst(inst.id, 'back_c', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.back_m} onChange={e => handleUpdateInst(inst.id, 'back_m', e.target.value)} />
-                                                <Input className="h-8 w-14 text-[10px]" type="number" step="0.01" value={inst.back_y} onChange={e => handleUpdateInst(inst.id, 'back_y', e.target.value)} />
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button variant="ghost" size="icon" onClick={() => setDeleteInstId(inst.id)}><Trash2 className="size-4 text-red-400" /></Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow>
-                                    <TableCell colSpan={4}>
-                                        <Button variant="ghost" size="sm" className="w-full text-blue-600" onClick={() => setIsAddKlasseOpen(true)}>
-                                            <Plus className="size-4 mr-2" /> Klasse toevoegen
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 py-4">
+                        {/* Left Card: Densiteiten per Klasse */}
+                        <Card className="p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold flex items-center gap-2">
+                                    <Settings2 className="size-4 text-blue-600" />
+                                    Densiteiten per Klasse
+                                </h3>
+                            </div>
+
+                            <div className="flex items-center gap-2 mb-2">
+                                <Checkbox
+                                    id="sync-settings"
+                                    checked={syncFrontBack}
+                                    onCheckedChange={(c) => setSyncFrontBack(!!c)}
+                                />
+                                <Label htmlFor="sync-settings" className="text-[10px] font-semibold text-blue-700 cursor-pointer uppercase">Front & Back koppelen</Label>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-[10px] uppercase">Klasse</TableHead>
+                                            <TableHead className="text-[10px] uppercase">Front</TableHead>
+                                            <TableHead className="text-[10px] uppercase">Back</TableHead>
+                                            <TableHead className="w-[40px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {instellingen.map(inst => (
+                                            <TableRow key={inst.id}>
+                                                <TableCell className="font-bold text-xs">{inst.klasse}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex gap-1">
+                                                        <ShifterInput value={inst.front_k} onChange={(v) => handleUpdateInst(inst.id, 'front_k', v)} />
+                                                        <ShifterInput value={inst.front_c} onChange={(v) => handleUpdateInst(inst.id, 'front_c', v)} />
+                                                        <ShifterInput value={inst.front_m} onChange={(v) => handleUpdateInst(inst.id, 'front_m', v)} />
+                                                        <ShifterInput value={inst.front_y} onChange={(v) => handleUpdateInst(inst.id, 'front_y', v)} />
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex gap-1">
+                                                        <ShifterInput value={inst.back_k} onChange={(v) => handleUpdateInst(inst.id, 'back_k', v)} />
+                                                        <ShifterInput value={inst.back_c} onChange={(v) => handleUpdateInst(inst.id, 'back_c', v)} />
+                                                        <ShifterInput value={inst.back_m} onChange={(v) => handleUpdateInst(inst.id, 'back_m', v)} />
+                                                        <ShifterInput value={inst.back_y} onChange={(v) => handleUpdateInst(inst.id, 'back_y', v)} />
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleDeleteInst(inst.id)}>
+                                                        <Trash2 className="size-3" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {canEdit && (
+                                            <TableRow>
+                                                <TableCell colSpan={4}>
+                                                    <Button variant="ghost" size="sm" className="w-full text-blue-600 text-[10px] h-7" onClick={() => setIsAddKlasseOpen(true)}>
+                                                        <Plus className="size-3 mr-1" /> Klasse toevoegen
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </Card>
+
+                        {/* Right Card: Proefpresets */}
+                        <Card className="p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold flex items-center gap-2">
+                                    <Package className="size-4 text-purple-600" />
+                                    Proefpreset Profielen
+                                </h3>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-[10px] uppercase">Naam</TableHead>
+                                            <TableHead className="text-[10px] uppercase">Type</TableHead>
+                                            <TableHead className="w-[40px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {proefPresets.map(p => (
+                                            <TableRow key={p.id}>
+                                                <TableCell className="font-bold text-xs">{p.naam}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className={cn(
+                                                        "text-[10px] font-medium",
+                                                        p.type === 'Coated' ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-orange-50 text-orange-700 border-orange-200"
+                                                    )}>
+                                                        {p.type}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleDeletePreset(p.id)}>
+                                                        <Trash2 className="size-3" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {canEdit && (
+                                            <TableRow>
+                                                <TableCell colSpan={2}>
+                                                    <Button variant="ghost" size="sm" className="w-full text-purple-600 text-[10px] h-7" onClick={() => setIsAddPresetOpen(true)}>
+                                                        <Plus className="size-3 mr-1" /> Preset toevoegen
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </Card>
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setIsSettingsOpen(false)}>Sluiten</Button>
@@ -440,8 +562,8 @@ export function PapierBeheer() {
                 </DialogContent>
             </Dialog>
 
-            <ConfirmationModal 
-                open={!!deletePaperId} 
+            <ConfirmationModal
+                open={!!deletePaperId}
                 onOpenChange={(open) => !open && setDeletePaperId(null)}
                 onConfirm={handleDeletePaper}
                 title="Papier verwijderen"
@@ -449,8 +571,8 @@ export function PapierBeheer() {
                 variant="destructive"
             />
 
-            <ConfirmationModal 
-                open={!!deleteInstId} 
+            <ConfirmationModal
+                open={!!deleteInstId}
                 onOpenChange={(open) => !open && setDeleteInstId(null)}
                 onConfirm={handleDeleteInst}
                 title="Klasse verwijderen"
@@ -553,6 +675,38 @@ export function PapierBeheer() {
                 variant="destructive"
             />
 
+            {/* Add Preset Dialog */}
+            <Dialog open={isAddPresetOpen} onOpenChange={setIsAddPresetOpen}>
+                <DialogContent className="w-[90vw] sm:max-w-[50vw]">
+                    <DialogHeader>
+                        <DialogTitle>Nieuwe Proefpreset</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label>Preset Naam (Profiel)</Label>
+                            <Input value={newPresetName} onChange={e => setNewPresetName(e.target.value)} placeholder="Bijv. FOGRA51" onKeyDown={e => e.key === 'Enter' && handleAddPreset()} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Papiertype</Label>
+                            <RadioGroup value={newPresetType} onValueChange={(v: any) => setNewPresetType(v)} className="flex gap-4">
+                                <div className="flex items-center gap-2">
+                                    <RadioGroupItem value="Coated" id="type-coated" />
+                                    <Label htmlFor="type-coated" className="cursor-pointer">Coated</Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <RadioGroupItem value="Uncoated" id="type-uncoated" />
+                                    <Label htmlFor="type-uncoated" className="cursor-pointer">Uncoated</Label>
+                                </div>
+                            </RadioGroup>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddPresetOpen(false)}>Annuleren</Button>
+                        <Button onClick={handleAddPreset}>Toevoegen</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={isAddKlasseOpen} onOpenChange={setIsAddKlasseOpen}>
                 <DialogContent className="sm:max-w-[400px]">
                     <DialogHeader>
@@ -561,10 +715,10 @@ export function PapierBeheer() {
                     </DialogHeader>
                     <div className="py-4">
                         <Label htmlFor="klasse-name">Klasse Naam</Label>
-                        <Input 
-                            id="klasse-name" 
-                            value={newKlasseName} 
-                            onChange={e => setNewKlasseName(e.target.value)} 
+                        <Input
+                            id="klasse-name"
+                            value={newKlasseName}
+                            onChange={e => setNewKlasseName(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleAddInst()}
                             autoFocus
                         />
@@ -578,23 +732,77 @@ export function PapierBeheer() {
         </div>
     );
 
-    async function handleUpdateInst(id: string, field: string, val: string) {
-        const numeric = parseFloat(val) || 0;
+    async function handleUpdateInst(id: string, field: string, numeric: number) {
         try {
-            await pb.collection('papier_klasse_instellingen').update(id, { [field]: numeric });
-            setInstellingen(prev => prev.map(i => i.id === id ? { ...i, [field]: numeric } : i));
+            const updateData: any = { [field]: numeric };
+
+            if (syncFrontBack) {
+                if (field.startsWith('front_')) {
+                    updateData[field.replace('front_', 'back_')] = numeric;
+                } else if (field.startsWith('back_')) {
+                    updateData[field.replace('back_', 'front_')] = numeric;
+                }
+            }
+
+            await pb.collection('papier_klasse_instellingen').update(id, updateData);
+            setInstellingen(prev => prev.map(i => i.id === id ? { ...i, ...updateData } : i));
         } catch (e) {
             toast.error('Update mislukt');
+        }
+    }
+
+
+
+    const handlePaperColorChange = (side: 'front' | 'back', color: string, value: number) => {
+        if (!editingPaper) return;
+        const field = `start_${side}_${color}` as keyof PapierRecord;
+        const next = { ...editingPaper, [field]: value };
+
+        if (syncFrontBack) {
+            const otherSide = side === 'front' ? 'back' : 'front';
+            const otherField = `start_${otherSide}_${color}` as keyof PapierRecord;
+            (next as any)[otherField] = value;
+        }
+
+        setEditingPaper(next);
+    };
+
+
+
+    async function handleAddPreset() {
+        if (!newPresetName.trim()) return;
+        try {
+            const res = await pb.collection('proef_presets').create({
+                naam: newPresetName,
+                type: newPresetType
+            });
+            setProefPresets(prev => [...prev, res].sort((a, b) => a.naam.localeCompare(b.naam)));
+            setNewPresetName('');
+            setIsAddPresetOpen(false);
+            toast.success('Preset toegevoegd');
+        } catch (e) {
+            toast.error('Toevoegen mislukt');
+        }
+    }
+
+    async function handleDeletePreset(id: string) {
+        if (!confirm('Preset verwijderen?')) return;
+        try {
+            await pb.collection('proef_presets').delete(id);
+            setProefPresets(prev => prev.filter(p => p.id !== id));
+            toast.success('Preset verwijderd');
+        } catch (e) {
+            toast.error('Verwijderen mislukt');
         }
     }
 
     async function handleAddInst() {
         if (!newKlasseName.trim()) return;
         try {
-            const newInst = await pb.collection('papier_klasse_instellingen').create({ 
-                klasse: newKlasseName, 
-                front_k: 0, front_c: 0, front_m: 0, front_y: 0, 
-                back_k: 0, back_c: 0, back_m: 0, back_y: 0 
+            const newInst = await pb.collection('papier_klasse_instellingen').create({
+                klasse: newKlasseName,
+                front_k: 0, front_c: 0, front_m: 0, front_y: 0,
+                back_k: 0, back_c: 0, back_m: 0, back_y: 0
             });
             setInstellingen([...instellingen, newInst as any]);
             setNewKlasseName('');
@@ -628,56 +836,206 @@ export function PapierBeheer() {
     }
 
     async function handleBulkSetActief(actief: boolean) {
-        const ids = Array.from(selectedIds);
+        const ids = Array.from(selectedIds).filter(id => papers.some(p => p.id === id));
         if (ids.length === 0) return;
-        try {
-            await Promise.all(ids.map(id => pb.collection('papier').update(id, { actief })));
-            setPapers(prev => prev.map(p => selectedIds.has(p.id) ? { ...p, actief } : p));
-            toast.success(`${ids.length} papier(en) ${actief ? 'geactiveerd' : 'gedeactiveerd'}`);
-            clearSelection();
-        } catch (e) {
-            console.error('[PapierBeheer] Bulk actief error:', e);
-            toast.error('Bijwerken mislukt');
+
+        let successCount = 0;
+        let failCount = 0;
+        const ghostIds: string[] = [];
+
+        await Promise.all(ids.map(async (id) => {
+            try {
+                await pb.collection('papier').update(id, { actief });
+                successCount++;
+            } catch (e: any) {
+                if (e.status === 404) {
+                    ghostIds.push(id);
+                } else {
+                    console.error(`[PapierBeheer] Error updating ${id}:`, e);
+                    failCount++;
+                }
+            }
+        }));
+
+        if (successCount > 0) {
+            toast.success(`${successCount} papier(en) ${actief ? 'geactiveerd' : 'gedeactiveerd'}`);
         }
+
+        if (ghostIds.length > 0) {
+            setPapers(prev => prev.filter(p => !ghostIds.includes(p.id)));
+            // Distinguish between actually deleted and permission denied
+            if (successCount === 0 && failCount === 0) {
+                toast.error('Actie mislukt: mogelijk onvoldoende rechten of item reeds verwijderd');
+            }
+        }
+
+        if (failCount > 0) {
+            toast.error(`${failCount} bijwerking(en) mislukt`);
+        }
+
+        clearSelection();
+        fetchAll();
     }
 
     async function handleBulkDelete() {
-        const ids = Array.from(selectedIds);
+        const ids = Array.from(selectedIds).filter(id => papers.some(p => p.id === id));
         if (ids.length === 0) return;
-        try {
-            await Promise.all(ids.map(id => pb.collection('papier').delete(id)));
-            toast.success(`${ids.length} papier(en) verwijderd`);
-            setIsBulkDeleteOpen(false);
-            clearSelection();
-            fetchAll();
-        } catch (e) {
-            console.error('[PapierBeheer] Bulk delete error:', e);
-            toast.error('Verwijderen mislukt');
+
+        let successCount = 0;
+        let failCount = 0;
+        const ghostIds: string[] = [];
+
+        await Promise.all(ids.map(async (id) => {
+            try {
+                await pb.collection('papier').delete(id);
+                successCount++;
+            } catch (e: any) {
+                if (e.status === 404) {
+                    ghostIds.push(id);
+                    successCount++; // Already gone, consider it done
+                } else {
+                    console.error(`[PapierBeheer] Error deleting ${id}:`, e);
+                    failCount++;
+                }
+            }
+        }));
+
+        if (successCount > 0) {
+            toast.success(`${successCount} papier(en) verwijderd`);
         }
+
+        if (ghostIds.length > 0) {
+            setPapers(prev => prev.filter(p => !ghostIds.includes(p.id)));
+        }
+
+        if (failCount > 0) {
+            toast.error(`${failCount} verwijdering(en) mislukt`);
+        }
+
+        setIsBulkDeleteOpen(false);
+        clearSelection();
+        fetchAll();
     }
 
     async function handleBulkEditSave() {
-        const ids = Array.from(selectedIds);
+        const ids = Array.from(selectedIds).filter(id => papers.some(p => p.id === id));
         if (ids.length === 0) return;
         const payload: Record<string, any> = {};
         if (bulkEdit.klasse !== undefined) payload.klasse = bulkEdit.klasse;
         if (bulkEdit.fabrikant !== undefined) payload.fabrikant = bulkEdit.fabrikant;
         if (bulkEdit.proef_profiel !== undefined) payload.proef_profiel = bulkEdit.proef_profiel;
         if (bulkEdit.actief !== undefined) payload.actief = bulkEdit.actief;
+
         if (Object.keys(payload).length === 0) {
             toast.error('Geen velden om bij te werken');
             return;
         }
-        try {
-            await Promise.all(ids.map(id => pb.collection('papier').update(id, payload)));
-            toast.success(`${ids.length} papier(en) bijgewerkt`);
-            setIsBulkEditOpen(false);
-            setBulkEdit({});
-            clearSelection();
-            fetchAll();
-        } catch (e) {
-            console.error('[PapierBeheer] Bulk edit error:', e);
-            toast.error('Bijwerken mislukt');
+
+        let successCount = 0;
+        let failCount = 0;
+        const ghostIds: string[] = [];
+
+        await Promise.all(ids.map(async (id) => {
+            try {
+                await pb.collection('papier').update(id, payload);
+                successCount++;
+            } catch (e: any) {
+                if (e.status === 404) {
+                    ghostIds.push(id);
+                } else {
+                    console.error(`[PapierBeheer] Error updating ${id}:`, e);
+                    failCount++;
+                }
+            }
+        }));
+
+        if (successCount > 0) {
+            toast.success(`${successCount} papier(en) bijgewerkt`);
         }
+
+        if (ghostIds.length > 0) {
+            setPapers(prev => prev.filter(p => !ghostIds.includes(p.id)));
+        }
+
+        if (failCount > 0) {
+            toast.error(`${failCount} bijwerking(en) mislukt`);
+        }
+
+        setIsBulkEditOpen(false);
+        setBulkEdit({});
+        clearSelection();
+        fetchAll();
     }
+}
+
+function ColorInput({ label, value, onChange, colorClass }: any) {
+    return (
+        <div className="flex flex-col gap-1">
+            <Label className="text-[10px] uppercase text-gray-400">{label}</Label>
+            <Input
+                type="text"
+                inputMode="numeric"
+                value={(value || 0).toFixed(2)}
+                onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '');
+                    onChange(parseInt(digits || '0') / 100);
+                }}
+                className={cn("h-8 text-xs font-bold", colorClass)}
+            />
+        </div>
+    );
+}
+
+function ShifterInput({ value, onChange, className }: any) {
+    return (
+        <Input
+            className={cn("h-8 w-14 text-[10px]", className)}
+            type="text"
+            inputMode="numeric"
+            value={(value || 0).toFixed(2)}
+            onChange={e => {
+                const digits = e.target.value.replace(/\D/g, '');
+                onChange(parseInt(digits || '0') / 100);
+            }}
+        />
+    );
+}
+
+function DensityChips({ paper, side, instellingen }: { paper: PapierRecord, side: 'front' | 'back', instellingen: any[] }) {
+    const colors = ['k', 'c', 'm', 'y'];
+    const inst = instellingen.find(i => i.klasse === paper.klasse);
+
+    const colorStyles: Record<string, string> = {
+        k: "text-gray-900 bg-gray-100/50 border-gray-200",
+        c: "text-cyan-700 bg-cyan-50/50 border-cyan-100",
+        m: "text-pink-700 bg-pink-50/50 border-pink-100",
+        y: "text-amber-700 bg-yellow-50/50 border-yellow-100"
+    };
+
+    return (
+        <div className="flex justify-center gap-1">
+            {colors.map(color => {
+                const field = `${side}_${color}`;
+                const paperVal = (paper as any)[`start_${field}`];
+                const classVal = inst ? (inst as any)[field] : 0;
+
+                const isFallback = !paperVal || paperVal === 0;
+                const displayVal = isFallback ? classVal : paperVal;
+
+                return (
+                    <div
+                        key={color}
+                        className={cn(
+                            "px-1.5 py-0.5 rounded border text-xs transition-colors",
+                            colorStyles[color],
+                            isFallback && "italic font-normal opacity-70"
+                        )}
+                        title={isFallback ? `Standaard voor klasse ${paper.klasse}` : 'Papier-specifieke waarde'}
+                    >
+                        {(displayVal || 0).toFixed(2)}
+                    </div>
+                );
+            })}
+        </div>
+    );
 }

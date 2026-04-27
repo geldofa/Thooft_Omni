@@ -48,10 +48,13 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'drukwerken_view_all', label: 'Alle Drukwerken Zien', description: 'Mogelijkheid om drukwerken van alle persen te zien.' },
             { key: 'drukwerken_create', label: 'Drukwerken Aanmaken', description: 'Mogelijkheid om nieuwe werkorders toe te voegen.' },
             { key: 'drukwerken_trash_view', label: 'Prullenbak Bekijken', description: 'Toegang tot verwijderde drukwerken en herstelmogelijkheden.' },
-            { key: 'jdf_bekijken_eigen', label: 'JDF Bekijken (eigen pers)', description: 'JDF-pagina zien, gefilterd op de eigen toegewezen pers.' },
-            { key: 'jdf_bekijken_alle', label: 'JDF Bekijken (alle persen)', description: 'JDF-pagina zien met orders van alle persen.' },
-            { key: 'jdf_filters_bewerken', label: 'JDF Filters Bewerken', description: 'Naamfilters en versielabelfilters aanmaken en opslaan. Bekijken is altijd toegestaan.' },
-            { key: 'jdf_importeren', label: 'JDF Orders Importeren', description: 'Beschikbare JDF-orders importeren als geplande werkorder. Vereist een toegewezen pers; importeert enkel orders van die pers.' },
+            { key: 'werkfiches_bekijken_eigen', label: 'Werkfiches Bekijken (eigen pers)', description: 'Werkfiches-pagina zien, gefilterd op de eigen toegewezen pers.' },
+            { key: 'werkfiches_bekijken_alle', label: 'Werkfiches Bekijken (alle persen)', description: 'Werkfiches-pagina zien met orders van alle persen. Impliceert ook eigen.' },
+            { key: 'werkfiches_importeren', label: 'Werkfiches Importeren', description: 'Beschikbare werkfiches importeren als geplande werkorder. Vereist een toegewezen pers.' },
+            { key: 'werkfiches_filters_instellingen', label: 'Werkfiches Filters & Instellingen', description: 'Naamfilters en versielabelfilters aanmaken, opslaan en instellingen aanpassen.' },
+            { key: 'werkorders_instellingen', label: 'Werkorders Instellingen', description: 'Toegang tot de actieskolom, herscannen en filterinstellingen in het werkorderoverzicht.' },
+            { key: 'papier_bekijken', label: 'Papier Bekijken', description: 'Toegang tot het papierbeheerscherm.' },
+            { key: 'papier_aanpassen', label: 'Papier Aanpassen', description: 'Papiersoorten en -instellingen bewerken. Impliceert ook Papier Bekijken.' },
         ]
     },
     {
@@ -65,6 +68,8 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
             { key: 'maintenance_analytics_view', label: 'Onderhoud Statistieken', description: 'Interactieve charts voor onderhoud.' },
             { key: 'production_analytics_view', label: 'Productie Statistieken', description: 'Interactieve charts voor productie.' },
             { key: 'osint_view', label: 'OSINT Live Command', description: 'Toegang tot het real-time productie dashboard.' },
+            { key: 'densiteiten_bekijken_eigen', label: 'Densiteiten Bekijken (Eigen)', description: 'Eigen densiteitsmetingen bekijken.' },
+            { key: 'densiteiten_bekijken_alle', label: 'Densiteiten Bekijken (Alle)', description: 'Densiteitsmetingen van alle gebruikers bekijken. Impliceert ook Eigen.' },
         ]
     },
     {

@@ -66,12 +66,12 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         icon: FileBarChart,
         description: 'Bekijk onderhoudsgeschiedenis en analyses',
         permission: 'reports_archive_view',
-        anyPermission: ['reports_archive_view', 'reports_view', 'checklist_view', 'drukwerken_view', 'maintenance_analytics_view', 'production_analytics_view'],
+        anyPermission: ['reports_archive_view', 'reports_view', 'checklist_view', 'maintenance_analytics_view', 'production_analytics_view'],
         color: 'bg-purple-600',
         subtabs: (_activePresses, hasPermission) => [
             // Group: Rapporten
             ...(hasPermission('reports_view') || hasPermission('reports_archive_view') ? [{ label: 'Onderhoud', path: '/Analyses/Rapport', category: 'Rapporten' }] : []),
-            ...(hasPermission('drukwerken_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken', category: 'Rapporten' }] : []),
+            ...(hasPermission('reports_view') || hasPermission('reports_archive_view') ? [{ label: 'Drukwerken', path: '/Analyses/Drukwerken', category: 'Rapporten' }] : []),
             ...(hasPermission('checklist_view') ? [{ label: 'Checklist', path: '/Analyses/Checklist', category: 'Rapporten' }] : []),
             // Group: Statistieken
             ...(hasPermission('maintenance_analytics_view') ? [{ label: 'Onderhoud', path: '/Analyses/statistieken/onderhoud', category: 'Statistieken' }] : []),

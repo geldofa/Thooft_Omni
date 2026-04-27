@@ -48,7 +48,7 @@ export function newVersionLabelFilter(): VersionLabelFilter {
 }
 
 export function applyVersionLabelFilter(
-    katern: { version: string; signatureId?: string | null; exOmw?: string | null; pages?: number | null },
+    katern: { version: string; signatureId?: string | null; exOmw?: string | null; pages?: number | null; volgorde?: string | number | null },
     allKaternen: Array<{ version: string }>,
     filters: VersionLabelFilter[]
 ): string | null {
@@ -61,7 +61,8 @@ export function applyVersionLabelFilter(
         return f.template
             .replace('{signatureId}', String(katern.signatureId ?? ''))
             .replace('{exOmw}', String(katern.exOmw ?? ''))
-            .replace('{pages}', String(katern.pages ?? ''));
+            .replace('{pages}', String(katern.pages ?? ''))
+            .replace('{volgorde}', String(katern.volgorde ?? ''));
     }
     return null;
 }

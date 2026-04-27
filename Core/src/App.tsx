@@ -922,15 +922,15 @@ function MainApp() {
                   </div>
                 ) : <Navigate to="/" replace />} />
 
-                <Route path="/Drukwerken" element={(user?.role?.toLowerCase() === 'press' || user?.role?.toLowerCase() === 'operator') ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
+                <Route path="/Drukwerken" element={hasPermission('drukwerken_create') ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
                 <Route path="/Drukwerken/:subtab" element={hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />} />
 
                 <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
                 <Route path="/Beheer/:subtab" element={hasPermission('management_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
                 <Route path="/Analyses" element={<Navigate to="/Analyses/Rapport" replace />} />
-                <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
-                <Route path="/Analyses/:subtab/:subsubtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('drukwerken_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses/:subtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('maintenance_analytics_view') || hasPermission('production_analytics_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
+                <Route path="/Analyses/:subtab/:subsubtab" element={(hasPermission('reports_view') || hasPermission('reports_archive_view') || hasPermission('checklist_view') || hasPermission('maintenance_analytics_view') || hasPermission('production_analytics_view')) ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />
 
                 <Route path="/Rapport" element={<Navigate to="/Analyses/Rapport" replace />} />
                 <Route path="/Checklist" element={<Navigate to="/Analyses/Checklist" replace />} />

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { FormattedNumberInput } from './ui/FormattedNumberInput';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
-import { Trash2, Pencil, MessageSquare } from 'lucide-react';
+import { Trash2, Pencil, MessageSquare, ChevronRight, ChevronDown, X } from 'lucide-react';
 import { CmykIcon } from './ui/CmykIcon';
 import { cn } from './ui/utils';
 import { formatNumber } from '../utils/formatNumber';
@@ -38,6 +38,7 @@ export interface DrukwerkRowProps {
     calculatedFields: CalculatedField[];
     onKaternChange: (werkorderId: string, katernId: string, field: keyof Katern, value: any) => void;
     onDeleteKatern: (werkorderId: string, katernId: string) => void;
+    onLithomanItemRemove?: (werkorderId: string, katernId: string, itemIdx: number) => void;
     onAutoSaved: (werkorderId: string, katernId: string, pbRecordId: string, savedGreen: number | null, savedRed: number | null, voltooid_op: string | null) => void;
     addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => Promise<void>;
     user: User | null;
@@ -61,6 +62,7 @@ export function DrukwerkRow({
     calculatedFields,
     onKaternChange,
     onDeleteKatern,
+    onLithomanItemRemove,
     onAutoSaved,
     addActivityLog,
     user,
@@ -83,6 +85,7 @@ export function DrukwerkRow({
     const [pulseActive, setPulseActive] = useState(false);
     const [showComment, setShowComment] = useState(false);
     const [showCmyk, setShowCmyk] = useState(false);
+    const [mergeOpen, setMergeOpen] = useState(false);
     const [commentValue, setCommentValue] = useState(katern.opmerking || '');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -910,6 +913,74 @@ export function DrukwerkRow({
                     </div>
                 </TableCell>
             </TableRow>
+            {katern.lithoman_merge_info && katern.lithoman_merge_info.merged_count > 1 && (
+                <>
+                    <TableRow
+                        className={cn("bg-purple-50/30 cursor-pointer hover:bg-purple-50/60", isLocked && "bg-gray-50/50")}
+                        onClick={() => setMergeOpen(o => !o)}
+                    >
+                        <TableCell colSpan={16} className="py-1 border-b-0 border-l-2 border-l-purple-400">
+                            <div className="flex items-center gap-1.5 ml-2">
+                                {mergeOpen
+                                    ? <ChevronDown className="w-3 h-3 text-purple-700" />
+                                    : <ChevronRight className="w-3 h-3 text-purple-700" />}
+                                <span className="text-[10px] uppercase tracking-wider font-bold text-purple-700">
+                                    Lithoman samengevoegd · {katern.lithoman_merge_info.merged_count} katernen
+                                </span>
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                    {mergeOpen && katern.lithoman_merge_info.items.map((it, idx) => {
+                        const effectiveWissel = idx === 0
+                            ? (it.startup ? 'Opstart' : (it.wissel || '—'))
+                            : (it.startup ? '4/4' : (it.wissel || '—'));
+                        const wasOpstart = idx > 0 && it.startup;
+                        const canRemove = !isLocked && !!onLithomanItemRemove;
+                        return (
+                            <TableRow
+                                key={`merge-${it.signatureId ?? idx}-${idx}`}
+                                className={cn("bg-purple-50/10 text-[11px] text-gray-700 group/merge", isLocked && "bg-gray-50/50")}
+                            >
+                                <TableCell className="py-0.5 border-b-0 border-l-2 border-l-purple-400">
+                                    <div className="flex items-center gap-1.5 pl-2">
+                                        <span className="font-mono text-[10px] text-gray-400 min-w-[20px]">{it.volgorde ?? '—'}</span>
+                                        <span className="font-mono text-[10px] text-gray-500 min-w-[40px]">{it.signatureId ?? '—'}</span>
+                                        <span className="truncate text-gray-700" title={it.version}>{it.version || '—'}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell className="py-0.5 text-center border-b-0 text-gray-600">{it.pagination ?? '—'}</TableCell>
+                                <TableCell className={cn(
+                                    "py-0.5 text-center border-b-0 font-semibold",
+                                    effectiveWissel === 'Opstart' && "text-emerald-700",
+                                    wasOpstart && "text-amber-700"
+                                )}>
+                                    {effectiveWissel}
+                                </TableCell>
+                                <TableCell className="py-0.5 text-right border-b-0 tabular-nums text-gray-700 pr-2">
+                                    {it.oplage != null ? formatNumber(it.oplage) : '—'}
+                                </TableCell>
+                                <TableCell className="py-0.5 text-center border-b-0" title={wasOpstart ? 'Origineel Opstart, gewijzigd naar 4/4 (zelfde paginering)' : ''}>
+                                    {wasOpstart && <span className="text-amber-600 text-[10px]">↻</span>}
+                                </TableCell>
+                                <TableCell colSpan={10} className="py-0.5 border-b-0"></TableCell>
+                                <TableCell className="py-0.5 border-b-0 text-center">
+                                    {canRemove && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-5 w-5 p-0 opacity-0 group-hover/merge:opacity-100 hover:bg-red-100 hover:text-red-600 transition-opacity"
+                                            onClick={() => onLithomanItemRemove!(werkorderId, katern.id, idx)}
+                                            title="Verwijder uit groep en herbereken"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </Button>
+                                    )}
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </>
+            )}
             {showComment && (
                 <TableRow className={cn("bg-blue-50/10", isLocked && "bg-gray-50/50")}>
                     <TableCell colSpan={16} className="p-0 border-b-0">

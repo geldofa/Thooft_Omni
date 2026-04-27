@@ -90,11 +90,25 @@ export type Permission =
   | 'manage_themes'
   | 'manage_notifications'
   | 'manage_system_tasks'
-  | 'jdf_gebruiken'
-  | 'jdf_bekijken_eigen'
-  | 'jdf_bekijken_alle'
-  | 'jdf_filters_bewerken'
-  | 'jdf_importeren';
+  | 'werkfiches_bekijken_eigen'
+  | 'werkfiches_bekijken_alle'
+  | 'werkfiches_importeren'
+  | 'werkfiches_filters_instellingen'
+  | 'papier_bekijken'
+  | 'papier_aanpassen'
+  | 'werkorders_instellingen'
+  | 'densiteiten_bekijken_eigen'
+  | 'densiteiten_bekijken_alle'
+  | 'production_analytics_view'
+  | 'maintenance_analytics_view'
+  | 'manage_ticker'
+  | 'data_checker_view'
+  | 'activity_ticker_view'
+  | 'osint_view'
+  | 'drukwerken_trash_view'
+  | 'planning_view'
+  | 'planning_edit'
+  | 'planning_settings';
 
 export interface RolePermissions {
   role: UserRole;

@@ -209,7 +209,7 @@ export function UnifiedSettingsLayout() {
                 label: 'PDF Rapporten',
                 items: [
                     ...(hasPermission('reports_view') || hasPermission('reports_archive_view') ? [{ value: 'Rapport', label: 'Onderhoud', icon: Calculator, description: 'PDF hub voor onderhoud' }] : []),
-                    ...(hasPermission('drukwerken_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'PDF hub voor drukwerken' }] : []),
+                    ...(hasPermission('reports_view') || hasPermission('reports_archive_view') ? [{ value: 'Drukwerken', label: 'Drukwerken', icon: Printer, description: 'PDF hub voor drukwerken' }] : []),
                     ...(hasPermission('checklist_view') ? [{ value: 'Checklist', label: 'Checklist', icon: CalendarClock, description: 'Checklist voor onderhoud aanmaken' }] : []),
                 ]
             },

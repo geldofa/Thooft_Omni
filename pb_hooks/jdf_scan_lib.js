@@ -224,21 +224,25 @@ function parseXmlOrder(xml) {
         var mowPag      = parseInt(extractXmlTag(mow, 'mow_pagination'), 10) || 0;
         var mowNoOfColours = extractXmlTag(mow, 'mow_no_of_colours');
         var mowWissel   = mowNoOfColours; // overridden below with plate_change when available
-        var mowOplage   = parseInt(extractXmlTag(mow, 'mow_run_sheets'), 10) || null;
         var mowOutwork  = extractXmlTag(mow, 'mow_outwork').toLowerCase() === 'true';
         var mowFold     = extractXmlTag(mow, 'fold_catalog');
         var mowSection  = extractXmlTag(mow, 'mow_section_id');
         var pressName   = mowOutwork ? 'EXTERN (De Maertelare)' : normalizePress(mowPress);
 
-        // sig_id (Katern) + sequence_id (Volgorde) from mow_press_delivery
+        // sig_id (Katern) + sequence_id (Volgorde) + task_nett_qty from mow_press_delivery
         var deliveryBlock = mow.match(/<mow_press_delivery>([\s\S]*?)<\/mow_press_delivery>/);
         var mowSigId = '';
         var mowVolgorde = null;
+        var mowOplage = null;
         if (deliveryBlock) {
             mowSigId = extractXmlTag(deliveryBlock[1], 'sig_id');
             var seq = parseInt(extractXmlTag(deliveryBlock[1], 'sequence_id'), 10);
             if (!isNaN(seq)) mowVolgorde = seq;
+            var nettQty = parseInt(extractXmlTag(deliveryBlock[1], 'task_nett_qty'), 10);
+            if (nettQty > 0) mowOplage = nettQty;
         }
+        // Fallback to mow_run_sheets (bruto vellen) when task_nett_qty is absent
+        if (!mowOplage) mowOplage = parseInt(extractXmlTag(mow, 'mow_run_sheets'), 10) || null;
 
         // ex_omw from fold_catalog (e.g. W_32p_A4_P_1x_Litho → "1")
         var mowExOmwMatch = mowFold ? mowFold.match(/(\d+)x(?:_|$)/) : null;

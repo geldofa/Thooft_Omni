@@ -9,6 +9,7 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Checkbox } from '../ui/checkbox';
 import { FileText, Clock, User, Printer, Package, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { pb, useAuth } from '../AuthContext';
 import { cn } from '../ui/utils';
@@ -74,7 +75,7 @@ interface JdfOrderPickerProps {
     pressId: string;
     pressName: string;
     printedOrderNrs: Set<string>;
-    onSelect: (order: JdfOrder) => void;
+    onSelect: (order: JdfOrder, partVersionIds?: string[], pressFilter?: string) => void;
 }
 
 const LANG_CHIP_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -115,7 +116,22 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
     const [lastScan, setLastScan] = useState<string | null>(null);
     const [scanning, setScanning] = useState(false);
     const [filters, setFilters] = useState<JdfNameFilter[]>([]);
+    // Per-order selectie van versies (keys = order.id, waarde = set van partVersion-ids)
+    const [selectedVersions, setSelectedVersions] = useState<Record<string, Set<string>>>({});
     const { hasPermission } = useAuth();
+
+    const toggleVersion = (orderId: string, partVersion: string) => {
+        setSelectedVersions(prev => {
+            const set = new Set(prev[orderId] || []);
+            if (set.has(partVersion)) set.delete(partVersion);
+            else set.add(partVersion);
+            return { ...prev, [orderId]: set };
+        });
+    };
+
+    const handleExpand = (order: JdfOrder) => {
+        setExpandedId(expandedId === order.id ? null : order.id);
+    };
 
     const loadFilters = useCallback(async () => {
         try {
@@ -179,14 +195,14 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
     });
     // const printedOrders = orders.filter(o => printedOrderNrs.has(String(o.order_nummer)));
 
-    const handleSelect = (order: JdfOrder) => {
+    const handleSelect = (order: JdfOrder, partVersionIds?: string[], pressFilter?: string) => {
         const { orderNaam, versie } = applyJdfFilter(order.order_naam, filters);
         const filteredOrder: JdfOrder = {
             ...order,
             order_naam: orderNaam,
             ...(versie !== null ? { filtered_versie: versie } : {}),
         };
-        onSelect(filteredOrder);
+        onSelect(filteredOrder, partVersionIds, pressFilter);
         onOpenChange(false);
     };
 
@@ -220,7 +236,7 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
                             <span className="text-gray-400">{printedOrders.length} al gedrukt</span>
                         )}
                         */}
-                        {hasPermission('jdf_filters_bewerken') && (
+                        {hasPermission('werkfiches_filters_instellingen') && (
                             <>
                                 <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={fetchOrders} disabled={loading || scanning}>
                                     <RefreshCw className={cn("w-3 h-3 mr-1", loading && "animate-spin")} />
@@ -277,7 +293,7 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
                                 {/* Header row */}
                                 <div
                                     className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-                                    onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                                    onClick={() => handleExpand(order)}
                                 >
                                     <ChevronRight className={cn("w-4 h-4 text-gray-400 transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
 
@@ -398,50 +414,150 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
                                                     <span className="text-right">Netto opl.</span>
                                                 </div>
                                                 <div className="divide-y max-h-[200px] overflow-y-auto">
-                                                    {katernen ? katernen.map((k, ki) => (
-                                                        <div key={ki} className={cn("grid grid-cols-[60px_24px_28px_28px_1fr_1fr_1fr_36px_70px] items-center gap-2 px-3 py-1 text-xs", k.extern && "opacity-50")}>
-                                                            <span className={cn("font-semibold truncate", k.extern ? "text-gray-400" : "text-gray-800")} title={k.press}>{k.press}</span>
-                                                            <span className="text-gray-400 tabular-nums">{k.volgorde ?? ki + 1}</span>
-                                                            <span className="text-gray-600 tabular-nums">{k.signatureId || k.pagination}</span>
-                                                            <span className="text-gray-600 font-mono text-[10px]">{k.wissel || '—'}</span>
-                                                            <span className="text-gray-600 truncate text-[10px]" title={k.versies?.join(', ')}>{k.versies?.join(', ') || '—'}</span>
-                                                            <span className="text-gray-600 truncate text-[10px]" title={k.vouwwijze}>{k.vouwwijze || '—'}</span>
-                                                            <span className="text-gray-600 truncate text-[10px]" title={k.papier}>{k.papier || '—'}</span>
-                                                            <span className="text-gray-500 tabular-nums">{k.kilo ?? '—'}</span>
-                                                            <span className="text-gray-700 font-semibold tabular-nums text-right">{k.oplage ? k.oplage.toLocaleString('nl-BE') : '—'}</span>
-                                                        </div>
-                                                    )) : versies.map((v, i) => {
-                                                        const colors = getLangChipColors(v.langPrefix);
-                                                        return (
-                                                            <div key={v.partVersion || v.version} className="grid grid-cols-[60px_24px_28px_28px_1fr_1fr_1fr_36px_70px] items-center gap-2 px-3 py-1 text-xs">
-                                                                <span className="text-gray-700 font-semibold truncate">{order.pers_device_id || '—'}</span>
-                                                                <span className="text-gray-400 tabular-nums">{i + 1}</span>
-                                                                <span className="text-gray-600 tabular-nums">{order.paginas || '—'}</span>
-                                                                <span className="text-gray-400">—</span>
-                                                                {v.langPrefix ? (
-                                                                    <Badge variant="outline" className={cn('text-[10px] px-1.5 h-4 font-bold border w-fit', colors.bg, colors.text, colors.border)}>
-                                                                        {v.langPrefix}
-                                                                    </Badge>
-                                                                ) : (
-                                                                    <span className="text-gray-600 truncate text-[10px]">
-                                                                        {(hasFilter && singleVersie && filteredVersie) ? filteredVersie : v.versionLabel}
-                                                                    </span>
-                                                                )}
-                                                                <span className="text-gray-600 truncate text-[10px]">{order.vouwwijze || '—'}</span>
-                                                                <span className="text-gray-600 truncate text-[10px]" title={order.papier}>{order.papier || '—'}</span>
-                                                                <span className="text-gray-400">—</span>
-                                                                <span className="text-gray-700 font-semibold tabular-nums text-right">{v.oplage ? v.oplage.toLocaleString('nl-BE') : '—'}</span>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    {(() => {
+                                                        const versionByName: Record<string, typeof order.versies[number]> = {};
+                                                        (order.versies || []).forEach(v => {
+                                                            if (v.version) versionByName[v.version] = v;
+                                                        });
+                                                        const orderSel = selectedVersions[order.id];
+                                                        return katernen ? katernen.map((k, ki) => {
+                                                            const versNames = (k.versies || []).filter(n => n && n !== 'COMM');
+                                                            const isThisPress = !k.extern && pressName && k.press === pressName && katernen.some(ok => !ok.extern && ok.press !== pressName);
+                                                            return (
+                                                                <div key={ki} className={cn("grid grid-cols-[60px_24px_28px_28px_1fr_1fr_1fr_36px_70px] items-start gap-2 px-3 py-1 text-xs", k.extern && "opacity-50", isThisPress && "bg-blue-50/60")}>
+                                                                    <span className={cn("font-semibold truncate", k.extern ? "text-gray-400" : "text-gray-800")} title={k.press}>{k.press}</span>
+                                                                    <span className="text-gray-400 tabular-nums">{k.volgorde ?? ki + 1}</span>
+                                                                    <span className="text-gray-600 tabular-nums">{k.signatureId || k.pagination}</span>
+                                                                    <span className="text-gray-600 font-mono text-[10px]">{k.wissel || '—'}</span>
+                                                                    <div className="flex flex-col gap-0.5 min-w-0">
+                                                                        {versNames.length === 0 && <span className="text-gray-400 text-[10px]">—</span>}
+                                                                        {versNames.map(name => {
+                                                                            const v = versionByName[name];
+                                                                            const pv = v?.partVersion || name;
+                                                                            const isChecked = !!orderSel?.has(pv);
+                                                                            const colors = v?.langPrefix ? getLangChipColors(v.langPrefix) : null;
+                                                                            return (
+                                                                                <label key={pv} className={cn("flex items-center gap-1.5 cursor-pointer min-w-0", k.extern && "cursor-not-allowed")}>
+                                                                                    <Checkbox
+                                                                                        checked={isChecked}
+                                                                                        onCheckedChange={() => !k.extern && toggleVersion(order.id, pv)}
+                                                                                        disabled={k.extern}
+                                                                                        className="h-3 w-3 flex-shrink-0"
+                                                                                    />
+                                                                                    {colors && v?.langPrefix && (
+                                                                                        <Badge variant="outline" className={cn('text-[9px] px-1 h-3.5 font-bold border flex-shrink-0', colors.bg, colors.text, colors.border)}>
+                                                                                            {v.langPrefix}
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                    <span className="text-gray-600 truncate text-[10px]" title={name}>{v?.versionLabel || name}</span>
+                                                                                </label>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                    <span className="text-gray-600 truncate text-[10px]" title={k.vouwwijze}>{k.vouwwijze || '—'}</span>
+                                                                    <span className="text-gray-600 truncate text-[10px]" title={k.papier}>{k.papier || '—'}</span>
+                                                                    <span className="text-gray-500 tabular-nums">{k.kilo ?? '—'}</span>
+                                                                    <span className="text-gray-700 font-semibold tabular-nums text-right">{k.oplage ? k.oplage.toLocaleString('nl-BE') : '—'}</span>
+                                                                </div>
+                                                            );
+                                                        }) : versies.map((v, i) => {
+                                                            const colors = getLangChipColors(v.langPrefix);
+                                                            const pv = v.partVersion || v.version;
+                                                            const isChecked = !!orderSel?.has(pv);
+                                                            return (
+                                                                <div key={pv} className="grid grid-cols-[60px_24px_28px_28px_1fr_1fr_1fr_36px_70px] items-center gap-2 px-3 py-1 text-xs">
+                                                                    <span className="text-gray-700 font-semibold truncate">{order.pers_device_id || '—'}</span>
+                                                                    <span className="text-gray-400 tabular-nums">{i + 1}</span>
+                                                                    <span className="text-gray-600 tabular-nums">{order.paginas || '—'}</span>
+                                                                    <span className="text-gray-400">—</span>
+                                                                    <label className="flex items-center gap-1.5 cursor-pointer min-w-0">
+                                                                        <Checkbox
+                                                                            checked={isChecked}
+                                                                            onCheckedChange={() => toggleVersion(order.id, pv)}
+                                                                            className="h-3 w-3 flex-shrink-0"
+                                                                        />
+                                                                        {v.langPrefix ? (
+                                                                            <Badge variant="outline" className={cn('text-[10px] px-1.5 h-4 font-bold border w-fit', colors.bg, colors.text, colors.border)}>
+                                                                                {v.langPrefix}
+                                                                            </Badge>
+                                                                        ) : (
+                                                                            <span className="text-gray-600 truncate text-[10px]">
+                                                                                {(hasFilter && singleVersie && filteredVersie) ? filteredVersie : v.versionLabel}
+                                                                            </span>
+                                                                        )}
+                                                                    </label>
+                                                                    <span className="text-gray-600 truncate text-[10px]">{order.vouwwijze || '—'}</span>
+                                                                    <span className="text-gray-600 truncate text-[10px]" title={order.papier}>{order.papier || '—'}</span>
+                                                                    <span className="text-gray-400">—</span>
+                                                                    <span className="text-gray-700 font-semibold tabular-nums text-right">{v.oplage ? v.oplage.toLocaleString('nl-BE') : '—'}</span>
+                                                                </div>
+                                                            );
+                                                        });
+                                                    })()}
                                                 </div>
                                             </div>
                                         )}
 
                                         {/* Action */}
-                                        <div className="flex justify-end">
+                                        <div className="flex justify-end gap-2 flex-wrap">
+                                            {(() => {
+                                                const langs = Array.from(new Set(
+                                                    (order.versies || [])
+                                                        .map(v => v.langPrefix)
+                                                        .filter((p): p is string => !!p)
+                                                ));
+                                                if (langs.length <= 1) return null;
+                                                return langs.map(lang => {
+                                                    const colors = getLangChipColors(lang);
+                                                    const ids = (order.versies || [])
+                                                        .filter(v => v.langPrefix === lang)
+                                                        .map(v => v.partVersion);
+                                                    return (
+                                                        <Button
+                                                            key={lang}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className={cn("min-w-[110px]", colors.bg, colors.text, colors.border)}
+                                                            onClick={() => handleSelect(order, ids)}
+                                                        >
+                                                            Importeer {lang}
+                                                        </Button>
+                                                    );
+                                                });
+                                            })()}
+                                            {(() => {
+                                                const sel = selectedVersions[order.id];
+                                                const count = sel?.size || 0;
+                                                if (count === 0) return null;
+                                                return (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="min-w-[180px] bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                                                        onClick={() => handleSelect(order, Array.from(sel!))}
+                                                    >
+                                                        Importeer selectie ({count})
+                                                    </Button>
+                                                );
+                                            })()}
+                                            {(() => {
+                                                if (!katernen || !pressName) return null;
+                                                const presses = new Set(katernen.filter(k => !k.extern && k.press).map(k => k.press));
+                                                if (presses.size <= 1) return null;
+                                                if (!katernen.some(k => !k.extern && k.press === pressName)) return null;
+                                                return (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="min-w-[180px] bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                                                        onClick={() => handleSelect(order, undefined, pressName)}
+                                                    >
+                                                        Importeer voor {pressName}
+                                                    </Button>
+                                                );
+                                            })()}
                                             <Button size="sm" onClick={() => handleSelect(order)} className="min-w-[180px]">
-                                                Importeren als werkorder
+                                                Importeer workorder
                                             </Button>
                                         </div>
                                     </div>

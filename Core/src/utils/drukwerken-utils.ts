@@ -29,6 +29,7 @@ export interface Katern {
     volgorde?: number | string | null;
     pagination?: number | string | null;
     signatureId?: string | null;
+    lithoman_merge_info?: LithomanMergeInfo | null;
     // CMYK / Papier fields
     cmyk_naam?: string;
     papier_id?: string;
@@ -43,6 +44,27 @@ export interface Katern {
     back_c?: number | null;
     back_m?: number | null;
     back_y?: number | null;
+}
+
+export interface LithomanMergeItem {
+    volgorde: number | string | null;
+    signatureId: string | null;
+    pagination: number | string | null;
+    version: string;
+    wissel: string;
+    oplage: number | null;
+    netRun: number | null;
+    startup: boolean;
+    c4_4: number | null;
+    c4_0: number | null;
+    c1_0: number | null;
+    c1_1: number | null;
+    c4_1: number | null;
+}
+
+export interface LithomanMergeInfo {
+    merged_count: number;
+    items: LithomanMergeItem[];
 }
 
 export interface FinishedPrintJob {
@@ -80,6 +102,7 @@ export interface FinishedPrintJob {
     // JDF import fields
     volgorde?: number | string | null;
     pagination?: number | string | null;
+    lithoman_merge_info?: LithomanMergeInfo | null;
     // CMYK / Papier fields
     cmyk_naam?: string;
     papier_id?: string;

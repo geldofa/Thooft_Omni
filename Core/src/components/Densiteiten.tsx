@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { pb } from './AuthContext';
+import { pb, useAuth } from './AuthContext';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, Beaker } from 'lucide-react';
+import { Search, Beaker, AlertCircle } from 'lucide-react';
 import { cn } from './ui/utils';
 import { formatNumber } from '../utils/formatNumber';
 import { format } from 'date-fns';
@@ -28,17 +28,26 @@ interface DensityRecord {
 }
 
 export function Densiteiten() {
+    const { hasPermission, user } = useAuth();
+    const canSeeAll = hasPermission('densiteiten_bekijken_alle');
+    const canSeeOwn = hasPermission('densiteiten_bekijken_eigen');
+
     const [records, setRecords] = useState<DensityRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
+        if (!canSeeOwn && !canSeeAll) return;
+
         async function fetchDensiteiten() {
             try {
                 setIsLoading(true);
-                // Fetch only records that have at least a name or some CMYK data
+                const cmykFilter = 'cmyk_naam != "" || front_k != 0 || front_c != 0 || front_m != 0 || front_y != 0';
+                const filter = (!canSeeAll && user?.pressId)
+                    ? `pers = "${user.pressId}" && (${cmykFilter})`
+                    : cmykFilter;
                 const result = await pb.collection('drukwerken').getFullList<any>({
-                    filter: 'cmyk_naam != "" || front_k != 0 || front_c != 0 || front_m != 0 || front_y != 0',
+                    filter,
                     sort: '-date',
                     expand: 'papier_id'
                 });
@@ -71,7 +80,7 @@ export function Densiteiten() {
         }
 
         fetchDensiteiten();
-    }, []);
+    }, [canSeeAll, canSeeOwn, user?.pressId]);
 
     const filteredRecords = useMemo(() => {
         if (!searchQuery) return records;
@@ -95,6 +104,15 @@ export function Densiteiten() {
             </div>
         );
     };
+
+    if (!canSeeOwn && !canSeeAll) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh] text-gray-400">
+                <AlertCircle className="w-6 h-6 mr-2" />
+                Geen toegang
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">

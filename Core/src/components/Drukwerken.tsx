@@ -12,7 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Wrench, Plus, ArrowUp, ArrowDown, CornerDownRight, Package } from 'lucide-react';
+import { Check, Edit, Trash2, Database, RefreshCw, X, Search, Settings2, Wrench, Plus, ArrowUp, ArrowDown, CornerDownRight, Package } from 'lucide-react';
 import { cn } from './ui/utils';
 import { TableVirtuoso } from 'react-virtuoso';
 import { formatNumber } from '../utils/formatNumber';
@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/t
 import { AddFinishedJobDialog } from './dialogs/AddFinishedJobDialog';
 import { JdfImportDialog } from './dialogs/JdfImportDialog';
 import { JdfOrderPicker, JdfOrder } from './dialogs/JdfOrderPicker';
+import { mergeLithomanKaternen, recalcMergedKatern } from '../utils/lithoman-merge';
 import { JdfOverview } from './JdfOverview';
 import { Densiteiten } from './Densiteiten';
 import { PapierBeheer } from './PapierBeheer';
@@ -442,6 +443,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const [editingJobs, setEditingJobs] = useState<FinishedPrintJob[]>([]);
     const [isJdfImportOpen, setIsJdfImportOpen] = useState(false);
     const [isJdfPickerOpen, setIsJdfPickerOpen] = useState(false);
+    const [papierSearchQuery, setPapierSearchQuery] = useState('');
+    const [isPapierSettingsOpen, setIsPapierSettingsOpen] = useState(false);
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<{ type: 'werkorder' | 'katern' | 'job', id: string, secondaryId?: string } | null>(null);
@@ -820,6 +823,20 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
         });
     }, [syncToLocalStorage]);
 
+    const handleLithomanItemRemove = useCallback((werkorderId: string, katernId: string, itemIdx: number) => {
+        setWerkorders(prevWerkorders => {
+            const next = prevWerkorders.map(wo => {
+                if (wo.id !== werkorderId) return wo;
+                return {
+                    ...wo,
+                    katernen: wo.katernen.map(k => k.id === katernId ? recalcMergedKatern(k, itemIdx) : k),
+                };
+            });
+            syncToLocalStorage(next);
+            return next;
+        });
+    }, [syncToLocalStorage]);
+
     const handleWerkorderChange = useCallback((werkorderId: string, field: 'orderNr' | 'orderName', value: string) => {
         setWerkorders(prevWerkorders => {
             const next = prevWerkorders.map(wo => {
@@ -1011,7 +1028,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     pers: processedKatern.pressId || effectivePressId,
                     status: 'check',
                     opmerking: processedKatern.opmerking || '',
-                    voltooid_op: processedKatern.voltooid_op || ((Number(processedKatern.green) + Number(processedKatern.red) > 0) ? new Date().toISOString() : null)
+                    voltooid_op: processedKatern.voltooid_op || ((Number(processedKatern.green) + Number(processedKatern.red) > 0) ? new Date().toISOString() : null),
+                    lithoman_merge_info: processedKatern.lithoman_merge_info || null
                 };
 
                 let record;
@@ -1621,7 +1639,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         delta_percent: processed.delta_percentage || 0,
                         pers: processed.pressId || job.pressId || user?.pressId,
                         opmerking: job.opmerkingen,
-                        voltooid_op: (Number(job.green) + Number(job.red) > 0) ? new Date().toISOString() : null
+                        voltooid_op: (Number(job.green) + Number(job.red) > 0) ? new Date().toISOString() : null,
+                        lithoman_merge_info: (job as any).lithoman_merge_info || null
                     };
 
                     const record = await pb.collection('drukwerken').create(pbData);
@@ -2039,10 +2058,10 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     };
 
 
-    const showWerkorders = effectiveRole === 'press' || effectiveRole === 'admin' || effectiveRole === 'meestergast';
-    const showFinished = (effectiveRole === 'admin' || effectiveRole === 'meestergast' || (effectiveRole === 'press' && hasPermission('drukwerken_view')));
+    const showWerkorders = hasPermission('drukwerken_create');
+    const showFinished = hasPermission('drukwerken_view');
     const showTrash = hasPermission('drukwerken_trash_view');
-    const showJdf = hasPermission('jdf_gebruiken') || hasPermission('jdf_bekijken_eigen') || hasPermission('jdf_bekijken_alle') || hasPermission('jdf_importeren');
+    const showJdf = hasPermission('werkfiches_bekijken_eigen') || hasPermission('werkfiches_bekijken_alle') || hasPermission('werkfiches_importeren');
 
     return (
         <TooltipProvider delayDuration={300}>
@@ -2073,13 +2092,17 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             {showFinished && (
                                                 <TabsTrigger value="Gedrukt" className="tab-pill-trigger">Gedrukt</TabsTrigger>
                                             )}
-                                            <TabsTrigger value="Densiteiten" className="tab-pill-trigger">Densiteiten</TabsTrigger>
-                                            <TabsTrigger value="Papier" className="tab-pill-trigger">Papier</TabsTrigger>
+                                            {(hasPermission('densiteiten_bekijken_eigen') || hasPermission('densiteiten_bekijken_alle')) && (
+                                                <TabsTrigger value="Densiteiten" className="tab-pill-trigger">Densiteiten</TabsTrigger>
+                                            )}
+                                            {hasPermission('papier_bekijken') && (
+                                                <TabsTrigger value="Papier" className="tab-pill-trigger">Papier</TabsTrigger>
+                                            )}
                                             {hasPermission('drukwerken_trash_view') && (
                                                 <TabsTrigger value="Prullenbak" className="tab-pill-trigger">Prullenbak</TabsTrigger>
                                             )}
                                             {showJdf && (
-                                                <TabsTrigger value="JDF" className="tab-pill-trigger">JDF</TabsTrigger>
+                                                <TabsTrigger value="JDF" className="tab-pill-trigger">Werkfiches</TabsTrigger>
                                             )}
                                         </TabsList>
                                     )}
@@ -2123,10 +2146,29 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                             <Plus className="w-4 h-4 mr-2" /> Via JDF
                                         </Button>
                                     )}
-                                    {activeTab === 'Nieuw' && hasPermission('jdf_importeren') && user?.press && (
+                                    {activeTab === 'Nieuw' && hasPermission('werkfiches_importeren') && user?.press && (
                                         <Button variant="outline" onClick={() => setIsJdfPickerOpen(true)}>
                                             <Package className="w-4 h-4 mr-2" /> Beschikbare Orders
                                         </Button>
+                                    )}
+                                    {activeTab === 'Papier' && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative w-64">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+                                                <Input
+                                                    placeholder="Zoek op naam, fabrikant..."
+                                                    value={papierSearchQuery}
+                                                    onChange={(e) => setPapierSearchQuery(e.target.value)}
+                                                    className="pl-10 bg-white border-gray-200 h-9 text-sm"
+                                                />
+                                            </div>
+                                            {hasPermission('papier_aanpassen') && (
+                                                <Button variant="outline" size="sm" onClick={() => setIsPapierSettingsOpen(true)} className="h-9">
+                                                    <Settings2 className="size-4 mr-2" />
+                                                    Instellingen
+                                                </Button>
+                                            )}
+                                        </div>
                                     )}
                                     {activeTab === 'Gedrukt' && (
                                         <Button
@@ -2197,7 +2239,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 </Select>
                                             </>
                                         )}
-                                        {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && (
+                                        {hasPermission('drukwerken_view_all') && (
                                             <Select value={pressFilter} onValueChange={setPressFilter}>
                                                 <SelectTrigger className="w-[140px] h-9 bg-white text-xs">
                                                     <SelectValue placeholder="Alle Persen" />
@@ -2300,78 +2342,79 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 const hideVolgorde = !isJdfOrder || wo.katernen.length <= 1;
                                                 const hideKatern = !isJdfOrder || wo.katernen.every(k => k.signatureId === '001' || k.signatureId === 1 as any);
                                                 return (<>
-                                            <TableHeader>
-                                                <TableRow className="border-b-0 sticky top-0 z-40 bg-white h-10">
-                                                    <TableHead colSpan={4} className="text-center bg-blue-100 border-r border-black sticky top-0 z-40">Data</TableHead>
-                                                    <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black sticky top-0 z-40">Wissels</TableHead>
-                                                    <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black sticky top-0 z-40">Berekening</TableHead>
-                                                    <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black sticky top-0 z-40">Prestatie</TableHead>
-                                                    <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
-                                                </TableRow>
-                                                <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm h-10">
-                                                    <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">
-                                                        <div className="flex items-center gap-0">
-                                                            {!hideVolgorde && <>
-                                                                <span className="w-[64px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Volgorde</span>
-                                                                <div className="self-stretch w-px bg-gray-300 mx-1.5 flex-shrink-0" />
-                                                            </>}
-                                                            {!hideKatern && <>
-                                                                <span className="w-[52px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Katern</span>
-                                                                <div className="self-stretch w-px bg-black mx-1.5 flex-shrink-0" />
-                                                            </>}
-                                                            <span className="ml-1.5">Versie</span>
-                                                        </div>
-                                                    </TableHead>
-                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Blz</TableHead>
-                                                    <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
-                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
-                                                    <TableHead className="text-center sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.startup }}>Opstart</TableHead>
-                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_4 }}>4/4</TableHead>
-                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_0 }}>4/0</TableHead>
-                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_0 }}>1/0</TableHead>
-                                                    <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_1 }}>1/1</TableHead>
-                                                    <TableHead className="text-center px-0 text-[10px] border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_1 }}>4/1</TableHead>
-                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.maxGross }}>Max Bruto</TableHead>
-                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.green }}>Groen</TableHead>
-                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.red }}>Rood</TableHead>
-                                                    <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.delta }}>Delta</TableHead>
-                                                    <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.deltaPercent }}>Delta %</TableHead>
-                                                    <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-[40px] z-40 bg-white"></TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {(() => {
-                                                    const hideVolgorde = wo.katernen.length <= 1;
-                                                    const hideKatern = wo.katernen.every(k => k.signatureId === '001' || k.signatureId === 1 as any);
-                                                    return wo.katernen.map((katern) => (
-                                                        <DrukwerkRow
-                                                            key={katern.id}
-                                                            werkorderId={wo.id}
-                                                            katern={katern}
-                                                            orderNr={wo.orderNr}
-                                                            orderName={wo.orderName}
-                                                            effectivePress={effectivePress}
-                                                            effectivePressId={effectivePressId}
-                                                            parameters={parameters}
-                                                            activePresses={activePresses}
-                                                            outputConversions={outputConversions}
-                                                            pressMap={pressMap}
-                                                            calculatedFields={calculatedFields}
-                                                            onKaternChange={handleKaternChange}
-                                                            onDeleteKatern={requestDeleteKatern}
-                                                            onAutoSaved={handleAutoSaved}
-                                                            addActivityLog={addActivityLog}
-                                                            user={user}
-                                                            hasPermission={hasPermission}
-                                                            hideVolgorde={hideVolgorde}
-                                                            hideKatern={hideKatern}
+                                                    <TableHeader>
+                                                        <TableRow className="border-b-0 sticky top-0 z-40 bg-white h-10">
+                                                            <TableHead colSpan={4} className="text-center bg-blue-100 border-r border-black sticky top-0 z-40">Data</TableHead>
+                                                            <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black sticky top-0 z-40">Wissels</TableHead>
+                                                            <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black sticky top-0 z-40">Berekening</TableHead>
+                                                            <TableHead colSpan={2} className="text-center bg-purple-100 border-r border-black sticky top-0 z-40">Prestatie</TableHead>
+                                                            <TableHead colSpan={1} style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-0 z-40 bg-white"></TableHead>
+                                                        </TableRow>
+                                                        <TableRow className="sticky top-[40px] z-40 bg-white shadow-sm h-10">
+                                                            <TableHead style={{ width: COL_WIDTHS.version }} className="border-r sticky top-[40px] z-40 bg-white">
+                                                                <div className="flex items-center gap-0">
+                                                                    {!hideVolgorde && <>
+                                                                        <span className="w-[64px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Volgorde</span>
+                                                                        <div className="self-stretch w-px bg-gray-300 mx-1.5 flex-shrink-0" />
+                                                                    </>}
+                                                                    {!hideKatern && <>
+                                                                        <span className="w-[52px] text-center text-[10px] text-gray-400 uppercase font-bold flex-shrink-0">Katern</span>
+                                                                        <div className="self-stretch w-px bg-black mx-1.5 flex-shrink-0" />
+                                                                    </>}
+                                                                    <span className="ml-1.5">Versie</span>
+                                                                </div>
+                                                            </TableHead>
+                                                            <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.pages }}>Blz</TableHead>
+                                                            <TableHead className="text-center items-center justify-center leading-3 border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.exOmw }}>Ex/<br />Omw.</TableHead>
+                                                            <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.netRun }}>Oplage</TableHead>
+                                                            <TableHead className="text-center sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.startup }}>Opstart</TableHead>
+                                                            <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_4 }}>4/4</TableHead>
+                                                            <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_0 }}>4/0</TableHead>
+                                                            <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_0 }}>1/0</TableHead>
+                                                            <TableHead className="text-center px-0 text-[10px] border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c1_1 }}>1/1</TableHead>
+                                                            <TableHead className="text-center px-0 text-[10px] border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.c4_1 }}>4/1</TableHead>
+                                                            <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.maxGross }}>Max Bruto</TableHead>
+                                                            <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.green }}>Groen</TableHead>
+                                                            <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.red }}>Rood</TableHead>
+                                                            <TableHead className="text-center border-r sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.delta }}>Delta</TableHead>
+                                                            <TableHead className="text-center border-r border-black sticky top-[40px] z-40 bg-white" style={{ width: COL_WIDTHS.deltaPercent }}>Delta %</TableHead>
+                                                            <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black sticky top-[40px] z-40 bg-white"></TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {(() => {
+                                                            const hideVolgorde = wo.katernen.length <= 1;
+                                                            const hideKatern = wo.katernen.every(k => k.signatureId === '001' || k.signatureId === 1 as any);
+                                                            return wo.katernen.map((katern) => (
+                                                                <DrukwerkRow
+                                                                    key={katern.id}
+                                                                    werkorderId={wo.id}
+                                                                    katern={katern}
+                                                                    orderNr={wo.orderNr}
+                                                                    orderName={wo.orderName}
+                                                                    effectivePress={effectivePress}
+                                                                    effectivePressId={effectivePressId}
+                                                                    parameters={parameters}
+                                                                    activePresses={activePresses}
+                                                                    outputConversions={outputConversions}
+                                                                    pressMap={pressMap}
+                                                                    calculatedFields={calculatedFields}
+                                                                    onKaternChange={handleKaternChange}
+                                                                    onDeleteKatern={requestDeleteKatern}
+                                                                    onLithomanItemRemove={handleLithomanItemRemove}
+                                                                    onAutoSaved={handleAutoSaved}
+                                                                    addActivityLog={addActivityLog}
+                                                                    user={user}
+                                                                    hasPermission={hasPermission}
+                                                                    hideVolgorde={hideVolgorde}
+                                                                    hideKatern={hideKatern}
 
-                                                        />
-                                                    ));
-                                                })()}
-                                            </TableBody>
-                                        </>);
-                                        })()}
+                                                                />
+                                                            ));
+                                                        })()}
+                                                    </TableBody>
+                                                </>);
+                                            })()}
                                         </Table>
                                         <div className="flex justify-between items-center mt-2">
                                             <Button onClick={() => handleAddKaternClick(wo.id)} size="sm" variant="ghost">
@@ -2398,7 +2441,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                     fixedHeaderContent={() => (
                                         <>
                                             <TableRow className="border-b-0 bg-white h-10">
-                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
+                                                {hasPermission('drukwerken_view_all') && <TableHead style={{ width: COL_WIDTHS.press }} className="bg-white"></TableHead>}
                                                 <TableHead colSpan={6} className="text-center bg-blue-100 border-r border-black">Data</TableHead>
                                                 <TableHead colSpan={6} className="text-center bg-green-100 border-r border-black">Wissels</TableHead>
                                                 <TableHead colSpan={3} className="text-center bg-yellow-100 border-r border-black">Berekening</TableHead>
@@ -2406,7 +2449,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 <TableHead style={{ width: COL_WIDTHS.actions }} className="border-r border-black bg-white"></TableHead>
                                             </TableRow>
                                             <TableRow className="border-b border-black bg-white shadow-sm h-10">
-                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-slate-300">Pers</TableHead>}
+                                                {hasPermission('drukwerken_view_all') && <TableHead style={{ width: COL_WIDTHS.press }} className="text-center bg-gray-100 border-r border-slate-300">Pers</TableHead>}
                                                 <TableHead onClick={() => requestSort('date')} style={{ width: COL_WIDTHS.date }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Datum {getSortIcon('date')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderNr')} style={{ width: COL_WIDTHS.orderNr }} className="cursor-pointer hover:bg-gray-100 text-center border-r border-slate-300 bg-white"><div className="flex items-center justify-center">Order nr {getSortIcon('orderNr')}</div></TableHead>
                                                 <TableHead onClick={() => requestSort('orderName')} style={{ width: COL_WIDTHS.orderName }} className="cursor-pointer hover:bg-gray-100 border-r border-slate-300 bg-white"><div className="flex items-center">Order {getSortIcon('orderName')}</div></TableHead>
@@ -2483,7 +2526,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
 
                                         return (
                                             <>
-                                                {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && (
+                                                {hasPermission('drukwerken_view_all') && (
                                                     <TableCell className={cn("py-1 px-2 font-medium bg-gray-50 border-r border-black text-center truncate group-hover:bg-blue-50/70", borderClass)} title={job.pressName}>
                                                         {job.pressName || '-'}
                                                     </TableCell>
@@ -2708,7 +2751,7 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                                                 className={`table-fixed w-full ${FONT_SIZES.body}`}
                                             >
                                                 <colgroup>
-                                                    {(effectiveRole === 'admin' || effectiveRole === 'meestergast') && <col style={{ width: COL_WIDTHS.press }} />}
+                                                    {hasPermission('drukwerken_view_all') && <col style={{ width: COL_WIDTHS.press }} />}
                                                     <col style={{ width: COL_WIDTHS.date }} />
                                                     <col style={{ width: COL_WIDTHS.orderNr }} />
                                                     <col style={{ width: COL_WIDTHS.orderName }} />
@@ -2742,7 +2785,12 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         <Densiteiten />
                     </TabsContent>
                     <TabsContent value="Papier">
-                        <PapierBeheer />
+                        <PapierBeheer
+                            searchQuery={papierSearchQuery}
+                            setSearchQuery={setPapierSearchQuery}
+                            isSettingsOpen={isPapierSettingsOpen}
+                            setIsSettingsOpen={setIsPapierSettingsOpen}
+                        />
                     </TabsContent>
 
                     <TabsContent value="Prullenbak">
@@ -2831,9 +2879,13 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     finishedJobs.forEach(j => { if (j.orderNr) set.add(String(j.orderNr)); });
                     return set;
                 })()}
-                onSelect={(order: JdfOrder) => {
+                onSelect={(order: JdfOrder, partVersionIds?: string[], pressFilter?: string) => {
                     const newWerkorderId = Date.now().toString();
                     const hasKaternen = Array.isArray(order.katernen) && order.katernen.length > 0;
+                    const isLithoman = order.pers_device_id === 'Lithoman';
+                    const idFilter = partVersionIds && partVersionIds.length > 0
+                        ? new Set(partVersionIds)
+                        : null;
                     const makeKaternBase = (wissel: string, oplage: number | null, version: string, i: number) => ({
                         id: `${newWerkorderId}-${i + 1}`,
                         version,
@@ -2854,15 +2906,71 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                         delta: null,
                         deltaPercentage: null,
                     });
+                    // Full intern katernen of the order, used as context for version label filter checks.
+                    const allInternKaternen = hasKaternen
+                        ? order.katernen.filter(k => !k.extern).map(k => {
+                            const versieNames = (k.versies || []).filter((v: string) => v && v !== 'COMM');
+                            return { version: versieNames.join(', ') };
+                        })
+                        : (order.versies || []).map((v: any) => ({ version: v.version || '' }));
+
                     let katernen: Katern[];
-                    if (hasKaternen) {
-                        katernen = order.katernen.map((k, i) => {
+                    if (pressFilter && hasKaternen) {
+                        const pressKaternen = order.katernen.filter(k => !k.extern && k.press === pressFilter);
+                        katernen = pressKaternen.map((k, i) => {
                             const versieNames = Array.isArray(k.versies)
                                 ? k.versies.filter((v: string) => v && v !== 'COMM')
                                 : [];
-                            const versionLabel = versieNames.length > 0
-                                ? versieNames.join(', ')
-                                : '';
+                            const versionLabel = versieNames.length === 0
+                                ? ''
+                                : (isLithoman && versieNames.length >= 4)
+                                    ? `${versieNames.length} versies`
+                                    : versieNames.join(', ');
+                            return {
+                                ...makeKaternBase(k.wissel || '', k.oplage ?? null, versionLabel, i),
+                                pages: k.pagination || order.paginas || null,
+                                exOmw: k.exOmw || order.ex_omw || '1',
+                                volgorde: k.volgorde ?? (i + 1),
+                                pagination: k.pagination,
+                                signatureId: k.signatureId || null,
+                            };
+                        });
+                    } else if (idFilter) {
+                        // Per-versie rijen, gefilterd op partVersion-ids. Werkt op alle persen.
+                        // JDF-volgorde wordt aangehouden door order.versies te itereren.
+                        const katernByVersionName: Record<string, typeof order.katernen[number]> = {};
+                        (order.katernen || []).forEach(k => {
+                            (k.versies || []).forEach(name => {
+                                if (name && !katernByVersionName[name]) katernByVersionName[name] = k;
+                            });
+                        });
+                        const filteredVersies = (order.versies || []).filter(v =>
+                            idFilter.has(v.partVersion) && (!katernByVersionName[v.version]?.extern)
+                        );
+                        katernen = filteredVersies.map((v, i) => {
+                            const k = katernByVersionName[v.version];
+                            return {
+                                ...makeKaternBase(v.wissel || '', v.oplage ?? null, v.version || '', i),
+                                pages: k?.pagination || order.paginas || null,
+                                exOmw: k?.exOmw || order.ex_omw || '1',
+                                volgorde: i + 1,
+                                pagination: k?.pagination ?? null,
+                                signatureId: k?.signatureId || null,
+                            };
+                        });
+                    } else if (hasKaternen) {
+                        // EXTERN katernen worden niet op deze pers gedrukt en worden overgeslagen.
+                        // Index-reset zorgt dat de eerstvolgende interne katern de Opstart krijgt.
+                        const internKaternen = order.katernen.filter(k => !k.extern);
+                        katernen = internKaternen.map((k, i) => {
+                            const versieNames = Array.isArray(k.versies)
+                                ? k.versies.filter((v: string) => v && v !== 'COMM')
+                                : [];
+                            const versionLabel = versieNames.length === 0
+                                ? ''
+                                : (isLithoman && versieNames.length >= 4)
+                                    ? `${versieNames.length} versies`
+                                    : versieNames.join(', ');
                             return {
                                 ...makeKaternBase(k.wissel || '', k.oplage ?? null, versionLabel, i),
                                 pages: k.pagination || order.paginas || null,
@@ -2879,10 +2987,12 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                             volgorde: i + 1,
                         }));
                     }
-                    // Apply version label filters at import time
+                    // Apply version label filters at import time.
+                    // allInternKaternen provides the full order context for requireMultiple/requireAllMatch checks,
+                    // so press-filtered imports (1 katern) still match filters that require multiple katernen.
                     if (versionLabelFilters.length > 0) {
                         katernen = katernen.map(k => {
-                            const label = applyVersionLabelFilter(k, katernen, versionLabelFilters);
+                            const label = applyVersionLabelFilter(k, allInternKaternen, versionLabelFilters);
                             return label ? { ...k, version: label } : k;
                         });
                     }
@@ -2909,6 +3019,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     }
                     if (order.filtered_versie && order.aantal_versies <= 1) {
                         katernen = katernen.map(k => ({ ...k, version: order.filtered_versie! }));
+                    }
+                    if (order.pers_device_id === 'Lithoman') {
+                        katernen = mergeLithomanKaternen(katernen);
                     }
                     const newWerkorder: Werkorder = {
                         id: newWerkorderId,

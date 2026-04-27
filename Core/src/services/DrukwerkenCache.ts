@@ -71,6 +71,7 @@ class DrukwerkenCacheService {
             created: r.created,
             wissel: r.wissel || '',
             oplage: r.oplage || null,
+            lithoman_merge_info: r.lithoman_merge_info || null,
             opmerkingen: r.opmerking || '',
             is_finished: !!r.is_finished,
             locked: !!r.locked,

@@ -98,10 +98,9 @@ const LANG_CHIP_COLORS: Record<string, { bg: string; text: string; border: strin
 
 export function JdfOverview() {
     const { hasPermission, user } = useAuth();
-    const legacy = hasPermission('jdf_gebruiken');
-    const canSeeAll = hasPermission('jdf_bekijken_alle') || legacy;
-    const canSeeOwn = hasPermission('jdf_bekijken_eigen');
-    const canEditFilters = hasPermission('jdf_filters_bewerken') || legacy;
+    const canSeeAll = hasPermission('werkfiches_bekijken_alle');
+    const canSeeOwn = hasPermission('werkfiches_bekijken_eigen');
+    const canEditFilters = hasPermission('werkfiches_filters_instellingen');
 
     const [orders, setOrders] = useState<JdfOrderRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -122,10 +121,10 @@ export function JdfOverview() {
     useEffect(() => {
         pb.collection('app_settings').getFirstListItem('key = "jdf_name_filters"')
             .then(rec => { if (Array.isArray(rec?.value)) setNameFilters(rec.value as JdfNameFilter[]); })
-            .catch(() => {});
+            .catch(() => { });
         pb.collection('app_settings').getFirstListItem('key = "version_label_filters"')
             .then(rec => { if (Array.isArray(rec?.value)) setVersionFilters(rec.value as VersionLabelFilter[]); })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     const saveSetting = async (key: string, value: any) => {
@@ -203,9 +202,9 @@ export function JdfOverview() {
             } catch { /* no scan info yet */ }
         } catch (e: any) {
             if (e?.status === 404) {
-                setError('JDF Orders collectie niet gevonden. Voer eerst de migratie uit.');
+                setError('Werkfiches collectie niet gevonden. Voer eerst de migratie uit.');
             } else {
-                setError('Fout bij ophalen van JDF orders.');
+                setError('Fout bij ophalen van Werkfiches.');
                 console.error('[JdfOverview] Fetch error:', e);
             }
         } finally {
@@ -253,7 +252,7 @@ export function JdfOverview() {
         );
     });
 
-    if (!canSeeAll && !canSeeOwn && !hasPermission('jdf_importeren')) {
+    if (!canSeeAll && !canSeeOwn && !hasPermission('werkfiches_importeren')) {
         return (
             <div className="flex items-center justify-center min-h-[60vh] text-gray-400">
                 <AlertCircle className="w-6 h-6 mr-2" />
@@ -269,7 +268,7 @@ export function JdfOverview() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <FileText className="w-6 h-6 text-blue-600" />
-                        JDF Orders
+                        Werkfiches
                     </h1>
                     <p className="text-sm text-gray-500 mt-0.5">
                         Overzicht van alle geparseerde JDF bestanden in de database
@@ -298,24 +297,28 @@ export function JdfOverview() {
                         <RefreshCw className={cn("w-4 h-4 mr-1", loading && "animate-spin")} />
                         Vernieuwen
                     </Button>
-                    <Button variant="outline" size="sm" onClick={forceScan} disabled={loading || scanning} className="text-orange-600 border-orange-200 hover:text-orange-700 hover:bg-orange-50">
-                        <RefreshCw className={cn("w-4 h-4 mr-1", scanning && "animate-spin")} />
-                        Herscannen
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(filterPanelOpen && "bg-gray-100")}
-                        onClick={() => setFilterPanelOpen(p => !p)}
-                    >
-                        <Settings className="w-4 h-4 mr-1" />
-                        Filters{(nameFilters.length + versionFilters.length) > 0 && ` (${nameFilters.length + versionFilters.length})`}
-                    </Button>
+                    {canEditFilters && (
+                        <Button variant="outline" size="sm" onClick={forceScan} disabled={loading || scanning} className="text-orange-600 border-orange-200 hover:text-orange-700 hover:bg-orange-50">
+                            <RefreshCw className={cn("w-4 h-4 mr-1", scanning && "animate-spin")} />
+                            Herscannen
+                        </Button>
+                    )}
+                    {canEditFilters && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(filterPanelOpen && "bg-gray-100")}
+                            onClick={() => setFilterPanelOpen(p => !p)}
+                        >
+                            <Settings className="w-4 h-4 mr-1" />
+                            Filters{(nameFilters.length + versionFilters.length) > 0 && ` (${nameFilters.length + versionFilters.length})`}
+                        </Button>
+                    )}
                 </div>
             </div>
 
             {/* Consolidated filter panel */}
-            {filterPanelOpen && (
+            {filterPanelOpen && canEditFilters && (
                 <div className="border border-gray-200 rounded-lg bg-gray-50/50 px-3 py-3 space-y-4">
 
                     {/* --- Naamfilters --- */}
@@ -385,7 +388,7 @@ export function JdfOverview() {
                                         <div key={f.id} className="space-y-1">
                                             <div className="grid grid-cols-[100px_1fr_80px_80px_28px] gap-2 items-center">
                                                 <input value={f.versionMatch} onChange={e => updateVersionFilter(f.id, { versionMatch: e.target.value })} placeholder="bv. common" className="h-7 text-xs border border-gray-200 rounded px-2 bg-white disabled:bg-gray-50 disabled:text-gray-400" disabled={!canEditFilters} />
-                                                <input value={f.template} onChange={e => updateVersionFilter(f.id, { template: e.target.value })} placeholder='Katern "{signatureId}" - "{exOmw}" x "{pages}" Blz' className="h-7 text-xs border border-gray-200 rounded px-2 bg-white font-mono disabled:bg-gray-50 disabled:text-gray-400" disabled={!canEditFilters} />
+                                                <input value={f.template} onChange={e => updateVersionFilter(f.id, { template: e.target.value })} placeholder='Katern {volgorde} - {pages}p  of  "{signatureId}" - "{exOmw}" x "{pages}" Blz' className="h-7 text-xs border border-gray-200 rounded px-2 bg-white font-mono disabled:bg-gray-50 disabled:text-gray-400" disabled={!canEditFilters} />
                                                 <button className={cn("h-7 rounded text-[11px] font-medium border transition-colors", f.requireMultiple ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50", !canEditFilters && "pointer-events-none opacity-60")} onClick={() => canEditFilters && updateVersionFilter(f.id, { requireMultiple: !f.requireMultiple })}>{f.requireMultiple ? 'Ja' : 'Nee'}</button>
                                                 <button className={cn("h-7 rounded text-[11px] font-medium border transition-colors", f.requireAllMatch ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50", !canEditFilters && "pointer-events-none opacity-60")} onClick={() => canEditFilters && updateVersionFilter(f.id, { requireAllMatch: !f.requireAllMatch })}>{f.requireAllMatch ? 'Ja' : 'Nee'}</button>
                                                 {canEditFilters ? (
@@ -459,7 +462,7 @@ export function JdfOverview() {
             {!loading && orders.length === 0 && !error && (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
                     <Package className="w-10 h-10" />
-                    <p className="text-sm font-medium">Geen JDF orders in de database</p>
+                    <p className="text-sm font-medium">Geen Werkfiches in de database</p>
                     <p className="text-xs">De watcher hook scant elke 5 minuten de jdf/ map.</p>
                 </div>
             )}
@@ -539,19 +542,21 @@ export function JdfOverview() {
                                                 <TableCell className="truncate text-[10px] text-gray-400 max-w-[100px]" title={order.jdf_bestandsnaam}>
                                                     {order.jdf_bestandsnaam}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setDeleteTarget({ id: order.id, name: `DT${order.order_nummer} - ${order.order_naam}` });
-                                                        }}
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                    </Button>
-                                                </TableCell>
+                                                {canEditFilters && (
+                                                    <TableCell>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 w-6 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setDeleteTarget({ id: order.id, name: `DT${order.order_nummer} - ${order.order_naam}` });
+                                                            }}
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </Button>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
 
                                             {/* Expanded detail row */}
