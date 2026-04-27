@@ -63,29 +63,40 @@ export function LoginForm() {
       ];
 
       const tempPb = new (pb.constructor as any)(pb.baseUrl);
+      let identity = acc.email || acc.username;
+
+      // Only fetch the record if we don't have an email and want to try finding it
+      if (!acc.email || acc.email.includes('undefined')) {
+        try {
+          // Use single quotes for filter and handle potential 400/403 errors
+          const records = await tempPb.collection('users').getList(1, 1, {
+            filter: `username = '${acc.username.replace(/'/g, "\\'")}' || email = '${acc.username.replace(/'/g, "\\'")}'`,
+            $cancelKey: 'quickLoginFetch'
+          });
+
+          if (records.totalItems > 0) {
+            const record = records.items[0];
+            if (record.email && record.email.includes('@') && record.email !== 'undefined') {
+              identity = record.email;
+            } else if (record.username) {
+              identity = record.username;
+            }
+          }
+        } catch (e) {
+          console.warn("[QuickLogin] User record fetch failed (non-critical):", e);
+        }
+      }
 
       for (const pw of passwordsToTry) {
         if (!pw) continue;
         try {
-          const records = await tempPb.collection('users').getList(1, 1, {
-            filter: `username = "${acc.username}" || email = "${acc.username}"`
-          });
-
-          let identity = acc.username;
-          if (records.totalItems > 0) {
-            const record = records.items[0];
-            identity = (record.email && record.email.includes('@') && record.email !== 'undefined')
-              ? record.email
-              : (record.username || acc.username);
-          }
-
           await tempPb.collection('users').authWithPassword(identity, pw);
           if (tempPb.authStore.isValid) {
             workingPw = pw;
             break;
           }
         } catch (e) {
-          // Failures here cause the 400 errors in console if no password works
+          // Silent fail for password attempts
         }
       }
     }

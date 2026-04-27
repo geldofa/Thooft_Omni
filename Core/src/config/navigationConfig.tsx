@@ -5,7 +5,8 @@ import {
     Users,
     FileText,
     MessageSquare,
-    Radio
+    Radio,
+    Calendar
 } from 'lucide-react';
 
 import { Permission, Press } from '../components/AuthContext';
@@ -52,12 +53,35 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         id: '/Drukwerken',
         label: 'Drukwerken',
         icon: Printer,
-        description: 'Beheer drukwerk opdrachten',
+        description: 'Beheer drukwerk opdrachten en papier',
         permission: 'drukwerken_view',
+        anyPermission: ['drukwerken_view', 'werkfiches_bekijken_eigen', 'werkfiches_bekijken_alle', 'papier_bekijken', 'densiteiten_bekijken_eigen', 'densiteiten_bekijken_alle'],
         color: 'bg-orange-600',
         subtabs: (_activePresses, hasPermission) => [
-            ...(hasPermission('drukwerken_create') ? [{ label: 'Nieuw Order', path: '/Drukwerken/Nieuw' }] : []),
-            { label: 'Gedrukt', path: '/Drukwerken/Gedrukt' }
+            ...(hasPermission('drukwerken_view') && hasPermission('drukwerken_create') ? [{ label: 'Nieuw Order', path: '/Drukwerken/Nieuw' }] : []),
+            ...(hasPermission('drukwerken_view') ? [{ label: 'Gedrukt', path: '/Drukwerken/Gedrukt' }] : []),
+            ...(hasPermission('werkfiches_bekijken_eigen') || hasPermission('werkfiches_bekijken_alle') ? [{ label: 'Werkfiches', path: '/Drukwerken/JDF' }] : []),
+            ...(hasPermission('densiteiten_bekijken_eigen') || hasPermission('densiteiten_bekijken_alle') ? [{ label: 'Densiteiten', path: '/Drukwerken/Densiteiten' }] : []),
+            ...(hasPermission('papier_bekijken') ? [{ label: 'Papier', path: '/Drukwerken/Papier' }] : [])
+        ]
+    },
+    {
+        id: '/Overzicht',
+        label: 'Overzicht',
+        icon: Radio,
+        description: 'Live productie monitoring dashboard',
+        permission: 'osint_view',
+        color: 'bg-green-600'
+    },
+    {
+        id: '/werkrooster',
+        label: 'Werkrooster',
+        icon: Calendar,
+        description: 'Planning en bezetting van personeel',
+        permission: 'planning_view',
+        color: 'bg-indigo-600',
+        subtabs: (_activePresses, hasPermission) => [
+            ...(hasPermission('management_access') ? [{ label: 'Instellingen', path: '/werkrooster/instellingen' }] : [])
         ]
     },
     {
@@ -112,14 +136,6 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         description: 'Bekijk feedback en suggesties',
         permission: 'feedback_view',
         color: 'bg-pink-600'
-    },
-    {
-        id: '/Overzicht',
-        label: 'Overzicht',
-        icon: Radio,
-        description: 'Live productie monitoring dashboard',
-        permission: 'osint_view',
-        color: 'bg-green-600'
     }
 ];
 

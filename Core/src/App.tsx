@@ -922,8 +922,18 @@ function MainApp() {
                   </div>
                 ) : <Navigate to="/" replace />} />
 
-                <Route path="/Drukwerken" element={hasPermission('drukwerken_create') ? <Navigate to="/Drukwerken/Nieuw" replace /> : <Navigate to="/Drukwerken/Gedrukt" replace />} />
-                <Route path="/Drukwerken/:subtab" element={hasPermission('drukwerken_view') ? <Drukwerken presses={activePresses} /> : <Navigate to="/" replace />} />
+                <Route path="/Drukwerken" element={
+                  hasPermission('drukwerken_create') ? <Navigate to="/Drukwerken/Nieuw" replace /> :
+                    (hasPermission('werkfiches_bekijken_eigen') || hasPermission('werkfiches_bekijken_alle')) ? <Navigate to="/Drukwerken/JDF" replace /> :
+                      (hasPermission('densiteiten_bekijken_eigen') || hasPermission('densiteiten_bekijken_alle')) ? <Navigate to="/Drukwerken/Densiteiten" replace /> :
+                        hasPermission('papier_bekijken') ? <Navigate to="/Drukwerken/Papier" replace /> :
+                          <Navigate to="/Drukwerken/Gedrukt" replace />
+                } />
+                <Route path="/Drukwerken/:subtab" element={
+                  (hasPermission('drukwerken_view') || hasPermission('werkfiches_bekijken_eigen') || hasPermission('werkfiches_bekijken_alle') || hasPermission('papier_bekijken') || hasPermission('densiteiten_bekijken_eigen') || hasPermission('densiteiten_bekijken_alle'))
+                    ? <Drukwerken presses={activePresses} />
+                    : <Navigate to="/" replace />
+                } />
 
                 <Route path="/Beheer" element={<Navigate to="/Beheer/Personeel" replace />} />
                 <Route path="/Beheer/:subtab" element={hasPermission('management_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />

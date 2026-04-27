@@ -602,15 +602,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkFirstRun = useCallback(async () => {
     try {
-      const result = await pb.collection('users').getList(1, 1);
+      // Use a raw request to check if the users collection is empty
+      // and handle potential 400/403 errors gracefully
+      const result = await pb.collection('users').getList(1, 1, {
+        $cancelKey: 'checkFirstRun'
+      });
       setIsFirstRun(result.totalItems === 0);
     } catch (e: any) {
-      // If we get a 403 Forbidden, it means the collection exists but we're not authorized
-      // to list it (which is expected for a non-logged in user). This implies it's NOT a first run.
-      if (e.status === 403) {
+      // 400 Bad Request can happen if the API rule is complex or if the collection is not accessible
+      // 403 Forbidden is expected for non-logged in users when listing users
+      if (e.status === 403 || e.status === 400) {
         setIsFirstRun(false);
       } else {
-        // For other errors (like the collection not existing at all), we might consider it a first run
+        // If it's a 404, the collection might not exist yet (very rare in PB)
         setIsFirstRun(true);
       }
     }
@@ -635,7 +639,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const records = await pb.collection('users').getFullList();
       records.sort((a: any, b: any) => (a.username || '').localeCompare(b.username || ''));
       setUserAccounts(records.map((r: any) => ({
-        id: r.id, username: r.username, name: r.name, role: mapDbRoleToUi(r.role), press: r.press, operator_id: r.operator_id, password: r.plain_password
+        id: r.id, 
+        username: r.username, 
+        name: r.name, 
+        email: r.email,
+        role: mapDbRoleToUi(r.role), 
+        press: r.press, 
+        operator_id: r.operator_id, 
+        password: r.plain_password
       })));
     } catch (e) {
       console.error("Fetch users failed", e);

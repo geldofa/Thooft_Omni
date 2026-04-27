@@ -2062,6 +2062,8 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
     const showFinished = hasPermission('drukwerken_view');
     const showTrash = hasPermission('drukwerken_trash_view');
     const showJdf = hasPermission('werkfiches_bekijken_eigen') || hasPermission('werkfiches_bekijken_alle') || hasPermission('werkfiches_importeren');
+    const showPapier = hasPermission('papier_bekijken');
+    const showDensiteiten = hasPermission('densiteiten_bekijken_eigen') || hasPermission('densiteiten_bekijken_alle');
 
     return (
         <TooltipProvider delayDuration={300}>
@@ -2077,9 +2079,9 @@ export function Drukwerken({ presses: propsPresses }: { presses?: Press[] }) {
                     )}
 
                     {(() => {
-                        // Count visible tabs: Nieuw, Gedrukt, Prullenbak, JDF
-                        const tabCount = [showWerkorders, showFinished, showTrash, showJdf].filter(Boolean).length;
-                        const hasTabs = tabCount > 1;
+                        // Count visible tabs: Nieuw, Gedrukt, Densiteiten, Papier, Prullenbak, JDF
+                        const tabCount = [showWerkorders, showFinished, showDensiteiten, showPapier, showTrash, showJdf].filter(Boolean).length;
+                        const hasTabs = tabCount > 0; // Show tab list if there's at least one tab
 
                         return (
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2 mt-2">

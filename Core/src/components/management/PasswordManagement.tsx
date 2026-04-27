@@ -135,7 +135,7 @@ export function PasswordManagement() {
       const pressId = presses.find(p => p.name === account.press)?.id;
       await pb.collection('users').create({
         username: account.username,
-        email: `${account.username}@example.com`,
+        email: account.email || `${account.username}@example.com`,
         name: account.name,
         password: account.password,
         passwordConfirm: account.password,
@@ -159,6 +159,7 @@ export function PasswordManagement() {
       const pressId = presses.find(p => p.name === (updates.press || usr.press))?.id;
       await pb.collection('users').update(usr.id, {
         name: updates.name,
+        email: updates.email,
         role: mapUiRoleToDb(updates.role || usr.role),
         press: updates.press,
         pers: pressId,
@@ -208,6 +209,7 @@ export function PasswordManagement() {
   const [formData, setFormData] = useState<{
     username: string;
     name: string;
+    email: string;
     role: UserRole;
     press: PressType;
     operator_id?: string;
@@ -215,6 +217,7 @@ export function PasswordManagement() {
   }>({
     username: '',
     name: '',
+    email: '',
     role: 'press',
     press: 'Lithoman',
     operator_id: '',
@@ -233,6 +236,7 @@ export function PasswordManagement() {
       setFormData({
         username: account.username,
         name: account.name || '',
+        email: account.email || '',
         role: account.role,
         press: account.press || activePresses[0]?.name || 'Lithoman',
         operator_id: account.operator_id || '',
@@ -241,6 +245,7 @@ export function PasswordManagement() {
       setFormData({
         username: '',
         name: '',
+        email: '',
         role: 'press',
         press: activePresses[0]?.name || 'Lithoman',
         operator_id: '',
@@ -277,6 +282,7 @@ export function PasswordManagement() {
       // Update existing
       const success = await updateUserAccountLocal(editingUser, {
         name: formData.name,
+        email: formData.email,
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined,
         operator_id: formData.operator_id
@@ -312,6 +318,7 @@ export function PasswordManagement() {
         id: Math.random().toString(36).substr(2, 9),
         username: formData.username,
         name: formData.name,
+        email: formData.email,
         password: formData.password,
         role: formData.role,
         press: formData.role === 'press' ? formData.press : undefined,
@@ -499,14 +506,15 @@ export function PasswordManagement() {
               />
             </div>
 
-            {/* Display Name */}
+            {/* Email */}
             <div className="grid gap-2">
-              <Label htmlFor="displayName">Naam</Label>
+              <Label htmlFor="email">E-mailadres</Label>
               <Input
-                id="displayName"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Jan Janssen"
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="email@example.com"
               />
             </div>
 
