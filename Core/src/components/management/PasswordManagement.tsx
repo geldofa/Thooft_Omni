@@ -263,6 +263,7 @@ export function PasswordManagement() {
       setFormData({
         username: '',
         name: '',
+        email: '',
         role: 'press',
         press: activePresses[0]?.name || 'Lithoman',
         operator_id: '',

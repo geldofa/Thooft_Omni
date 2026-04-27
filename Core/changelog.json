@@ -1,5 +1,29 @@
 [
   {
+    "id": "f0229cf41fd0a68ec646f6b1a650105d2feb120f",
+    "version": "1.18.2",
+    "date": "2026-04-27",
+    "title": "Homepage kaarten",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "c3bac57a222c916b7b4c43dd1b925b265823c4dd",
+    "version": "1.18.1",
+    "date": "2026-04-27",
+    "title": "runtime error",
+    "body": "",
+    "type": "chore"
+  },
+  {
+    "id": "92359498cccc50e0aaee4659f687c715ede3cfc8",
+    "version": "1.18.0",
+    "date": "2026-04-27",
+    "title": "Lithoman combinatie logica voor JDF imports",
+    "body": "JDF:\n- importeren per groep: voor orders die in stukken op de planning staan.\n- Importeren per pers: orders die over verschillende peren heen gedrukt worden\n- Samenvatting van welke versies er zijn gegroepeerd\n- Aanpasbaar voor maximale fexibiliteit, berekend alles opnieuw correct uit na aanpassing.",
+    "type": "feature"
+  },
+  {
     "id": "b8c2c654e63b62271a31ea21360e733acb0bd33d",
     "version": "1.17.5",
     "date": "2026-04-24",
@@ -373,30 +397,6 @@
     "date": "2026-03-16",
     "title": "Datum weergave (Europees)",
     "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "9f6519f89d135ccbea99495cbb941a4457014db8",
-    "version": "1.7.2",
-    "date": "2026-03-13",
-    "title": "Import fix",
-    "body": "",
-    "type": "bug"
-  },
-  {
-    "id": "4c9c178ad0001a6523a2f08b0ff1e7185b1de1d1",
-    "version": "1.7.1",
-    "date": "2026-03-13",
-    "title": "kleine verbeteringen",
-    "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "d5851614afdc621c450d46848ed6e1a35090875c",
-    "version": "1.7.0",
-    "date": "2026-03-13",
-    "title": "Beheer v2",
-    "body": "UX:\n- Systeembeheer\n- Analyses\n- Homepage v2\n- Meer plaats creëren door onnodige items te verwijderen (Onderhoudstaken, Drukwerken)\n\nFuncties\n- Rechten v2\n- Checklist v2\n- Drukwerken Export\n- Externe taken v2 (verplaatst naar Taken)\n- Updaten van onderhoudstaken met data van GSheets\n- Updaten van Drukwerktaken met data van GSheets\n- Logboek: Gedetaileerdere info voor drukwerken\n\nOnderliggend:\n- opkuisen van bestandsnamen in het project\n- Sheduler voor belangrijke taken",
     "type": "chore"
   }
 ]
