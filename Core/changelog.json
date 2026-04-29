@@ -1,5 +1,13 @@
 [
   {
+    "id": "b0927d90c44a8dbc4a1b6e1b872930be7bc53885",
+    "version": "1.19.0",
+    "date": "2026-04-29",
+    "title": "Planning: Magazijn , Tom & Bjorn toegevoegd",
+    "body": "Extra Functies:\n- Drag & drop voor de secties op homepage/header\n- Eerst versie voor automatisch toevoegen van Werkfiches",
+    "type": "chore"
+  },
+  {
     "id": "b58efac6b43965920602e3369993aca5c3c25840",
     "version": "1.18.3",
     "date": "2026-04-27",
@@ -388,14 +396,6 @@
     "version": "1.8.1",
     "date": "2026-03-17",
     "title": "kleine verbeteringen",
-    "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "3600065cb725e872e4f4b4b37c17e6898290de03",
-    "version": "1.8.0",
-    "date": "2026-03-17",
-    "title": "Automatiseren Drukwerken export",
     "body": "",
     "type": "chore"
   }
