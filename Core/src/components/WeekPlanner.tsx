@@ -223,6 +223,13 @@ function getLocalDayString(date: Date) {
 const DAYS_OF_WEEK = ["Zondag", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag"];
 
 
+
+const SIDEBAR_CARD_GROUPS: { persons: { name: string; shift?: string }[] }[] = [
+  { persons: [{ name: 'Tom' }, { name: 'Bjorn' }] },
+  { persons: [{ name: 'Ronnie', shift: '6-14' }, { name: 'Wim', shift: '8-14' }] },
+];
+
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Component
 // ═════════════════════════════════════════════════════════════════════════════
@@ -323,6 +330,19 @@ export function WeekPlanner() {
   const [externalDays, setExternalDays] = useState<boolean[]>(Array(7).fill(false));
   const [externalContext, setExternalContext] = useState<{ pers: string, shiftType: string, date: Date } | null>(null);
 
+  // Ander personeel — afwezigheid uit DB
+  const [anderPersoneelAfwezigheid, setAnderPersoneelAfwezigheid] = useState<{ id: string; naam: string; datum: string; type: AfwezigReden }[]>([]);
+  const [anderPersoneelRefresh, setAnderPersoneelRefresh] = useState(0);
+  const [sidebarPopoverKey, setSidebarPopoverKey] = useState<string | null>(null);
+
+  // "Meer..." dialog
+  const [sidebarDagStatus, setSidebarDagStatus] = useState<Record<string, AfwezigReden | null>>(() => {
+    try { return JSON.parse(sessionStorage.getItem('sidebar_dag_status') || '{}'); } catch { return {}; }
+  });
+  const [sidebarOpmerkingen, setSidebarOpmerkingen] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(sessionStorage.getItem('sidebar_opmerkingen') || '{}'); } catch { return {}; }
+  });
+
   // Sluitingsdagen from DB
   const [sluitingsdagen, setSluitingsdagen] = useState<Date[]>([]);
   const [sluitingsdagenLabels, setSluitingsdagenLabels] = useState<Record<string, string>>({});
@@ -347,6 +367,31 @@ export function WeekPlanner() {
     }
     fetchSluitingsdagen();
   }, []);
+
+  // Laad ander personeel afwezigheid voor de huidige week
+  useEffect(() => {
+    async function load() {
+      try {
+        const weekStartStr = getLocalDayString(currentWeekStart);
+        const weekEndStr = getLocalDayString(addDays(currentWeekStart, 4));
+        const records = await pb.collection('ander_personeel_afwezigheid').getFullList({
+          filter: `datum >= "${weekStartStr} 00:00:00" && datum <= "${weekEndStr} 23:59:59"`,
+          sort: 'datum',
+        });
+        setAnderPersoneelAfwezigheid(records.map(r => ({
+          id: r.id,
+          naam: r.naam as string,
+          datum: (r.datum as string).split('T')[0].split(' ')[0],
+          type: r.type as AfwezigReden,
+        })));
+      } catch (e) {
+        console.warn('Kon ander personeel afwezigheid niet laden:', e);
+      }
+    }
+    load();
+  }, [currentWeekStart, anderPersoneelRefresh]);
+
+
 
   // Load persen from DB once on mount
   useEffect(() => {
@@ -1098,6 +1143,23 @@ export function WeekPlanner() {
     });
   };
 
+  const saveSidebarDagStatus = async (naam: string, datum: string, type: AfwezigReden | null) => {
+    const existing = anderPersoneelAfwezigheid.find(r => r.naam === naam && r.datum === datum);
+    try {
+      if (type === null) {
+        if (existing) await pb.collection('ander_personeel_afwezigheid').delete(existing.id);
+      } else if (existing) {
+        await pb.collection('ander_personeel_afwezigheid').update(existing.id, { type });
+      } else {
+        await pb.collection('ander_personeel_afwezigheid').create({ naam, datum: `${datum} 00:00:00`, type });
+      }
+      setAnderPersoneelRefresh(r => r + 1);
+    } catch (e) {
+      console.error('Fout bij opslaan dag-status:', e);
+    }
+  };
+
+
   const isToday = (date: Date) => {
     const today = new Date();
     return date.getDate() === today.getDate() &&
@@ -1185,7 +1247,8 @@ export function WeekPlanner() {
         const cardZoom = activeCount === 3 ? 1 : 1.25;
 
         return (
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          <div className="flex-1 flex overflow-hidden">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
             {activePersNamen.map((pers: string) => {
               const colors = PERS_COLORS[pers] || PERS_COLORS_FALLBACK;
               const shiftTypes = DEFAULT_ROSTER_SHIFTS;
@@ -1468,6 +1531,128 @@ export function WeekPlanner() {
                 </div>
               );
             })}
+            </div>
+
+            {/* ── Sidebar: vaste kaarten rechts, scrollen niet mee ─────────── */}
+            <div className="flex-shrink-0 w-[440px] overflow-y-auto border-l border-gray-200 bg-gray-50/50 px-3 py-4 space-y-4">
+              {(() => {
+                const workDays = weekDays.filter(d => d.getDay() >= 1 && d.getDay() <= 5);
+                return SIDEBAR_CARD_GROUPS.map((group, gi) => (
+                  <div key={gi} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <table className="w-full border-collapse text-xs" style={{ tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col style={{ width: '90px' }} />
+                        {workDays.map((_, i) => <col key={i} style={{ width: '42px' }} />)}
+                        <col />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className="px-3 py-2 bg-stone-100 text-stone-700 border-b border-r border-stone-300 text-left font-black tracking-wide"></th>
+                          {workDays.map((date, di) => (
+                            <th key={di} className={`py-2 bg-stone-100 border-b border-r border-stone-300 text-center font-bold uppercase tracking-wider ${isToday(date) ? 'text-blue-700' : 'text-stone-600'}`}>
+                              <div className="flex flex-col items-center">
+                                <span className={`text-[10px] ${isToday(date) ? 'bg-blue-600 text-white px-1.5 py-0.5 rounded-full' : ''}`}>
+                                  {formatDayHeader(date).substring(0, 2)}
+                                </span>
+                                <span className="text-[9px] font-normal opacity-60 mt-0.5">{formatDaySubheader(date)}</span>
+                              </div>
+                            </th>
+                          ))}
+                          <th className="px-2 py-2 bg-stone-100 text-stone-600 border-b border-stone-300 text-center font-bold uppercase tracking-wider text-[10px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <MessageSquare className="w-3 h-3" />
+                              Opmerking
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.persons.map((person, pi) => {
+                          const isLast = pi === group.persons.length - 1;
+                          return (
+                            <tr key={pi} className={!isLast ? 'border-b border-gray-100' : ''}>
+                              <td className="px-3 py-2 border-r border-gray-100">
+                                <div className="font-semibold text-gray-700 leading-tight">{person.name}</div>
+                                {person.shift && <div className="text-[10px] text-gray-400 leading-tight mt-0.5">{person.shift}</div>}
+                              </td>
+                              {workDays.map((_, di) => {
+                                const checkKey = `${person.name}|${currentWeekStart.toISOString()}|${di}`;
+                                const status = sidebarDagStatus[checkKey] ?? null;
+                                return (
+                                  <td key={di} className="p-0 text-center border-r border-gray-100">
+                                    <Popover open={sidebarPopoverKey === checkKey} onOpenChange={(open) => setSidebarPopoverKey(open ? checkKey : null)}>
+                                      <PopoverTrigger asChild>
+                                        <button className="w-full py-2 px-1 flex items-center justify-center">
+                                          {status ? (
+                                            <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                                              status === 'Verlof' ? 'bg-rose-100 text-rose-600' :
+                                              status === 'Ziek'   ? 'bg-gray-100 text-gray-500' :
+                                                                     'bg-amber-100 text-amber-600'
+                                            }`}>
+                                              {status === 'Verlof' ? 'VL' : status === 'Ziek' ? 'ZK' : 'RC'}
+                                            </span>
+                                          ) : (
+                                            <span className="text-green-500 font-bold text-sm leading-none">✓</span>
+                                          )}
+                                        </button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-[110px] p-1" align="center" side="bottom">
+                                        <div className="flex flex-col">
+                                          {([null, 'Verlof', 'Ziek', 'Recup'] as (AfwezigReden | null)[]).map(opt => (
+                                            <button
+                                              key={opt ?? 'aanwezig'}
+                                              className={`px-2.5 py-1 text-xs rounded text-left hover:bg-gray-100 transition-colors ${status === opt ? 'font-bold' : ''}`}
+                                              onClick={() => {
+                                                const targetDate = workDays[di];
+                                                saveSidebarDagStatus(person.name, getLocalDayString(targetDate), opt);
+                                                setSidebarDagStatus((prev: Record<string, AfwezigReden | null>) => {
+                                                  const next = { ...prev, [checkKey]: opt };
+                                                  try { sessionStorage.setItem('sidebar_dag_status', JSON.stringify(next)); } catch {}
+                                                  return next;
+                                                });
+                                                setSidebarPopoverKey(null);
+                                              }}
+                                            >
+                                              <span className={
+                                                opt === null      ? 'text-green-600' :
+                                                opt === 'Verlof'  ? 'text-rose-500'  :
+                                                opt === 'Ziek'    ? 'text-gray-500'  :
+                                                                    'text-amber-600'
+                                              }>{opt ?? 'Aanwezig'}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  </td>
+                                );
+                              })}
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  placeholder="-"
+                                  value={sidebarOpmerkingen[`${person.name}|${currentWeekStart.toISOString()}`] ?? ''}
+                                  onChange={(e) => {
+                                    const key = `${person.name}|${currentWeekStart.toISOString()}`;
+                                    const val = e.target.value;
+                                    setSidebarOpmerkingen(prev => {
+                                      const next = { ...prev, [key]: val };
+                                      try { sessionStorage.setItem('sidebar_opmerkingen', JSON.stringify(next)); } catch {}
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full bg-transparent border-0 focus:outline-none focus:ring-0 text-[11px] text-gray-700 placeholder:opacity-40"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ));
+              })()}
+            </div>
           </div>
         );
       })()}

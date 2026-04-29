@@ -21,6 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { HeaderActivityTicker } from './HeaderActivityTicker';
 import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { NAVIGATION_CONFIG, NavItemConfig } from '../../config/navigationConfig';
+import { useNavOrder, applyOrder } from '../../hooks/useNavOrder';
 
 const WeekPlannerOverlay = lazy(() => import('../WeekPlanner').then(m => ({ default: m.WeekPlanner })));
 
@@ -111,12 +112,39 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     }
   };
 
+  const [order, setOrder] = useNavOrder();
+  const draggedIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   const navItems = useMemo<NavItemConfig[]>(() => {
-    return NAVIGATION_CONFIG.filter(item => {
+    const filtered = NAVIGATION_CONFIG.filter(item => {
+      if (item.id === '/werkrooster') return false;
       if (item.anyPermission) return item.anyPermission.some(p => hasPermission(p));
       return hasPermission(item.permission);
     });
-  }, [hasPermission]);
+    return applyOrder(filtered, order);
+  }, [hasPermission, order]);
+
+  const handleTabDragStart = (id: string) => { draggedIdRef.current = id; };
+  const handleTabDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedIdRef.current !== id) setDragOverId(id);
+  };
+  const handleTabDrop = (targetId: string) => {
+    const from = draggedIdRef.current;
+    if (!from || from === targetId) return;
+    const ids = navItems.map(i => i.id);
+    const fi = ids.indexOf(from);
+    const ti = ids.indexOf(targetId);
+    const newIds = [...ids];
+    newIds.splice(fi, 1);
+    newIds.splice(ti, 0, from);
+    const hiddenIds = order.filter(id => !ids.includes(id));
+    setOrder([...newIds, ...hiddenIds]);
+    draggedIdRef.current = null;
+    setDragOverId(null);
+  };
+  const handleTabDragEnd = () => { draggedIdRef.current = null; setDragOverId(null); };
 
   const activeMainTab = useMemo(() => {
     if (activeTab === '/') return '/';
@@ -177,7 +205,16 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                     const needsSeparator = idx > 0 && ['/Analyses', '/Beheer', '/Logboek', '/Feedback'].includes(item.id);
 
                     return (
-                      <div key={item.id} className="flex items-center gap-1.5">
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-1.5 cursor-grab active:cursor-grabbing rounded-lg transition-all ${dragOverId === item.id ? 'ring-2 ring-blue-400' : ''}`}
+                        draggable
+                        onDragStart={() => handleTabDragStart(item.id)}
+                        onDragOver={(e) => handleTabDragOver(e, item.id)}
+                        onDragLeave={() => setDragOverId(null)}
+                        onDrop={() => handleTabDrop(item.id)}
+                        onDragEnd={handleTabDragEnd}
+                      >
                         {needsSeparator && <div className="w-px h-6 bg-slate-200 mx-1" />}
                         <TabsTrigger
                           value={item.id}

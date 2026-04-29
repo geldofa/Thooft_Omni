@@ -1,5 +1,13 @@
 [
   {
+    "id": "b58efac6b43965920602e3369993aca5c3c25840",
+    "version": "1.18.3",
+    "date": "2026-04-27",
+    "title": "Build errror",
+    "body": "",
+    "type": "chore"
+  },
+  {
     "id": "f0229cf41fd0a68ec646f6b1a650105d2feb120f",
     "version": "1.18.2",
     "date": "2026-04-27",
@@ -388,14 +396,6 @@
     "version": "1.8.0",
     "date": "2026-03-17",
     "title": "Automatiseren Drukwerken export",
-    "body": "",
-    "type": "chore"
-  },
-  {
-    "id": "eb6fa5ada92fb0f1fa15109f9b3b39d89bf8875d",
-    "version": "1.7.3",
-    "date": "2026-03-16",
-    "title": "Datum weergave (Europees)",
     "body": "",
     "type": "chore"
   }

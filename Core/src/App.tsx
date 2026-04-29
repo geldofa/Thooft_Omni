@@ -36,6 +36,7 @@ const Overzicht = lazy(() => import('./components/Overzicht').then(m => ({ defau
 const ChecklistView = lazy(() => import('./components/ChecklistView').then(m => ({ default: m.ChecklistView })));
 const WeekPlanner = lazy(() => import('./components/WeekPlanner').then(m => ({ default: m.WeekPlanner })));
 const PlanningPersoneel = lazy(() => import('./components/PlanningPersoneel').then(m => ({ default: m.PlanningPersoneel })));
+const Nieuwsbrief = lazy(() => import('./components/Nieuwsbrief').then(m => ({ default: m.Nieuwsbrief })));
 import { Homepage } from './components/Homepage';
 import { CreateChecklistDialog } from './components/dialogs/CreateChecklistDialog';
 
@@ -948,6 +949,7 @@ function MainApp() {
                 <Route path="/Logboek" element={hasPermission('logs_view') ? <ActivityLog /> : <Navigate to="/" replace />} />
                 <Route path="/Feedback" element={<Roadmap />} />
                 <Route path="/Roadmap" element={<Navigate to="/Feedback" replace />} />
+                <Route path="/Nieuwsbrief" element={hasPermission('management_access') ? <Nieuwsbrief /> : <Navigate to="/" replace />} />
 
                 <Route path="/Toolbox" element={<Navigate to="/Toolbox/Tools" replace />} />
                 <Route path="/Toolbox/:subtab" element={hasPermission('toolbox_access') ? <UnifiedSettingsLayout /> : <Navigate to="/" replace />} />

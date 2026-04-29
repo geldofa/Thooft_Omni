@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { toast } from 'sonner';
 import { pb, useAuth } from './AuthContext';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
@@ -221,8 +222,13 @@ export function JdfOverview() {
         try {
             await pb.send('/api/jdf/scan?force=true', { method: 'POST' });
             await fetchOrders();
-        } catch (e) {
-            console.error('[JdfOverview] Force scan error:', e);
+        } catch (e: any) {
+            if (e?.status === 409) {
+                toast.warning(e?.data?.message || 'Scan al bezig, probeer later opnieuw.');
+            } else {
+                console.error('[JdfOverview] Force scan error:', e);
+                toast.error('Scan mislukt');
+            }
         } finally {
             setScanning(false);
         }

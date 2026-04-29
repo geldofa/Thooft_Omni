@@ -339,7 +339,9 @@ function persistLastScan(result) {
             timestamp: new Date().toISOString(),
             files_found: result.files_found,
             new_records: result.new_records,
-            updated_records: result.updated_records
+            updated_records: result.updated_records,
+            stat_calls: result.stat_calls,
+            read_files: result.read_files
         });
         $app.save(scanSetting);
     } catch (e) { /* non-critical */ }
@@ -347,7 +349,57 @@ function persistLastScan(result) {
 
 function runJdfScan(options) {
     var force = options && options.force;
-    var result = { files_found: 0, new_records: 0, updated_records: 0, skipped: false };
+    var scanStart = Date.now();
+    var result = { files_found: 0, candidates: 0, new_records: 0, updated_records: 0, skipped_files: 0, read_files: 0, stat_calls: 0, skipped: false };
+
+    // Load configurable scan settings (interval + active hours window)
+    var scanSettings = { interval_minutes: 30, start_hour: 7, end_hour: 18 };
+    try {
+        var settingsRec = $app.findFirstRecordByFilter("app_settings", 'key = "jdf_scan_settings"');
+        if (settingsRec) {
+            var svStr = String(settingsRec.get("value") || '');
+            if (svStr.charAt(0) === '{') {
+                try {
+                    var sv = JSON.parse(svStr);
+                    if (sv.interval_minutes) scanSettings.interval_minutes = parseInt(sv.interval_minutes, 10) || 30;
+                    if (sv.start_hour !== undefined) scanSettings.start_hour = parseInt(sv.start_hour, 10);
+                    if (sv.end_hour   !== undefined) scanSettings.end_hour   = parseInt(sv.end_hour,   10);
+                } catch (_) {}
+            }
+        }
+    } catch (_) {}
+
+    if (!force) {
+        var nowHour = new Date().getHours();
+        if (nowHour < scanSettings.start_hour || nowHour >= scanSettings.end_hour) {
+            console.log("[JDF Scan] Buiten actieve uren (" + nowHour + ":xx, venster " + scanSettings.start_hour + ":00–" + scanSettings.end_hour + ":00), overgeslagen.");
+            result.skipped = true;
+            return result;
+        }
+        // jdf_scan_ts: plain Unix-ms number written at scan START — reliable across JSON parsing quirks
+        var lastTs = 0;
+        try {
+            var tsRec = $app.findFirstRecordByFilter("app_settings", 'key = "jdf_scan_ts"');
+            if (tsRec) lastTs = parseFloat(String(tsRec.get("value"))) || 0;
+        } catch (_) {}
+        if (lastTs > 0) {
+            var minsSinceLast = (Date.now() - lastTs) / 60000;
+            if (minsSinceLast < scanSettings.interval_minutes) {
+                console.log("[JDF Scan] Interval niet verstreken (" + Math.round(minsSinceLast) + "/" + scanSettings.interval_minutes + " min), overgeslagen.");
+                result.skipped = true;
+                return result;
+            }
+        }
+    }
+
+    // Claim the slot immediately so overlapping ticks see a fresh timestamp
+    try {
+        var tsClaim;
+        try { tsClaim = $app.findFirstRecordByFilter("app_settings", 'key = "jdf_scan_ts"'); }
+        catch (_) { tsClaim = new Record($app.findCollectionByNameOrId("app_settings")); tsClaim.set("key", "jdf_scan_ts"); }
+        tsClaim.set("value", Date.now());
+        $app.save(tsClaim);
+    } catch (_) {}
 
     var jdfPath = $os.getenv("JDF_PATH") || '/pb/jdf/';
     try {
@@ -400,35 +452,67 @@ function runJdfScan(options) {
         pressRecords = [];
     }
 
+    // Build set of finished order numbers to skip permanently
+    var finishedOrders = {};
+    try {
+        var finishedRecs = $app.findRecordsByFilter("drukwerken", "is_finished = true");
+        for (var f = 0; f < finishedRecs.length; f++) {
+            var fn = String(finishedRecs[f].getString("order_nummer")).trim();
+            if (fn) finishedOrders[fn] = true;
+        }
+    } catch (e) { /* drukwerken not available */ }
+
+    // Pre-load all existing jdf_orders into a map keyed by filename.
+    // Avoids one DB query per candidate file (was the main bottleneck).
+    var existingOrdersMap = {};
+    try {
+        var allOrders = $app.findRecordsByFilter("jdf_orders", "1=1");
+        for (var o = 0; o < allOrders.length; o++) {
+            existingOrdersMap[allOrders[o].getString("jdf_bestandsnaam")] = allOrders[o];
+        }
+    } catch (e) { /* fall back to per-file lookup below */ }
+
     for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
         var name = entry.name();
 
-        var nameLower = name.toLowerCase();
-        var isXml = nameLower.indexOf('.xml') !== -1 || nameLower.indexOf('.jdf') !== -1;
-        if (entry.isDir()) {
-            console.log("[JDF Scan] Skipping directory: " + name);
-            continue;
-        }
-        if (!isXml) {
-            console.log("[JDF Scan] Skipping non-JDF file: " + name);
-            continue;
-        }
+        if (entry.isDir()) continue;
 
-        console.log("[JDF Scan] Processing file: " + name);
+        // Only process DT*.xml files
+        if (!/^DT\d/i.test(name)) continue;
+        var nameLower = name.toLowerCase();
+        if (nameLower.indexOf('.xml') === -1 && nameLower.indexOf('.jdf') === -1) continue;
+
+        result.candidates++;
+
+        // Extract order number from filename (DT10023.xml → "10023")
+        var dtMatch = name.match(/^DT(\d+)/i);
+        var orderNr = dtMatch ? dtMatch[1] : '';
+
+        // Skip permanently if order is fully printed
+        if (!force && orderNr && finishedOrders[orderNr]) { result.skipped_files++; continue; }
 
         var filePath = jdfPath + name;
+        var existing = existingOrdersMap[name] || null;
+
+        // Skip stat entirely for files we already know are pre-2026 (modtime can't go backwards)
+        var storedModTime = existing ? existing.getInt("jdf_mod_time") : 0;
+        if (storedModTime > 0 && storedModTime < 1735689600) { result.skipped_files++; continue; }
+
+        var modTimeUnix = 0;
         var fileSize = 0;
         try {
-            fileSize = entry.info().size();
+            result.stat_calls++;
+            var info = entry.info();
+            fileSize = info.size();
+            modTimeUnix = info.modTime().unix();
         } catch (e) { /* fall back to content.length after read */ }
 
-        var existing = null;
-        try {
-            existing = $app.findFirstRecordByFilter("jdf_orders", 'jdf_bestandsnaam = "' + name.replace(/"/g, '\\"') + '"');
-        } catch (e) { /* not found */ }
+        // Always skip files not modified since before 2026-01-01 (ook bij force)
+        if (modTimeUnix > 0 && modTimeUnix < 1735689600) { result.skipped_files++; continue; }
 
-        if (!force && existing && fileSize > 0 && existing.getInt("jdf_grootte") === fileSize) continue;
+        // Skip if modification time unchanged
+        if (!force && existing && modTimeUnix > 0 && existing.getInt("jdf_mod_time") === modTimeUnix) { result.skipped_files++; continue; }
 
         var content;
         try {
@@ -452,6 +536,12 @@ function runJdfScan(options) {
             console.log("[JDF Watcher] No order_nummer parsed from: " + name);
             continue;
         }
+
+        // Skip orders with a print date before 2026
+        var printDate = parsed.target_print_date || parsed.deadline || '';
+        if (printDate && printDate < '2026-01-01') { result.skipped_files++; continue; }
+
+        result.read_files++;
 
         var pressId = '';
         if (parsed.pers_device_id && pressRecords) {
@@ -488,6 +578,7 @@ function runJdfScan(options) {
         try { if (parsed.finishing_style !== undefined) record.set("finishing_style", parsed.finishing_style); } catch (_) {}
         record.set("jdf_bestandsnaam", name);
         record.set("jdf_grootte", fileSize);
+        if (modTimeUnix > 0) record.set("jdf_mod_time", modTimeUnix);
 
         try {
             $app.save(record);
@@ -550,9 +641,7 @@ function runJdfScan(options) {
         }
     }
 
-    if (result.new_records > 0 || result.updated_records > 0) {
-        console.log("[JDF Watcher] Processed " + result.new_records + " new, " + result.updated_records + " updated JDF files");
-    }
+    console.log("[JDF Scan] ✅ Done — ⏱ " + Math.round((Date.now() - scanStart) / 1000) + "s | 📂 " + result.files_found + " entries | 🎯 " + result.candidates + " candidates | ⏭ " + result.skipped_files + " skipped | 📖 " + result.read_files + " read | ✨ " + result.new_records + " new | 🔄 " + result.updated_records + " updated");
 
     persistLastScan(result);
     return result;

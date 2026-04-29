@@ -2,7 +2,8 @@
 
 /**
  * JDF Folder Watcher
- * Scans a directory for .jdf files every 5 minutes and on-demand via POST /api/jdf/scan.
+ * Heartbeat every 5 minutes. Interval and time window are configured via
+ * app_settings (key: jdf_scan_settings) and enforced inside jdf_scan_lib.js.
  * Actual scan logic lives in jdf_scan_lib.js and is loaded via require() inside each
  * handler callback, because PocketBase hook handlers run in isolated JS VMs.
  */
@@ -10,11 +11,12 @@
 console.log(">>> [jdf_watcher.pb.js] Initialization...");
 
 cronAdd("jdf_folder_watcher", "*/5 * * * *", function () {
+    console.log("[JDF Watcher] Cron tick");
     try {
         const lib = require(`${__hooks}/jdf_scan_lib.js`);
         lib.runJdfScan();
     } catch (e) {
-        $app.logger().error("[JDF Watcher] Cron error", e);
+        console.log("[JDF Watcher] Cron error: " + (e && e.message ? e.message : String(e)));
     }
 });
 

@@ -1,9 +1,10 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { LogOut, ArrowRight } from 'lucide-react';
+import { LogOut, ArrowRight, GripVertical, X } from 'lucide-react';
 import { Card } from './ui/card';
 import { Press } from './AuthContext';
 import { NAVIGATION_CONFIG } from '../config/navigationConfig';
+import { useNavOrder, applyOrder } from '../hooks/useNavOrder';
 
 interface HomepageProps {
     setActiveTab: (tab: string) => void;
@@ -79,13 +80,40 @@ function Background() {
 
 export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
     const { user, logout, hasPermission } = useAuth();
+    const [editMode, setEditMode] = useState(false);
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
+    const [order, setOrder] = useNavOrder();
+    const draggedId = useRef<string | null>(null);
+
+    const filteredItems = useMemo(() => NAVIGATION_CONFIG.filter((item) => {
+        if (item.anyPermission) return item.anyPermission.some(p => hasPermission(p));
+        return hasPermission(item.permission);
+    }), [hasPermission]);
+
+    const orderedItems = useMemo(() => applyOrder(filteredItems, order), [filteredItems, order]);
 
     if (!user) return null;
 
-    const filteredItems = NAVIGATION_CONFIG.filter((item: any) => {
-        if (item.anyPermission) return item.anyPermission.some((p: any) => hasPermission(p));
-        return hasPermission(item.permission);
-    });
+    const handleDragStart = (id: string) => { draggedId.current = id; };
+    const handleDragOver = (e: React.DragEvent, id: string) => {
+        e.preventDefault();
+        if (draggedId.current !== id) setDragOverId(id);
+    };
+    const handleDrop = (targetId: string) => {
+        const from = draggedId.current;
+        if (!from || from === targetId) return;
+        const ids = orderedItems.map(i => i.id);
+        const fi = ids.indexOf(from);
+        const ti = ids.indexOf(targetId);
+        const newIds = [...ids];
+        newIds.splice(fi, 1);
+        newIds.splice(ti, 0, from);
+        const hiddenIds = order.filter(id => !ids.includes(id));
+        setOrder([...newIds, ...hiddenIds]);
+        draggedId.current = null;
+        setDragOverId(null);
+    };
+    const handleDragEnd = () => { draggedId.current = null; setDragOverId(null); };
 
     const greeting = (() => {
         const hour = new Date().getHours();
@@ -145,23 +173,38 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
                 </div>
 
                 {/* Centered Grid Layout */}
+                {editMode && (
+                    <p className="text-center text-xs text-blue-500 font-medium -mb-2 animate-reveal">
+                        Sleep kaarten om de volgorde aan te passen
+                    </p>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 my-auto w-full mx-auto px-4 max-w-[1400px]">
-                    {filteredItems.map((item: any, index: number) => {
+                    {orderedItems.map((item: any, index: number) => {
                         const Icon = item.icon;
                         const subtabs = item.subtabs ? item.subtabs(activePresses, hasPermission) : [];
 
-                        // Special centering for the last item if it's the 7th
-                        const isLastItem = index === filteredItems.length - 1;
-                        const lastItemClass = (isLastItem && filteredItems.length % 3 === 1) ? 'lg:col-start-2' : '';
+                        const isLastItem = index === orderedItems.length - 1;
+                        const lastItemClass = (isLastItem && orderedItems.length % 3 === 1) ? 'lg:col-start-2' : '';
+                        const isDragOver = dragOverId === item.id;
 
                         return (
                             <Card
                                 key={item.id}
-                                className={`group relative overflow-hidden cursor-pointer hover:shadow-2xl transition-all duration-500 border-none shadow-xl bg-white/80 backdrop-blur-sm flex flex-col rounded-3xl p-5 min-h-[12rem] ${lastItemClass}`}
-                                onClick={() => setActiveTab(item.id)}
+                                draggable={editMode}
+                                onDragStart={editMode ? () => handleDragStart(item.id) : undefined}
+                                onDragOver={editMode ? (e) => handleDragOver(e, item.id) : undefined}
+                                onDrop={editMode ? () => handleDrop(item.id) : undefined}
+                                onDragEnd={editMode ? handleDragEnd : undefined}
+                                className={`group relative overflow-hidden transition-all duration-500 border-none shadow-xl bg-white/80 backdrop-blur-sm flex flex-col rounded-3xl p-5 min-h-[12rem] ${lastItemClass} ${editMode ? 'cursor-grab active:cursor-grabbing select-none' : 'cursor-pointer hover:shadow-2xl'} ${isDragOver ? 'ring-2 ring-blue-400 ring-offset-2 scale-[1.02]' : ''}`}
+                                onClick={editMode ? undefined : () => setActiveTab(item.id)}
                             >
                                 {/* Aesthetic Background Gradient */}
                                 <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 ${item.color}`} />
+                                {editMode && (
+                                    <div className="absolute top-3 right-3 text-slate-300">
+                                        <GripVertical className="w-4 h-4" />
+                                    </div>
+                                )}
 
                                 <div className="flex-1 flex flex-col text-center items-center">
                                     <div className="flex items-center justify-center mb-2 w-full relative">
@@ -222,6 +265,18 @@ export function Homepage({ setActiveTab, activePresses = [] }: HomepageProps) {
                             <LogOut className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
                         </div>
                         Uitloggen
+                    </button>
+                    <button
+                        onClick={() => setEditMode(e => !e)}
+                        className={`group font-black uppercase tracking-widest text-[10px] flex items-center gap-3 transition-all active:scale-95 ${editMode ? 'text-blue-600' : 'text-slate-400 hover:text-blue-500'}`}
+                    >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${editMode ? 'bg-blue-100' : 'bg-slate-100 group-hover:bg-blue-50'}`}>
+                            {editMode
+                                ? <X className="w-3.5 h-3.5 text-blue-600" />
+                                : <GripVertical className="w-3.5 h-3.5" />
+                            }
+                        </div>
+                        {editMode ? 'Klaar' : 'Aanpassen'}
                     </button>
                 </div>
             </div>

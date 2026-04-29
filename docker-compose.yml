@@ -25,7 +25,6 @@ services:
       - "127.0.0.1:8090:8090"
     volumes:
       - ./pb_data:/pb/pb_data
-      - ./jdf:/pb/jdf
       - ./pb_migrations:/pb/pb_migrations:ro
       - ./pb_hooks:/pb/pb_hooks:ro
     environment:
@@ -34,6 +33,7 @@ services:
       - GDRIVE_CLIENT_ID=${GDRIVE_CLIENT_ID}
       - GDRIVE_CLIENT_SECRET=${GDRIVE_CLIENT_SECRET}
       - JDF_PATH=/pb/jdf/
+      - TZ=Europe/Brussels
     restart: unless-stopped
     container_name: thooft_db
     depends_on:

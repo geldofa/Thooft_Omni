@@ -249,14 +249,14 @@ export function PermissionManagement() {
                         <span className="ml-auto text-xs text-gray-400">Klik op categorienaam om alles te selecteren</span>
                     </div>
 
-                    <div className="overflow-auto flex-grow" style={{ maxHeight: '70vh' }}>
+                    <div className="flex-grow min-h-0 overflow-hidden">
                         <TooltipProvider>
-                            <Table>
-                                <TableHeader className="sticky top-0 z-10">
-                                    <TableRow className="bg-white hover:bg-white shadow-sm">
-                                        <TableHead className="w-[180px] font-medium text-gray-500 bg-white">Functionaliteit</TableHead>
+                            <Table containerClassName="max-h-[70vh] overflow-auto">
+                                <TableHeader className="z-10">
+                                    <TableRow className="bg-white hover:bg-white">
+                                        <TableHead className="w-[180px] font-medium text-gray-600 bg-white sticky top-0 z-20 shadow-[0_2px_2px_-1px_rgba(0,0,0,0.05)] border-b border-gray-100">Functionaliteit</TableHead>
                                         {roles.map(role => (
-                                            <TableHead key={role.key} className="text-center font-medium text-gray-500 w-[80px] bg-white">
+                                            <TableHead key={role.key} className="text-center font-medium text-gray-600 w-[80px] bg-white sticky top-0 z-20 shadow-[0_2px_2px_-1px_rgba(0,0,0,0.05)] border-b border-gray-100">
                                                 {role.label}
                                             </TableHead>
                                         ))}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import {
     Dialog,
     DialogContent,
@@ -174,8 +175,13 @@ export function JdfOrderPicker({ open, onOpenChange, pressName, printedOrderNrs,
         try {
             await pb.send('/api/jdf/scan?force=true', { method: 'POST' });
             await fetchOrders();
-        } catch (e) {
-            console.error('[JdfOrderPicker] Force scan error:', e);
+        } catch (e: any) {
+            if (e?.status === 409) {
+                toast.warning(e?.data?.message || 'Scan al bezig, probeer later opnieuw.');
+            } else {
+                console.error('[JdfOrderPicker] Force scan error:', e);
+                toast.error('Scan mislukt');
+            }
         } finally {
             setScanning(false);
         }

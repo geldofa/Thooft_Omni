@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>IT-aanvraag: JDF Folder Watcher</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      color: #1a1a1a;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 40px 60px;
+      line-height: 1.6;
+    }
+
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 16px;
+      margin-bottom: 32px;
+    }
+    header .label {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    header h1 {
+      font-size: 20pt;
+      font-weight: 700;
+    }
+    header .meta {
+      margin-top: 10px;
+      font-size: 9.5pt;
+      color: #444;
+      display: flex;
+      gap: 32px;
+    }
+
+    h2 {
+      font-size: 12pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 28px;
+      margin-bottom: 10px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    p { margin-bottom: 8px; }
+
+    ul, ol {
+      margin: 8px 0 12px 20px;
+    }
+    li { margin-bottom: 4px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 10.5pt;
+    }
+    th {
+      background: #f0f0f0;
+      text-align: left;
+      padding: 7px 10px;
+      font-weight: 600;
+      border: 1px solid #ccc;
+    }
+    td {
+      padding: 7px 10px;
+      border: 1px solid #ccc;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+
+    .highlight {
+      background: #f5f5f5;
+      border-left: 3px solid #1a1a1a;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 10.5pt;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 8.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      margin-right: 4px;
+    }
+    .tag-green { background: #d4edda; color: #1a5c2a; }
+    .tag-grey  { background: #e9e9e9; color: #444; }
+
+    pre {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      padding: 14px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9pt;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 12px 0;
+    }
+
+    .signature-block {
+      margin-top: 48px;
+      display: flex;
+      gap: 60px;
+    }
+    .sig {
+      flex: 1;
+    }
+    .sig-line {
+      border-bottom: 1px solid #888;
+      height: 40px;
+      margin-bottom: 4px;
+    }
+    .sig-label { font-size: 9.5pt; color: #555; }
+
+    @media print {
+      body { padding: 20px 30px; }
+      pre { font-size: 8pt; }
+      .page-break { page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="label">IT-aanvraag</div>
+  <h1>JDF Folder Watcher</h1>
+  <div class="meta">
+    <span><strong>Aanvrager:</strong> Antony Geldof</span>
+    <span><strong>Datum:</strong> 29 april 2026</span>
+    <span><strong>Classificatie:</strong> Interne infrastructuur</span>
+  </div>
+</header>
+
+
+<h2>1. Samenvatting</h2>
+<p>
+  De productieplanningsapplicatie <strong>Omni</strong> importeert automatisch productieorders
+  vanuit XML-bestanden (JDF-formaat) die door het drukkerijsysteem op een gedeelde netwerkschijf
+  worden geplaatst. Om de belasting op het netwerk en de netwerkschijf te minimaliseren, wordt
+  gevraagd om een lichtgewicht PowerShell-script als <strong>geplande taak</strong> te laten draaien
+  op de bestandsserver.
+</p>
+<div class="highlight">
+  Het script bevat geen installatie, geen externe verbindingen en geen rechteningreep.
+  Het schrijft uitsluitend één klein bestand op dezelfde gedeelde schijf.
+</div>
+
+
+<h2>2. Probleemstelling</h2>
+<p>
+  Zonder dit script doorzoekt Omni elke 10 minuten de volledige gedeelde map
+  (tot 80.000 bestanden) om te controleren of er nieuwe productieorders zijn.
+  Dit genereert onnodige netwerkbelasting, ook wanneer er geen nieuwe bestanden zijn.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Situatie</th>
+      <th>Netwerkoproepen per dag</th>
+      <th>Opmerking</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Zonder watcher (huidig)</td>
+      <td>~11,5 miljoen</td>
+      <td>144× volledige directoryscan van 80.000 bestanden</td>
+    </tr>
+    <tr>
+      <td>Met watcher</td>
+      <td>~144</td>
+      <td>1 klein bestand (trigger) elke 10 minuten gecontroleerd</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<h2>3. Wat het script doet</h2>
+<ul>
+  <li>Wordt elke 10 minuten gestart via de Windows Taakplanner, controleert zijn werk en sluit dan af.</li>
+  <li>Zoekt op de lokale schijf naar <code>DT*.xml</code>-bestanden die gewijzigd zijn sinds de vorige run.</li>
+  <li>Schrijft bij wijzigingen de bestandsnamen naar <code>_jdf_trigger.json</code> op de gedeelde schijf.</li>
+  <li>Omni leest enkel dat kleine bestand en verwerkt alleen de vermelde bestanden.</li>
+</ul>
+
+<h2>4. Wat het script <u>niet</u> doet</h2>
+<ul>
+  <li>Geen verbinding met het internet of externe systemen.</li>
+  <li>Geen toegang tot andere mappen dan de opgegeven JDF-map.</li>
+  <li>Geen wijzigingen aan het systeem, register of beveiligingsinstellingen.</li>
+  <li>Geen nieuwe software-installatie vereist.</li>
+</ul>
+
+
+<h2>5. Technische vereisten</h2>
+
+<table>
+  <thead>
+    <tr><th>Vereiste</th><th>Detail</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PowerShell 5.1 of hoger</td>
+      <td>Standaard aanwezig op Windows Server 2016+</td>
+      <td><span class="tag tag-green">Geen installatie</span></td>
+    </tr>
+    <tr>
+      <td>Geplande taak</td>
+      <td>Éénmalig aanmaken via Taakplanner of onderstaand commando</td>
+      <td><span class="tag tag-grey">Eenmalig</span></td>
+    </tr>
+    <tr>
+      <td>Schrijfrechten op de JDF-map</td>
+      <td>Alleen voor <code>_jdf_trigger.json</code> in de root van de map</td>
+      <td><span class="tag tag-grey">Bestaande rechten</span></td>
+    </tr>
+  </tbody>
+</table>
+
+
+<div class="page-break"></div>
+<h2>6. Script (volledig, ter review)</h2>
+
+<p>Bestand: <code>C:\Scripts\jdf-watcher.ps1</code></p>
+
+<pre>
+# JDF Folder Watcher
+# Wordt elke 10 minuten uitgevoerd via de Windows Taakplanner.
+# Zoekt DT*.xml bestanden gewijzigd sinds de vorige run.
+# Schrijft gewijzigde bestandsnamen naar _jdf_trigger.json op de gedeelde map.
+# Geen externe verbindingen. Geen installatie vereist. Geen persistent proces.
+
+param(
+    [string]$WatchPath = "D:\JDF-Share"    # Pas aan naar de juiste map
+)
+
+$triggerFile   = Join-Path $WatchPath "_jdf_trigger.json"
+$timestampFile = Join-Path $WatchPath "_jdf_lastrun.txt"
+
+# Lees tijdstip van vorige run
+$lastRun = if (Test-Path $timestampFile) {
+    [datetime]::Parse((Get-Content $timestampFile -Raw).Trim())
+} else {
+    [datetime]::MinValue
+}
+
+# Zoek DT*.xml bestanden gewijzigd na de vorige run
+$changed = Get-ChildItem -Path $WatchPath -Filter "DT*.xml" -File |
+           Where-Object { $_.LastWriteTime -gt $lastRun } |
+           Select-Object -ExpandProperty Name
+
+# Schrijf trigger als er wijzigingen zijn
+if ($changed.Count -gt 0) {
+    $json = $changed | Sort-Object | ConvertTo-Json -Compress
+    Set-Content -Path $triggerFile -Value $json -Encoding UTF8
+    Write-Host "Trigger geschreven: $($changed.Count) bestand(en)"
+}
+
+# Sla huidig tijdstip op als referentie voor de volgende run
+(Get-Date -Format "o") | Set-Content -Path $timestampFile -Encoding UTF8
+</pre>
+
+
+<h2>7. Installatie als geplande taak</h2>
+<p>Eenmalig uitvoeren in een verhoogde PowerShell-sessie:</p>
+
+<pre>
+$action = New-ScheduledTaskAction `
+            -Execute  "powershell.exe" `
+            -Argument "-NonInteractive -File C:\Scripts\jdf-watcher.ps1"
+
+$trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 10) `
+             -Once -At (Get-Date)
+
+$settings = New-ScheduledTaskSettingsSet `
+              -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+              -StartWhenAvailable $true
+
+Register-ScheduledTask `
+  -TaskName   "JDF Folder Watcher" `
+  -Action     $action `
+  -Trigger    $trigger `
+  -Settings   $settings `
+  -RunLevel   Limited `
+  -Description "Controleert elke 10 min de JDF-map en schrijft een trigger voor Omni."
+</pre>
+
+
+<h2>8. Risico-inschatting</h2>
+
+<table>
+  <thead>
+    <tr><th>Risico</th><th>Beoordeling</th><th>Toelichting</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Impact op bestaande systemen</td>
+      <td><span class="tag tag-green">Geen</span></td>
+      <td>Schrijft alleen één JSON-bestand op de gedeelde schijf</td>
+    </tr>
+    <tr>
+      <td>Netwerkverkeer</td>
+      <td><span class="tag tag-green">Verwaarloosbaar</span></td>
+      <td>Schrijft één klein bestand bij wijziging; controle via lokaal filesystem</td>
+    </tr>
+    <tr>
+      <td>Beveiliging</td>
+      <td><span class="tag tag-green">Geen bezwaar</span></td>
+      <td>Geen inbound verbindingen, geen externe communicatie</td>
+    </tr>
+    <tr>
+      <td>Beschikbaarheid Omni bij uitval watcher</td>
+      <td><span class="tag tag-grey">Geen impact</span></td>
+      <td>Omni valt terug op eigen polling (huidige werking)</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<h2>9. Akkoord</h2>
+
+<div class="signature-block">
+  <div class="sig">
+    <div class="sig-line"></div>
+    <div class="sig-label">Aanvrager — Antony Geldof</div>
+  </div>
+  <div class="sig">
+    <div class="sig-line"></div>
+    <div class="sig-label">IT-beheerder</div>
+  </div>
+  <div class="sig">
+    <div class="sig-line"></div>
+    <div class="sig-label">Datum akkoord</div>
+  </div>
+</div>
+
+</body>
+</html>

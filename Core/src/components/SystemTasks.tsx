@@ -7,8 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
     CalendarClock, PlayCircle, RefreshCw, CheckCircle2,
-    Clock, AlertCircle, Loader2, Database, FileText
+    Clock, AlertCircle, Loader2, Database, FileText, Settings
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Label } from './ui/label';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { cn } from './ui/utils';
 import { generatePresetReport } from '../utils/generateReport';
@@ -97,19 +101,28 @@ export function SystemTasks() {
         return <div className="p-8 text-center text-gray-500 text-sm italic">Geen toegang tot systeem taken.</div>;
     }
     const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+    const [jdfSettings, setJdfSettings] = useState({ interval_minutes: 30, start_hour: 7, end_hour: 18 });
+    const [jdfSettingsOpen, setJdfSettingsOpen] = useState(false);
+    const [savingSettings, setSavingSettings] = useState(false);
 
     const fetchTasks = useCallback(async () => {
         setIsLoading(true);
         try {
             // 1. Fetch data in parallel
-            const [presets, archiveFiles, backupsRes, jdfScan] = await Promise.all([
+            const [presets, archiveFiles, backupsRes, jdfScan, jdfSettingsRec] = await Promise.all([
                 pb.collection('maintenance_reports').getFullList({ sort: 'name' }),
                 pb.collection('report_files').getFullList({ sort: '-generated_at' }),
                 fetch(`${pb.baseUrl.replace(/\/$/, '')}/api/backups`, {
                     headers: { 'Authorization': pb.authStore.token }
                 }).then(res => res.ok ? res.json() : []),
-                pb.collection('app_settings').getFirstListItem('key = "jdf_last_scan"').catch(() => null)
+                pb.collection('app_settings').getFirstListItem('key = "jdf_last_scan"').catch(() => null),
+                pb.collection('app_settings').getFirstListItem('key = "jdf_scan_settings"').catch(() => null),
             ]);
+
+            const settings = (jdfSettingsRec?.value && typeof jdfSettingsRec.value === 'object')
+                ? { interval_minutes: 30, start_hour: 7, end_hour: 18, ...jdfSettingsRec.value }
+                : { interval_minutes: 30, start_hour: 7, end_hour: 18 };
+            setJdfSettings(settings);
 
             // 2. Map Report Presets
             const reportTasks: ScheduledTask[] = presets.map((p: any) => {
@@ -151,17 +164,17 @@ export function SystemTasks() {
 
             // 4. Map JDF Watcher
             const jdfLast = jdfScan?.value?.timestamp ? new Date(jdfScan.value.timestamp) : null;
-            const jdfNext = jdfLast ? new Date(jdfLast.getTime() + 5 * 60 * 1000) : null;
+            const jdfNext = jdfLast ? new Date(jdfLast.getTime() + settings.interval_minutes * 60 * 1000) : null;
             const jdfTask: ScheduledTask = {
                 id: 'jdf_scan',
                 name: 'JDF Mapscanner',
                 type: 'jdf',
-                interval: 'Elke 5 minuten',
+                interval: `Elke ${settings.interval_minutes} min • ${settings.start_hour}:00–${settings.end_hour}:00`,
                 lastRun: jdfLast,
                 nextRun: jdfNext,
                 status: 'idle',
                 description: jdfScan?.value
-                    ? `${jdfScan.value.files_found ?? 0} bestanden, ${jdfScan.value.new_records ?? 0} nieuw, ${jdfScan.value.updated_records ?? 0} bijgewerkt`
+                    ? `${jdfScan.value.files_found ?? 0} bestanden • ${(jdfScan.value.stat_calls ?? 0) + (jdfScan.value.read_files ?? 0)} calls • ${jdfScan.value.new_records ?? 0} nieuw, ${jdfScan.value.updated_records ?? 0} bijgewerkt`
                     : 'Scant de JDF-map en synchroniseert orders',
             };
 
@@ -233,6 +246,26 @@ export function SystemTasks() {
             setRunningIds(prev => { const su = new Set(prev); su.delete(task.id); return su; });
         }
     }, [fetchTasks]); // Added fetchTasks to dependencies
+
+    const saveJdfSettings = useCallback(async () => {
+        setSavingSettings(true);
+        try {
+            let rec: any;
+            try {
+                rec = await pb.collection('app_settings').getFirstListItem('key = "jdf_scan_settings"');
+                await pb.collection('app_settings').update(rec.id, { value: jdfSettings });
+            } catch {
+                await pb.collection('app_settings').create({ key: 'jdf_scan_settings', value: jdfSettings });
+            }
+            toast.success('Instellingen opgeslagen');
+            setJdfSettingsOpen(false);
+            fetchTasks();
+        } catch {
+            toast.error('Fout bij opslaan instellingen');
+        } finally {
+            setSavingSettings(false);
+        }
+    }, [jdfSettings, fetchTasks]);
 
     const statusBadge = (status: TaskStatus, isAuto: boolean) => {
         if (status === 'running') return <Badge className="bg-blue-50 text-blue-700 border-none gap-1 font-bold"><Loader2 className="w-3 h-3 animate-spin" /> Bezig</Badge>;
@@ -337,19 +370,32 @@ export function SystemTasks() {
                                                 {statusBadge(task.status, task.preset?.auto_generate)}
                                             </TableCell>
                                             <TableCell className="text-right pr-6">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => runTask(task, 'manual')}
-                                                    disabled={isRunning}
-                                                    className="gap-1.5 h-8 text-xs border-indigo-100 text-indigo-700 hover:bg-indigo-50"
-                                                >
-                                                    {isRunning
-                                                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                                                        : <PlayCircle className="w-3 h-3" />
-                                                    }
-                                                    Nu Uitvoeren
-                                                </Button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {task.type === 'jdf' && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => setJdfSettingsOpen(true)}
+                                                            className="gap-1.5 h-8 text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                        >
+                                                            <Settings className="w-3 h-3" />
+                                                            Instellingen
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => runTask(task, 'manual')}
+                                                        disabled={isRunning}
+                                                        className="gap-1.5 h-8 text-xs border-indigo-100 text-indigo-700 hover:bg-indigo-50"
+                                                    >
+                                                        {isRunning
+                                                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                            : <PlayCircle className="w-3 h-3" />
+                                                        }
+                                                        Nu Uitvoeren
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -359,6 +405,59 @@ export function SystemTasks() {
                     )}
                 </CardContent>
             </Card>
+
+            <Dialog open={jdfSettingsOpen} onOpenChange={setJdfSettingsOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>JDF Mapscanner — Instellingen</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-2">
+                        <div className="grid gap-1.5">
+                            <Label>Interval</Label>
+                            <Select
+                                value={String(jdfSettings.interval_minutes)}
+                                onValueChange={v => setJdfSettings(s => ({ ...s, interval_minutes: Number(v) }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[5, 10, 15, 30, 60].map(m => (
+                                        <SelectItem key={m} value={String(m)}>Elke {m} minuten</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-1.5">
+                                <Label>Actief vanaf</Label>
+                                <Input
+                                    type="number" min={0} max={23}
+                                    value={jdfSettings.start_hour}
+                                    onChange={e => setJdfSettings(s => ({ ...s, start_hour: Number(e.target.value) }))}
+                                />
+                                <span className="text-[10px] text-slate-400">uur (0–23)</span>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label>Actief tot</Label>
+                                <Input
+                                    type="number" min={1} max={24}
+                                    value={jdfSettings.end_hour}
+                                    onChange={e => setJdfSettings(s => ({ ...s, end_hour: Number(e.target.value) }))}
+                                />
+                                <span className="text-[10px] text-slate-400">uur (1–24)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setJdfSettingsOpen(false)}>Annuleren</Button>
+                        <Button onClick={saveJdfSettings} disabled={savingSettings} className="gap-1.5">
+                            {savingSettings && <Loader2 className="w-3 h-3 animate-spin" />}
+                            Opslaan
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

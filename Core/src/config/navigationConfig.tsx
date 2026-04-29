@@ -6,7 +6,8 @@ import {
     FileText,
     MessageSquare,
     Radio,
-    Calendar
+    Calendar,
+    Newspaper
 } from 'lucide-react';
 
 import { Permission, Press } from '../components/AuthContext';
@@ -136,6 +137,14 @@ export const NAVIGATION_CONFIG: NavItemConfig[] = [
         description: 'Bekijk feedback en suggesties',
         permission: 'feedback_view',
         color: 'bg-pink-600'
+    },
+    {
+        id: '/Nieuwsbrief',
+        label: 'Nieuwsbrief',
+        icon: Newspaper,
+        description: 'Maak en exporteer de OMNI nieuwsbrief',
+        permission: 'management_access',
+        color: 'bg-slate-600'
     }
 ];
 
